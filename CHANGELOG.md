@@ -10,7 +10,9 @@
 - Require explicit SHA256 and license for local Upterm packaging; pin reviewed upstream version.
 - Add offline negative regression tests and a security backend acceptance contract.
 
-No production connection, external publication, GitHub push, real Upterm execution, or Windows build performed.
+During local hardening and verification, no production connection, external publication, GitHub push, real Upterm execution, or Windows build was performed.
+
+On 2026-10-26, the source candidate was subsequently published to the public O2-CONNECTIVE/rescue-host repository with explicit user approval. This source publication did not deploy the application, launch a session, expose a runtime service, or connect to a production PC. New sessions remain disabled.
 
 ### 日本語要約
 新規接続を安全側で停止し、公開鍵・設定・回復状態の検証を強化。停止確認、監視起動応答、時計巻き戻し対策、古い非同期応答の排除を追加しました。旧セッションの接続共有も無効です。42件のオフラインテストと構文検証に成功していますが、厳密な転送先限定・確実な失効のバックエンドは未実装です。
