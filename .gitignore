@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+.vscode/
+build/
+dist/
+*.spec
+vendor/
+third_party/
+*.log

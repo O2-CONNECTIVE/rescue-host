@@ -1,0 +1,13 @@
+{
+  "python": "3.12.14",
+  "platform": "linux",
+  "tests": 42,
+  "result": "passed",
+  "compileall": "passed",
+  "input_sha256": "a7b87c10b07b57b9d03ec81d5273f759c4b5a53d5c638782bc6524d981a29aba",
+  "limitations": [
+    "No original HANDOFF.md or review supplied",
+    "No Windows/GUI/EXE/real Upterm/network test",
+    "All new sessions disabled; enforcing backend not implemented"
+  ]
+}
