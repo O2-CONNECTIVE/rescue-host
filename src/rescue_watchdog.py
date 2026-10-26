@@ -1,9 +1,8 @@
-"""Recovery watchdog, not a tamper-resistant expiration authority.
+"""復旧用の監視プロセスであり、改ざん耐性のある失効管理機構ではない。
 
-The release gate blocks new sessions until a backend enforces expiration. This
-process improves cleanup of legacy sessions but cannot survive hostile same-user
-termination or prove remote TCP streams have closed.
-"""
+バックエンドによる強制失効が実装されるまで、リリース制御で新規セッションを禁止する。
+このプロセスは旧セッションの後処理を改善するが、同一ユーザー権限による悪意ある終了操作には
+耐えられず、リモートの TCP ストリームが閉じたことも証明できない。"""
 from __future__ import annotations
 import math
 import os
@@ -18,7 +17,7 @@ from rescue_core import (RescueError, atomic_json_write, data_dir,
 def launch_watchdog(session_name: str, deadline: float, external_upterm: str) -> None:
     if not SESSION_NAME_PATTERN.fullmatch(session_name) or not math.isfinite(deadline):
         raise RescueError("監視対象または期限が不正です。")
-    # Per-session acknowledgement, not just a successful Popen.
+    # Popen の成功だけでなく、セッションごとの起動確認を待つ。
     ready = data_dir() / "sessions" / (session_name + ".watchdog-ready.json")
     ready.parent.mkdir(parents=True, exist_ok=True)
     if ready.exists():
@@ -47,7 +46,7 @@ def launch_watchdog(session_name: str, deadline: float, external_upterm: str) ->
                 acknowledged = True
                 return
             time.sleep(0.05)
-        # This is our own just-created watchdog, not an Upterm process.
+        # これは直前に自分で起動した監視プロセスであり、Upterm プロセスではない。
         raise RescueError("期限監視の起動確認がタイムアウトしました。新規接続は開始しません。")
     except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
         raise RescueError("期限監視プロセスを起動できませんでした。") from exc
@@ -79,8 +78,8 @@ def watchdog_main(name: str, deadline_string: str, external: str, ready_path: st
             if Path(ready_path).resolve() != expected.resolve():
                 return 2
             atomic_json_write(expected, {"name": name, "pid": os.getpid(), "deadline": deadline})
-        # Clock rollback cannot extend a running watchdog; forward jumps expire early.
-        # Overdue legacy sessions are stopped immediately, never rejected as too old.
+        # 時計が巻き戻っても稼働中の監視期限は延長しない。時計が進んだ場合は期限が早まる。
+        # 期限切れの旧セッションは直ちに停止する。古すぎるという理由で停止を拒否しない。
         while True:
             remaining = min(deadline - time.time(), monotonic_deadline - time.monotonic())
             if remaining <= 0:
@@ -91,14 +90,18 @@ def watchdog_main(name: str, deadline_string: str, external: str, ready_path: st
                 stop_session(exe, name)
                 remove_session_state_if_name(name)
                 return 0
-            except RescueError:
+            except (RescueError, OSError):
                 if attempt == 4:
                     raise
                 time.sleep(min(2 ** attempt, 8))
     except (ValueError, RescueError, OSError) as exc:
         log_path = data_dir() / "watchdog.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        with log_path.open("a", encoding="utf-8") as out:
-            out.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} stop {name} UNCONFIRMED ({type(exc).__name__}); state retained\n")
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            with log_path.open("a", encoding="utf-8") as out:
+                out.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} stop {name} UNCONFIRMED ({type(exc).__name__}); state retained\n")
+        except OSError:
+            # ログ記録の失敗を停止成功として扱わず、非ゼロの終了結果を保持する。
+            pass
         return 1
     return 1

@@ -1,4 +1,4 @@
-"""Offline tests for validation and Upterm CLI compatibility assumptions."""
+"""入力検証と Upterm CLI の互換性に関する前提を確認するオフラインテスト。"""
 import base64
 import json
 from pathlib import Path

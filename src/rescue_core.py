@@ -1,8 +1,7 @@
-"""Upterm Rescue Host: validated settings and Upterm CLI integration.
+"""Upterm Rescue Host：検証済み設定と Upterm CLI の連携。
 
-No remote commands are executed by this module unless explicitly requested by
-its caller. All subprocesses are invoked as argument vectors, never via shell.
-"""
+呼び出し元から明示的に要求されない限り、このモジュールはリモートコマンドを実行しない。
+すべてのサブプロセスは引数の配列で起動し、シェル経由では起動しない。"""
 from __future__ import annotations
 
 import base64
@@ -25,7 +24,7 @@ from urllib.parse import urlparse
 APP_NAME = "RescueHost"
 DEFAULT_RELAY = "ssh://uptermd.upterm.dev:22"
 PINNED_FINGERPRINT = "SHA256:9ajV8JqMe6jJE/s3TYjb/9xw7T0pfJ2+gADiBIJWDPE"
-APP_VERSION = "0.2.0-dev"
+APP_VERSION = "0.2.1-dev"
 MIN_UPTERM = (0, 39, 0)
 START_BLOCKED_REASON = (
     "v0.2 開発版では新規接続を停止しています。Upterm単体ではTCP転送先限定と"
@@ -34,11 +33,10 @@ START_BLOCKED_REASON = (
 
 
 def require_secure_session_backend() -> None:
-    """Release gate, deliberately not configurable through settings/environment.
-
-    Remove only with an independently reviewed enforcement backend and E2E evidence.
-    Existing sessions can still be stopped. No executable is invoked here.
-    """
+    """設定や環境変数から意図的に変更できないリリース制御。
+    
+    独立したレビューを受けた強制実施バックエンドと E2E の証拠がそろった場合にのみ解除する。
+    既存セッションの停止は引き続き可能。ここでは実行ファイルを起動しない。"""
     raise RescueError(START_BLOCKED_REASON)
 SUPPORTED_KEYS = ("ssh-ed25519", "sk-ssh-ed25519@openssh.com")
 SESSION_NAME_PATTERN = re.compile(r"^rescue-[0-9a-f]{12}$")
@@ -52,12 +50,40 @@ class RescueError(RuntimeError):
 class Settings:
     relay: str = DEFAULT_RELAY
     duration_minutes: int = 30
-    mode: str = "ssh"  # ssh: local TCP forwarding; terminal: PowerShell only
+    mode: str = "ssh"  # 旧接続方式であり、操作権限ではない。
+    schema_version: int = 2
+    operation_mode: str = "restricted"  # 利用者の希望設定にすぎず、認可ではない。
     public_keys: str = ""
     external_upterm: str = ""
     custom_known_hosts: str = ""
 
+    def validate_structure(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != 2:
+            raise RescueError("未対応の設定バージョンです。")
+        for field in ("relay", "mode", "operation_mode", "public_keys", "external_upterm", "custom_known_hosts"):
+            if not isinstance(getattr(self, field), str):
+                raise RescueError("設定の文字列型が不正です: " + field)
+        if self.operation_mode not in ("restricted", "full"):
+            raise RescueError("操作範囲は restricted または full を指定してください。")
+        validate_relay(self.relay)
+        if self.mode not in ("ssh", "terminal"):
+            raise RescueError("旧接続方式が不正です。")
+        if type(self.duration_minutes) is not int or not 5 <= self.duration_minutes <= 120:
+            raise RescueError("公開時間は5〜120分にしてください。")
+        if self.public_keys:
+            validate_public_keys(self.public_keys)
+
+    def to_operation_policy(self):
+        """検証済みの利用者設定を、変更不可のオフライン用ポリシーに変換する。
+        
+        これはセッションの認可でも SSH の強制制御でもなく、リリース制御を回避するものでもない。
+        旧接続方式の選択が操作範囲に影響しないよう、意図的に分離している。"""
+        from rescue_policy import OperationPolicy
+        self.validate_structure()
+        return OperationPolicy(operation_mode=self.operation_mode)
+
     def validate(self) -> None:
+        self.validate_structure()
         validate_relay(self.relay)
         if self.mode not in ("ssh", "terminal"):
             raise RescueError("接続方式は 'ssh' または 'terminal' を指定してください。")
@@ -99,8 +125,20 @@ def load_settings(folder: Path | None = None) -> Settings:
         return Settings()
     try:
         obj = json.loads(path.read_text(encoding="utf-8"))
-        allowed = {k for k in Settings.__dataclass_fields__}
-        return Settings(**{k: v for k, v in obj.items() if k in allowed})
+        if not isinstance(obj, dict):
+            raise ValueError("設定はJSONオブジェクトである必要があります。")
+        version = obj.get("schema_version", 1)
+        if type(version) is not int or version not in (1, 2):
+            raise ValueError("未対応の設定バージョンです。")
+        allowed = set(Settings.__dataclass_fields__)
+        values = {k: v for k, v in obj.items() if k in allowed}
+        if version == 1:
+            # 旧接続方式の選択によって full の操作権限を付与してはならない。
+            values["operation_mode"] = "restricted"
+        values["schema_version"] = 2
+        settings = Settings(**values)
+        settings.validate_structure()
+        return settings
     except (ValueError, TypeError, OSError) as exc:
         raise RescueError("設定ファイルが破損しています: " + str(exc)) from exc
 
@@ -126,7 +164,7 @@ def validate_public_keys(keys: str) -> None:
             raw = base64.b64decode(pieces[1], validate=True)
         except ValueError as exc:
             raise RescueError(f"{index}行目: 公開鍵のBase64が不正です。") from exc
-        # Parse every SSH string, not just the key-type prefix. No options or certificates.
+        # 鍵種別の接頭辞だけでなく、SSH 形式の各文字列フィールドを解析する。オプションや証明書は許可しない。
         offset = 0
         def field():
             nonlocal offset
@@ -273,10 +311,10 @@ def subprocess_flags() -> int:
 
 
 def run_upterm(executable: Path, args: list[str], *, timeout: float = 45) -> subprocess.CompletedProcess[str]:
-    # Never let environment UPTERM_* defaults silently override selected UI settings.
+    # 環境変数 UPTERM_* の既定値で、画面上で選択した設定が暗黙に上書きされないようにする。
     env = {key: value for key, value in os.environ.items() if not key.startswith("UPTERM_")}
-    # Upterm also reads XDG_CONFIG_HOME/upterm/config.yaml. Strip neither state nor
-    # runtime locations: those must still locate pre-v0.2 sessions for recovery.
+    # Upterm は XDG_CONFIG_HOME/upterm/config.yaml も読み込む。状態や実行時データの
+    # 保存先は除去しない。v0.2 より前のセッションを復旧のために見つける必要がある。
     config_root = data_dir() / "isolated-upterm-config"
     config_folder = config_root / "upterm"
     for path in (config_root, config_folder, config_folder / "config.yaml"):
@@ -286,7 +324,7 @@ def run_upterm(executable: Path, args: list[str], *, timeout: float = 45) -> sub
     if os.name != "nt":
         config_root.chmod(0o700)
         config_folder.chmod(0o700)
-    atomic_json_write(config_folder / "config.yaml", {})  # JSON is valid YAML.
+    atomic_json_write(config_folder / "config.yaml", {})  # JSON は有効な YAML として扱える。
     env["XDG_CONFIG_HOME"] = str(config_root.resolve())
     try:
         return subprocess.run(
@@ -299,7 +337,7 @@ def run_upterm(executable: Path, args: list[str], *, timeout: float = 45) -> sub
 
 
 def version_from_output(text: str) -> tuple[int, int, int]:
-    # Prefer the explicit version property, not another semver field (e.g. Go).
+    # 別のセマンティックバージョン項目（Go など）ではなく、明示された version プロパティを優先する。
     try:
         payload = json.loads(text)
     except (ValueError, TypeError):
@@ -353,7 +391,7 @@ def validate_session_state(data: Any) -> dict[str, Any]:
     deadline = data.get("deadline")
     if type(deadline) not in (int, float) or not math.isfinite(deadline) or deadline <= 0:
         raise RescueError("セッション回復情報の期限が不正です。ファイルは保持します。")
-    if "mode" in data and data["mode"] not in {"ssh", "terminal"}:
+    if "mode" in data and data["mode"] not in ("ssh", "terminal"):
         raise RescueError("セッション回復情報の操作方式が不正です。")
     if "external_upterm" in data and not isinstance(data["external_upterm"], str):
         raise RescueError("セッション回復情報の実行パスが不正です。")
@@ -383,10 +421,11 @@ def remove_session_state_if_name(name: str, folder: Path | None = None) -> None:
     if not isinstance(name, str) or not SESSION_NAME_PATTERN.fullmatch(name):
         raise RescueError("セッション名が不正です。")
     state = load_session_state(folder)
-    if state and state.get("name") == name:
-        session_state_path(folder).unlink(missing_ok=True)
     key_file = (folder or data_dir()) / "sessions" / (name + ".authorized_keys")
     key_file.unlink(missing_ok=True)
+    # ほかの後処理がすべて成功するまで復旧記録を保持する。再試行は冪等である。
+    if state and state.get("name") == name:
+        session_state_path(folder).unlink(missing_ok=True)
 
 
 def stop_session(executable: Path, name: str, *, confirmation_timeout: float = 5) -> None:
@@ -401,7 +440,7 @@ def stop_session(executable: Path, name: str, *, confirmation_timeout: float = 5
     while True:
         info = get_session_info(executable, name)
         if info.get("status") == "ended":
-            return
+            raise RescueError("終了応答は受信しましたが、旧セッションの起動同一性を検証できません。回復情報と鍵を保持します。")
         if time.monotonic() >= end:
             raise RescueError("停止要求後も終了を確認できません。状態と鍵を保存して再試行してください。")
         time.sleep(0.1)
@@ -421,11 +460,10 @@ def get_session_info(executable: Path, name: str) -> dict[str, Any]:
         raise RescueError("セッション状態のJSONが不正です。") from exc
     if not isinstance(obj, dict):
         raise RescueError("セッション状態JSONの形式が不正です。")
-    if obj.get("name", name) != name:
+    if obj.get("name") != name:
         raise RescueError("セッション状態の対象が一致しません。")
     if obj.get("status") not in {"starting", "ready", "reconnecting", "disconnected", "ending", "ended"}:
         raise RescueError("不明なセッション状態です。終了とは判断しません。")
-    obj["name"] = name
     return obj
 
 

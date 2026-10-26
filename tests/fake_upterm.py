@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline Upterm CLI fake used ONLY by tests, not shipped in an EXE."""
+"""テスト専用のオフライン Upterm CLI 代替実装。EXE には同梱しない。"""
 import json
 import os
 from pathlib import Path
@@ -28,7 +28,7 @@ if args[:2] == ['session', 'info']:
     if not file.exists():
         sys.exit(4)
     status = file.read_text()
-    print(json.dumps({'status': status, 'guestCount': 1, 'sshCommand': 'ssh TokenMadeUp@uptermd.upterm.dev'}))
+    print(json.dumps({'name': args[2], 'status': status, 'guestCount': 1, 'sshCommand': 'ssh TokenMadeUp@uptermd.upterm.dev'}))
     sys.exit(0)
 print('unknown fake call', args, file=sys.stderr)
 sys.exit(1)

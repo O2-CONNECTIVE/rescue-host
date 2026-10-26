@@ -1,5 +1,5 @@
-# Builds a Windows x64 single-file RescueHost.exe, embedding a verified Upterm binary.
-# Requirements: Windows 10/11, Python 3.11+, Python launcher 'py', internet access.
+# 検証済みの Upterm バイナリを埋め込み、Windows x64 向けの単一ファイル RescueHost.exe をビルドする。
+# 前提条件：Windows 10/11、Python 3.11 以降、Python ランチャー 'py'、インターネット接続。
 param(
     [string]$UptermVersion = 'v0.39.0',
     [switch]$UseLocalUpterm,
@@ -59,8 +59,8 @@ if ($UseLocalUpterm) {
         throw 'Provide the matching Upterm license before packaging a local binary.'
     }
 }
-# Checksums fetched alongside an archive detect corruption, not publisher compromise.
-# Build does not enable new sessions; the v0.2 runtime release gate remains closed.
+# アーカイブと同じ場所から取得するチェックサムは破損を検出するが、公開元の侵害は検出できない。
+# ビルドしても新規セッションは有効にならない。v0.2 の実行時リリース制御は閉じたままとする。
 & py -3 -m pip install -r (Join-Path $Root 'requirements-build.txt')
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller setup failed' }
 & py -3 -m PyInstaller --onefile --noconsole --clean --noconfirm --name RescueHost `

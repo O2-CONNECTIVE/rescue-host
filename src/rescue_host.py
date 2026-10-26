@@ -1,4 +1,4 @@
-"""Windows Upterm rescue GUI. Run with Python or package into a single EXE."""
+"""Windows 向け Upterm レスキュー GUI。Python で実行するか、単一の EXE にまとめる。"""
 from __future__ import annotations
 
 import json
@@ -88,7 +88,7 @@ class RescueApp:
         shell = ttk.Frame(self.root, padding=(24, 17, 24, 12))
         shell.pack(fill="both", expand=True)
         ttk.Label(shell, text="Rescue Host", style="Title.TLabel").pack(anchor="w")
-        ttk.Label(shell, text="相手の許可したセッションだけを一時公開。Mac上のClaude CodeからWindowsを診断します。",
+        ttk.Label(shell, text="開発版：操作範囲の設定と旧セッションの停止要求のみ。新規接続は無効です。",
                   foreground=MUTED).pack(anchor="w", pady=(3, 12))
 
         self.tabs = ttk.Notebook(shell)
@@ -101,8 +101,8 @@ class RescueApp:
         self._create_settings_tab()
         foot = ttk.Frame(shell)
         foot.pack(fill="x", pady=(8, 0))
-        ttk.Label(foot, text="Upterm v0.39.0以上 / 直接SFTP無効 / 公開鍵認証必須", foreground=MUTED).pack(side="left")
-        ttk.Label(foot, text="試作版 0.1", foreground=MUTED).pack(side="right")
+        ttk.Label(foot, text="権限制御・強制失効は実環境未検証 / 新規接続・共有は無効", foreground=MUTED).pack(side="left")
+        ttk.Label(foot, text=APP_VERSION, foreground=MUTED).pack(side="right")
 
     def _create_control_tab(self):
         panel = self._panel(self.tab_control)
@@ -121,13 +121,16 @@ class RescueApp:
         action.pack(anchor="w", pady=(16, 0))
         self.start_btn = ttk.Button(action, text="このPCへの接続を許可", style="Primary.TButton", command=self._start)
         self.start_btn.pack(side="left", padx=(0, 9))
-        self.stop_btn = ttk.Button(action, text="接続を即時終了", style="Stop.TButton", command=self._stop)
+        self.stop_btn = ttk.Button(action, text="停止を要求", style="Stop.TButton", command=self._stop)
         self.stop_btn.pack(side="left")
+        self.close_unconfirmed_btn = ttk.Button(action, text="停止未確認のまま画面だけ閉じる",
+                                               command=self._close_unconfirmed)
+        self.close_unconfirmed_btn.pack(side="left", padx=(9, 0))
 
         details = self._panel(self.tab_control)
         details.pack(fill="x", pady=(0, 12))
         ttk.Label(details, text="Mac側へ渡す接続コマンド", style="Heading.Panel.TLabel").pack(anchor="w")
-        ttk.Label(details, text="SSH公開鍵を所有するMacだけが接続できます。接続情報は信頼できる手段で共有してください。",
+        ttk.Label(details, text="新規接続とコマンド共有は無効です。旧セッションの権限制限・終了は保証できません。",
                   style="Sub.Panel.TLabel").pack(anchor="w", pady=(4, 10))
         self.ssh_command = tk.StringVar(value="新規接続・接続コマンドの共有は無効です")
         self.join_entry = ttk.Entry(details, textvariable=self.ssh_command, state="readonly", font=("Consolas", 9))
@@ -147,7 +150,7 @@ class RescueApp:
         self.logs.pack(fill="both", expand=True)
 
     def _create_settings_tab(self):
-        # Save controls remain visible. Long/large-font settings scroll independently.
+        # 保存操作は常に表示する。長い設定や大きな文字の設定領域は独立してスクロールする。
         footer = self._panel(self.tab_settings, (20, 8))
         footer.pack(side="bottom", fill="x")
         scroll_holder = ttk.Frame(self.tab_settings, style="Panel.TFrame")
@@ -161,7 +164,7 @@ class RescueApp:
         scroll_win = scroll.create_window((0, 0), window=panel, anchor="nw")
         panel.bind("<Configure>", lambda e: scroll.configure(scrollregion=scroll.bbox("all")))
         scroll.bind("<Configure>", lambda e: scroll.itemconfigure(scroll_win, width=e.width))
-        # Mouse wheel only while pointer is over the settings content.
+        # ポインターが設定内容の上にある間だけマウスホイールを有効にする。
         def on_wheel(e):
             if e.delta:
                 scroll.yview_scroll(int(-e.delta / 120), "units")
@@ -170,7 +173,6 @@ class RescueApp:
         ttk.Label(panel, text="接続方法と環境設定", style="Heading.Panel.TLabel").pack(anchor="w", pady=(0, 9))
 
         grid = ttk.Frame(panel, style="Panel.TFrame")
-        grid.pack(fill="x")
         grid.columnconfigure(1, weight=1)
 
         def row(label: str, index: int, variable, width=None):
@@ -179,8 +181,17 @@ class RescueApp:
             entry.grid(row=index, column=1, sticky="ew", pady=6)
             return entry
 
+        self.operation_var = tk.StringVar(value="restricted")
+        ttk.Label(panel, text="操作範囲（設定のみ・現在は両方利用不可）", style="Heading.Panel.TLabel").pack(anchor="w")
+        for label, value in (("制限付き診断・修復（既定）", "restricted"), ("フル操作（高リスク・管理者昇格なし）", "full")):
+            ttk.Radiobutton(panel, text=label, variable=self.operation_var, value=value,
+                            command=self._operation_changed).pack(anchor="w", pady=3)
+        self.operation_note = ttk.Label(panel, text="", style="Sub.Panel.TLabel", wraplength=650)
+        self.operation_note.pack(anchor="w", pady=(4, 12))
+        grid.pack(fill="x")
+        # 旧接続方式と要求された操作範囲を区別して保持する。
         self.mode_var = tk.StringVar()
-        ttk.Label(grid, text="操作方式", style="Panel.TLabel").grid(row=0, column=0, sticky="w", pady=6)
+        ttk.Label(grid, text="旧接続方式", style="Panel.TLabel").grid(row=0, column=0, sticky="w", pady=6)
         self.mode_box = ttk.Combobox(grid, textvariable=self.mode_var, values=["SSH転送（Claude向け）", "PowerShell共有（手動操作）"], state="readonly")
         self.mode_box.grid(row=0, column=1, sticky="ew", pady=6)
         self.mode_box.bind("<<ComboboxSelected>>", lambda e: self._mode_note())
@@ -223,6 +234,19 @@ class RescueApp:
         ttk.Label(footer, text="※ Windows OpenSSH Serverは自動インストール・起動しません。SSH転送には別途セットアップが必要です。",
                   style="Sub.Panel.TLabel", wraplength=700).pack(anchor="w", pady=(7, 0))
 
+    def _operation_changed(self):
+        if self.operation_var.get() == "full":
+            if not messagebox.askyesno("フル操作の設定", "フル操作では通常ユーザー権限の任意操作が可能になります。変更・外部通信・永続化の影響は接続終了後も残り得ます。\n管理者昇格は含みません（別途承認する機構は未実装）。\n\nこれは設定の保存のみです。新規接続は許可されません。選択しますか？", icon="warning"):
+                self.operation_var.set("restricted")
+        self._operation_note()
+
+    def _operation_note(self):
+        if self.operation_var.get() == "full":
+            note = "フル操作：高リスク。管理者昇格は含みません。接続終了は操作結果を取り消しません。"
+        else:
+            note = "制限付き：許可された診断・修復のみを行う予定です。権限制御は未実装・未検証です。"
+        self.operation_note.configure(text=note + " 両モードともバックエンド未検証のため利用不可。設定しても接続は開始されません。")
+
     def _mode_note(self):
         if self.mode_var.get().startswith("SSH"):
             note = "無効: Upterm単体では転送先を127.0.0.1:22に限定できません。公開鍵認証だけでは制限できません。"
@@ -231,6 +255,8 @@ class RescueApp:
         self.mode_note.config(text=note)
 
     def _load_into_form(self):
+        self.operation_var.set(self.config.operation_mode)
+        self._operation_note()
         self.mode_var.set("SSH転送（Claude向け）" if self.config.mode == "ssh" else "PowerShell共有（手動操作）")
         self.duration_var.set(str(self.config.duration_minutes))
         self.relay_var.set(self.config.relay)
@@ -248,6 +274,7 @@ class RescueApp:
         settings = Settings(
             relay=self.relay_var.get().strip(),
             duration_minutes=minutes,
+            operation_mode=self.operation_var.get(),
             mode="ssh" if self.mode_var.get().startswith("SSH") else "terminal",
             public_keys=self.pubkeys.get("1.0", "end").strip(),
             external_upterm=self.external_var.get().strip(),
@@ -329,7 +356,7 @@ class RescueApp:
             warning += "\n【注意】SSH転送は127.0.0.1:22以外のTCP宛先も指定可能です。"
         if not messagebox.askyesno("外部接続を許可しますか？", warning, icon="warning"):
             return
-        # Save settings only after validation and local explicit consent.
+        # 検証とローカルでの明示的な同意が完了してから設定を保存する。
         save_settings(settings)
         self.config = settings
         self._log("セッションの起動処理を開始しました。")
@@ -349,7 +376,7 @@ class RescueApp:
         }
         try:
             check_upterm_version(exe)
-            # The watchdog starts *before* a detached Upterm daemon can be created.
+            # 切り離された Upterm デーモンを作成できるようになる前に、必ず監視プロセスを起動する。
             record_session_state(info)
             launch_watchdog(name, deadline, str(exe.resolve()))
             result = run_upterm(exe, upterm_cmd_start(settings, name, known_hosts, key_path), timeout=50)
@@ -360,12 +387,12 @@ class RescueApp:
             record_session_state({k: v for k, v in info.items() if k != "ssh_command"})
             return info
         except Exception:
-            # If host returned unusable JSON after launch, stop by our unique name.
-            # Preserve the state on stop failure for recovery/manual intervention.
+            # 起動後に host が利用できない JSON を返した場合は、こちらで付けた一意の名前を使って停止する。
+            # 停止に失敗した場合は、復旧や手動対応のために状態を保持する。
             try:
                 stop_session(exe, name)
             except RescueError:
-                pass  # Watchdog will attempt stop at the session deadline.
+                pass  # 監視プロセスがセッションの期限に停止を試みる。
             else:
                 remove_session_state_if_name(name)
             raise
@@ -373,7 +400,7 @@ class RescueApp:
     def _stop(self):
         if self.busy or not self.session:
             return
-        if not messagebox.askyesno("セッション終了", "Macからのリモートアクセスを即時停止しますか？"):
+        if not messagebox.askyesno("セッション終了", "旧セッションに停止を要求します。終了を検証できない場合は回復情報と鍵を保持します。続行しますか？"):
             return
         state = dict(self.session)
         self._log("セッション停止を要求しました。")
@@ -429,19 +456,24 @@ class RescueApp:
                 self._refresh_state()
         except queue.Empty:
             pass
-        self.root.after(150, self._drain_events)
+        except (OSError, RescueError, ValueError, TypeError) as exc:
+            # イベント処理の失敗でポーリングや期限処理を停止させたり、証跡を消したりしない。
+            self.busy = False
+            self.poll_busy = False
+            self.expiry_stop_attempted = False
+            self._log("状態処理に失敗しました。回復情報を保持して再試行します: " + str(exc))
+        finally:
+            self.root.after(150, self._drain_events)
 
     def _apply_info(self, info):
         if not self.session or info.get("name") != self.session.get("name"):
-            return  # Ignore stale poll responses belonging to a previous session.
+            return  # 以前のセッションに属する古いポーリング応答は無視する。
         if info.get("status") == "ended":
-            name = self.session["name"]
-            remove_session_state_if_name(name)
-            self.session = None
-            self._log("Uptermセッションの終了を確認しました。")
+            # CLI の名前と状態は観測結果であり、起動単位に結び付いた失効の証明ではない。
+            self._log("終了応答を受信しましたが旧セッションの同一性は未確認です。回復情報を保持します。")
         else:
             self.session["guest_count"] = info.get("guestCount", 0)
-            # Recovery must not publish commands for an unsafe legacy session.
+            # 復旧処理で、安全でない旧セッションの接続コマンドを公開してはならない。
             self.session.pop("ssh_command", None)
 
     def _recover(self):
@@ -503,6 +535,20 @@ class RescueApp:
             self.summary.configure(text="v0.2開発版：安全なバックエンドが未実装のため新規接続はできません。")
             self.ssh_command.set("新規接続・接続コマンドの共有は無効です")
 
+    def _close_unconfirmed(self):
+        if self.busy:
+            messagebox.showwarning("処理中", "停止要求の処理が完了してから閉じてください。")
+            return
+        if not self.session:
+            self.root.destroy()
+            return
+        if messagebox.askyesno("停止未確認のまま閉じますか？",
+                "画面を閉じるだけです。リモート接続が継続している可能性があります。\n"
+                "この操作は接続の停止・終了確認を行いません。監視プロセスによる失効も保証できません。\n"
+                "回復情報と鍵は削除せず保持します。外部で対象セッションの終了を確認してください。\n\n"
+                "停止未確認のまま画面だけ閉じますか？", icon="warning", default="no"):
+            self.root.destroy()
+
     def _request_close(self):
         if self.busy:
             messagebox.showwarning("処理中", "開始／停止処理が完了してから閉じてください。")
@@ -510,7 +556,7 @@ class RescueApp:
         if not self.session:
             self.root.destroy()
             return
-        if messagebox.askyesno("終了確認", "GUIを閉じる前に接続を停止します。続行しますか？"):
+        if messagebox.askyesno("終了確認", "GUIを閉じる前に停止を要求します。この開発版では旧セッションの終了を検証できないため、自動では閉じられません。画面だけ閉じる場合は専用ボタンを選んでください。停止を要求しますか？"):
             state = dict(self.session)
             self._run_async("stop", lambda: self._stop_worker(state))
             self._close_after_stop = True
@@ -520,7 +566,7 @@ class RescueApp:
         if not self.busy and not self.session:
             self.root.destroy()
         elif not self.busy and self.session:
-            messagebox.showwarning("停止未完了", "セッションがまだ存在します。期限監視プロセスによる停止を確認するか、手動停止してください。")
+            messagebox.showwarning("停止未完了", "セッションの終了を確認できません。手動で対象を確認してください。画面だけ閉じる場合は専用ボタンを選んでください。")
         else:
             self.root.after(200, self._close_when_stopped)
 
@@ -533,7 +579,7 @@ def main():
     mutex = None
     if os.name == "nt":
         import ctypes
-        # Avoid a second GUI overwriting the active-session recovery record.
+        # 別の GUI インスタンスが稼働中セッションの復旧記録を上書きしないようにする。
         mutex = ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\RescueHostUptermGui")
         if not mutex:
             raise SystemExit("GUIの単一インスタンス制御に失敗しました。")

@@ -1,4 +1,4 @@
-"""Offline negative/security regressions. No relay, SSH server or credentials."""
+"""オフラインで行う異常系・セキュリティの回帰テスト。中継サーバー、SSH サーバー、認証情報は使用しない。"""
 import base64
 import json
 import os

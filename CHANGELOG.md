@@ -1,18 +1,27 @@
-# Changes
+# 変更履歴
 
-## 0.2.0-dev
-- Fail closed: disable new terminal and SSH forwarding sessions pending an enforcing backend.
-- Disable unsafe connection sharing, including recovered legacy sessions.
-- Harden public-key/state/version/output validation and isolate Upterm configuration.
-- Require stop confirmation; preserve recovery evidence on uncertainty.
-- Add acknowledged watchdog startup, monotonic deadline bound, and bounded retries (still best effort).
-- Ignore stale session polling results; label legacy sessions as stop-unconfirmed.
-- Require explicit SHA256 and license for local Upterm packaging; pin reviewed upstream version.
-- Add offline negative regression tests and a security backend acceptance contract.
+## 0.2.1-dev（2026-10-26、承認済みソース公開）
+- 回復応答の名前欠落を拒否し、旧記録の同一性未確認状態では自動整理を停止。
+- 設定のJSON型・スキーマを検証し、設定破損と回復処理を分離。
+- 削除エラー後もGUIイベント処理を継続。鍵削除失敗時に回復記録を保持。
+- GUIで制限付き／フル操作を選択・保存。フル操作でも管理者昇格なし。
+- 新規のオフライン操作方針・期限管理モデルと負例テストを追加。実SSH・Windows権限境界は未実装。
+- 新規接続無効・開始ゲート維持。実接続・配備なし。
+- 2026-10-26、ユーザーの明示承認により、日本語文書・構成図を含む本候補を公開リポジトリのmainへ反映。ソース公開のみで、サービスの外部公開・本番PC接続ではない。
+- 文書・ソースコメントを日本語化。READMEに実装と計画を区別する構成図、OS・役割別対応表を追加。
 
-During local hardening and verification, no production connection, external publication, GitHub push, real Upterm execution, or Windows build was performed.
+## 0.2.0-dev（過去版）
+- 安全側で拒否する設計に変更。権限・転送先・失効を強制できるバックエンドが完成するまで、ターミナル・SSH転送の新規接続を無効化。
+- 回復した旧セッションを含め、安全でない接続情報の共有を無効化。
+- 公開鍵・保存状態・バージョン・出力の検証を強化し、Upterm設定を分離。
+- 停止確認を必須とし、不確実な場合は回復証拠を保持。
+- 監視プロセスの起動確認、単調時計による期限制限、回数制限つき再試行を追加。ただし停止を保証しない補助機能。
+- 古いセッションの取得結果を無視し、旧セッションを「停止未確認」と表示。
+- ローカルUptermの同梱時に明示的なSHA256とライセンスを必須化し、レビュー対象の上流バージョンを固定。
+- オフラインの負例回帰テストと、安全なバックエンドの受け入れ条件を追加。
 
-On 2026-10-26, the source candidate was subsequently published to the public O2-CONNECTIVE/rescue-host repository with explicit user approval. This source publication did not deploy the application, launch a session, expose a runtime service, or connect to a production PC. New sessions remain disabled.
+この段階のローカル修正・検証では、本番PC接続、外部公開、GitHubプッシュ、実Uptermの実行、Windowsビルドは行っていません。
 
-### 日本語要約
-新規接続を安全側で停止し、公開鍵・設定・回復状態の検証を強化。停止確認、監視起動応答、時計巻き戻し対策、古い非同期応答の排除を追加しました。旧セッションの接続共有も無効です。42件のオフラインテストと構文検証に成功していますが、厳密な転送先限定・確実な失効のバックエンドは未実装です。
+その後、2026-10-26にユーザーの明示承認を得て、ソース候補を公開リポジトリ `O2-CONNECTIVE/rescue-host` に公開しました。これはソースの公開のみで、アプリの配備、セッション起動、稼働サービスの外部公開、本番PC接続ではありません。新規接続は無効のままです。
+
+当時のオフラインテストは42件、構文検証は成功しました。厳密な転送先限定・確実な失効のバックエンドは未実装です。**当時の明示的な `ended` 応答による自動整理は、0.2.1-devでは撤回しました。**

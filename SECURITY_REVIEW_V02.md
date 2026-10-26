@@ -1,64 +1,66 @@
-# Rescue Host v0.2 independent security review
+# Rescue Host v0.2 独立セキュリティレビュー（過去版）
 
-Review date: 2026-10-26 UTC. This is a **new review produced during this task**, not the missing prior review/HANDOFF supplied by the user. Scope: local Python source and offline fake-service tests; exact upstream Upterm v0.39.0 source. No production PC, public relay, real credentials, firewall/sshd changes, or remote exposure were used.
+> **履歴資料：0.2.0-dev時点の評価です。** 現在の仕様は [v0.2.1レビュー](SECURITY_REVIEW_V021.md) を優先してください。本文にある「明示的な終了応答で自動整理」は後続版で撤回しました。旧記録は名前付き `ended` 応答でも同一性を証明できず、自動削除しません。
 
-**Release verdict: blocked for remote use.** The safe development outcome is a non-configurable new-session gate, with legacy-session cleanup retained. This is not delivery of a functioning strictly restricted remote-access product.
+レビュー日：2026-10-26 UTC。この作業で**新規に作成したレビュー**であり、ユーザーが言及した未提供の元レビュー・HANDOFFではありません。対象はローカルPythonソース、模擬サービスによるオフライン試験、および上流Upterm v0.39.0のソースです。本番PC、公開中継、実認証情報は使用せず、ファイアウォール・sshdの変更や実行環境の外部公開も行っていません。
 
-## Findings in the supplied baseline
+**リリース判定：遠隔利用は不可。** 開発成果は、設定で解除できない新規接続の開始ゲートと旧セッションの回復処理です。厳密な制限を備えた、実際に利用できる遠隔アクセス製品を完成させたものではありません。
 
-### 1. SSH mode did not enforce its advertised destination or SSH-only boundary — critical
+## 添付の初期実装で見つかった問題
 
-`src/rescue_core.py:upterm_cmd_start` supplied `--allow-local-tcp-forwarding` and launched writable PowerShell. `build_mac_forward_command` only suggested a client-side `-L` destination. An authorized guest could choose a different host/port or open the shared terminal rather than authenticate to the inner Windows sshd. A successful loopback TCP connection in `check_local_sshd` establishes neither SSH service identity nor its authentication policy.
+### 1. SSHモードが転送先とSSH専用境界を強制していない — 致命的
 
-Upterm's actual destination callback logs the requested destination but returns true solely from the global forwarding boolean: [v0.39.0 server.go, lines 349–364](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/server.go#L349-L364). Its [host CLI documentation](https://github.com/owenthereal/upterm/blob/v0.39.0/docs/upterm_host.md) describes broad host-reachable forwarding. `--read-only` is incompatible with forwarding, not a forwarding-only mode. `--no-sftp` disables that subsystem, not file access through a writable shell.
+`src/rescue_core.py:upterm_cmd_start` は `--allow-local-tcp-forwarding` を渡すと同時に、書き込み可能なPowerShellを起動していました。`build_mac_forward_command` はクライアント側の `-L` 転送先を提案するだけでした。認証済みゲストは別のホスト・ポートを選んだり、内側のWindows sshdで認証せず共有ターミナルを使ったりできます。`check_local_sshd` のループバックTCP接続成功も、SSHサービスの同一性や認証方針を証明しません。
 
-Adding OpenSSH `permitopen`, `no-pty`, or forced-command options to Upterm's authorized-key file cannot supply the missing policy: [authorizedkeys.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/authorizedkeys.go) ignores the parsed options and retains public keys only.
+Uptermの転送先判定は要求宛先をログに記録するものの、全体の転送許可フラグだけを根拠に許可します：[v0.39.0 server.go 349–364行](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/server.go#L349-L364)。[ホストCLI文書](https://github.com/owenthereal/upterm/blob/v0.39.0/docs/upterm_host.md)も、ホストから到達可能な宛先への広い転送を説明しています。`--read-only` は転送と併用できず、転送専用モードではありません。`--no-sftp` は当該サブシステムを止めるだけで、書き込み可能なシェルからのファイル操作は止めません。
 
-### 2. Inherited config could broaden authorization or weaken controls — high
+Uptermの公開鍵ファイルにOpenSSHの `permitopen`、`no-pty`、強制コマンドの指定を足しても不足する制約は補えません：[authorizedkeys.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/authorizedkeys.go)は読み取ったオプションを無視し、公開鍵だけを保持します。
 
-`run_upterm` removed `UPTERM_*` environment variables but still loaded the user's Upterm configuration. Omitted settings such as `authorized-user`, legacy provider-specific authorization, `allow-local-tcp-forwarding`, `skip-host-key-check`, and `force-command` could change the effective policy. The selected authorized-key file is not an exclusive boundary when additional authorized-user sources are configured.
+### 2. 継承した設定が認証範囲を拡張し、制約を弱める — 高
 
-Upstream [config.go](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/config.go) and [root.go](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/root.go) establish CLI > environment > config > defaults. [utils.go, lines 121–150](https://github.com/owenthereal/upterm/blob/v0.39.0/utils/utils.go#L121-L150) confirms an explicit `XDG_CONFIG_HOME` selects `<root>/upterm/config.yaml`, including Windows. Isolate that configuration and explicitly set security-critical booleans. Do not change runtime/state roots when locating legacy sessions.
+`run_upterm` は `UPTERM_*` 環境変数を除去していましたが、ユーザーのUpterm設定は読み込んでいました。省略した `authorized-user`、旧プロバイダー別認証、`allow-local-tcp-forwarding`、`skip-host-key-check`、`force-command` などが実効方針を変える可能性があります。追加の認証元を設定できる限り、指定した公開鍵ファイルだけが排他的な認証境界にはなりません。
 
-### 3. Deadline/watchdog was best-effort, not guaranteed revocation — high
+上流の [config.go](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/config.go) と [root.go](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/root.go) の優先順は、CLI・環境変数・設定ファイル・既定値の順です。[utils.go 121–150行](https://github.com/owenthereal/upterm/blob/v0.39.0/utils/utils.go#L121-L150)では、Windowsを含め、明示した `XDG_CONFIG_HOME` が `<root>/upterm/config.yaml` を選択します。設定を隔離し、安全上重要な真偽値を明示する必要があります。ただし、旧セッションの検索時に実行時情報・保存状態のルートを変更してはいけません。
 
-`src/rescue_watchdog.py` originally treated successful `Popen` as readiness, used wall-clock time alone, refused sufficiently overdue deadlines, and stopped retrying after two failures. `RescueApp._tick` tried once. A crash, clock rollback, startup/import failure, or same-user termination could leave a detached daemon accessible beyond the intended duration. Deleting the staged key file does not revoke keys already read into the daemon.
+### 3. 期限・監視は補助的な処理であり、失効の保証ではない — 高
 
-Important distinction: genuine upstream `session stop` is **not merely an acknowledgement**. [session.go, lines 672–787](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/session.go#L672-L787) sends a launch-bound request and waits for its name/launch ownership to be released; uncertainty is an error. Its wait budget is 30 seconds, with 10-second query budgets, so the wrapper's former 15-second subprocess deadline could interrupt legitimate completion. Exit 4 means no such session in the selected local state context, not proof about every process on the PC.
+初期の `src/rescue_watchdog.py` は `Popen` の成功だけを起動準備完了とし、実時刻だけを使い、大幅に期限を過ぎた記録を拒否し、2回の失敗で停止の再試行をやめていました。`RescueApp._tick` も1回しか試みません。クラッシュ、時計巻き戻し、起動・読み込み失敗、同一ユーザーによる監視停止により、切り離されたデーモンが期限後も利用可能になり得ます。準備した鍵ファイルを削除しても、デーモンが読み込み済みの鍵は失効しません。
 
-The trusted guest runs as the same account as the watchdog and can interfere with it or create persistent effects. A Python process cannot be advertised as tamper-resistant expiration enforcement. `--join-timeout` is also not a lease: a terminal/SFTP guest permanently disarms it, and forwarding alone does not satisfy it.
+重要な区別として、上流の本物の `session stop` は**単なる受付応答ではありません**。[session.go 672–787行](https://github.com/owenthereal/upterm/blob/v0.39.0/cmd/upterm/command/session.go#L672-L787)は起動単位に対応する要求を送り、名前・起動所有権の解放を待ち、不確実ならエラーにします。待機枠は30秒、照会枠は10秒のため、ラッパーの旧15秒制限は正常な終了待ちを中断し得ます。終了コード4は選択したローカル状態の中に対象がないという意味で、PC上のすべてのプロセスの終了証明ではありません。
 
-### 4. Host version and relay trust are separate requirements — high
+ゲストは監視と同じアカウントで動き、監視を妨害したり永続的な変更を残したりできます。Pythonプロセスを改ざん耐性のある期限強制機構とは呼べません。`--join-timeout` も有効期限付きの許可ではなく、ターミナル・SFTP接続で恒久的に無効化され、転送だけでは参加条件を満たしません。
 
-The local v0.39 minimum is not evidence that a custom relay is patched. The [official GHSA-p5vj-9fhj-87q7 advisory](https://github.com/owenthereal/upterm/security/advisories/GHSA-p5vj-9fhj-87q7) requires both host and every serving relay node to be patched (fix: v0.33.0). A patched host alone does not fix an unpatched relay.
+### 4. ホストのバージョンと中継の信頼は別の要件 — 高
 
-The host trusts the verified relay to attest guest identity: [relayauthority.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/relayauthority.go) binds guest-certificate authority to the accepted relay host key; [server.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/server.go#L875-L899) compares the resulting guest key against the allowlist. Relay key pinning is necessary but not a relay-patch or honest-relay attestation.
+ローカルの最低バージョンv0.39は、独自中継が修正済みである証拠にはなりません。[公式勧告 GHSA-p5vj-9fhj-87q7](https://github.com/owenthereal/upterm/security/advisories/GHSA-p5vj-9fhj-87q7)はホストとすべての稼働中継ノードの修正を要求します（修正版：v0.33.0）。ホストだけ更新しても未修正の中継は修復されません。
 
-### 5. Recovery identity and evidence need conservative handling — medium
+ホストは、検証した中継が証明するゲスト同一性を信頼します。[relayauthority.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/relayauthority.go)はゲスト証明書の発行権限を受け入れた中継ホスト鍵に結び付け、[server.go](https://github.com/owenthereal/upterm/blob/v0.39.0/host/internal/server.go#L875-L899)は得られたゲスト鍵を許可一覧と比較します。中継鍵の固定は必要ですが、中継の修正適用や誠実な動作の証明にはなりません。
 
-The baseline silently treated malformed recovery state as absent, resolved executables again from mutable paths, and applied asynchronous info responses to whichever session was currently displayed. Stop failures must preserve state and key evidence. Recovery must not label uncertainty as successful termination. Unknown states, malformed JSON, stale session identities, and ambiguous process lookup need explicit treatment.
+### 5. 回復時の同一性と証拠を保守的に扱う必要がある — 中
 
-## Required regression coverage
+初期実装は壊れた回復状態を黙って「存在しない」と扱い、変更可能なパスから実行ファイルを再検索し、非同期の情報応答をその時点で画面に出ているセッションへ適用していました。停止失敗時は状態と鍵の証拠を保持する必要があります。不確実な回復を終了成功と表示してはいけません。不明な状態、不正JSON、古いセッション同一性、曖昧なプロセス検索を明示的に扱う必要があります。
 
-- Both GUI and worker paths reject new sessions before subprocess invocation; no configuration/environment escape hatch.
-- SSH command construction and forward-command copying reject the unsupported restricted-forwarding mode.
-- Malformed, empty, certificate/option-bearing, truncated, or trailing-data public keys fail closed.
-- Inherited Upterm env/config cannot add keys, enable forwarding, or disable host-key checking; runtime/state lookup roots remain unchanged for recovery.
-- Stop success/exit 4 with contradictory active status, malformed status, lookup error, and nonzero stop retain recovery evidence; confirmed ended status permits cleanup.
-- Watchdog readiness is acknowledged, non-finite deadlines are rejected, overdue sessions are not ignored, and wall-clock rollback does not extend a running watchdog.
-- Stale asynchronous results cannot remove another session's recovery record.
+## 当時要求した回帰試験
 
-## Conditions before removing the release gate
+- GUIとワーカーの両方が子プロセス起動前に新規接続を拒否し、設定・環境変数による抜け道がないこと。
+- SSHコマンド生成と転送コマンドのコピーが未対応の制限付き転送モードを拒否すること。
+- 不正・空・証明書・オプション付き・切断・余剰データ付きの公開鍵を安全側で拒否すること。
+- 継承したUpterm設定から鍵追加・転送有効化・ホスト鍵確認無効化ができず、回復検索の実行時情報・保存状態ルートは変わらないこと。
+- 停止成功・終了コード4でも稼働状態と矛盾する場合、不正状態・検索エラー・停止失敗の場合は証拠を保持すること。当時は明示的な終了状態で整理を許していましたが、**後続版では旧記録の自動整理を撤回しました**。
+- 監視の起動応答を確認し、非有限期限を拒否し、期限超過を無視せず、時計巻き戻しで動作中の監視期限を延ばさないこと。
+- 古い非同期結果が別セッションの回復記録を削除しないこと。
 
-1. Supply and reconcile the missing original HANDOFF/review; document intended principals, relay trust, inner sshd policy, and the exact meaning of revocation.
-2. Implement a reviewed host-side channel policy that permits only the literal intended TCP destination/port and rejects shell, exec, PTY, SFTP, agent, reverse, and other forwarding channels as appropriate. Client command text is never the security boundary. Do not silently substitute terminal mode.
-3. Enforce expiry in an authority the remote guest cannot disable. Establish Windows process/job/service containment, handle ownership, child escape policy, and failure behavior before any exposure.
-4. In an explicitly authorized isolated Windows environment, verify unauthorized keys and forged certificates fail; allowed keys succeed only on allowed channels; other loopback/LAN/IPv6/DNS destinations fail; live streams and reconnects fail after stop/expiry; GUI/watchdog crashes, sleep/resume, clock changes, network reconnects, and recovery preserve the boundary.
-5. Verify the actual Windows binary/package, supported CLI schema, config isolation, relay patch status, pinned trust material, and licensing. A checksum downloaded beside a release archive is an integrity check against that same source, not an independent publisher signature.
+## 開始ゲート解除の前提条件
 
-## Verification status
+1. 未提供の元HANDOFF・レビューと照合し、想定実行主体、中継の信頼、内側sshdの方針、失効の厳密な意味を文書化する。
+2. 指定した文字列のTCP宛先・ポートだけを許可し、シェル、実行、PTY、SFTP、エージェント、逆向き転送など不要なチャネルを拒否するホスト側制約を実装・レビューする。クライアントのコマンド文字列は安全境界ではない。黙ってターミナルモードに切り替えない。
+3. ゲストが止められない主体で期限を強制する。公開前にWindowsのプロセス・ジョブ・サービスによる封じ込め、ハンドル所有権、子プロセスの逸脱対策、失敗時の挙動を確立する。
+4. 明示承認された隔離Windows環境で、不正鍵・偽造証明書の拒否、許可鍵でも許可チャネルのみ利用可能なこと、別ループバック・LAN・IPv6・DNS宛先の拒否、停止・期限後の既存通信終了と再接続拒否を確認する。GUI・監視の異常終了、スリープ・復帰、時計変更、再接続、回復でも境界を維持する。
+5. 実際のWindowsバイナリ・パッケージ、CLI仕様、設定隔離、中継の修正状況、固定した信頼情報、ライセンスを検証する。配布物と同じ場所から取得したチェックサムは同じ配布元に対する整合性確認であり、独立した発行元署名ではない。
 
-Independent final local run on 2026-10-26 at approximately 05:39 UTC:
+## 当時の検証結果
+
+独立した最終ローカル検証：2026-10-26 約05:39 UTC。以下は当時の原ログ表記です。
 
 ```text
 python -m unittest discover -s tests -q
@@ -67,19 +69,19 @@ python -m compileall -q src tests
 Exit 0
 ```
 
-Reviewed the final source and test changes, not only the test summary:
+集計だけでなく、最終ソースとテスト差分も確認しました。
 
-- GUI and worker entrypoints call the unconditional release gate before port probes, executable resolution, staging, or process launch. SSH-mode argument construction and both clipboard sharing paths are disabled. Terminal command construction remains internal scaffold, not an available start path.
-- `run_upterm` writes an empty private application config and sets `XDG_CONFIG_HOME`; it removes inherited `UPTERM_*` values while retaining existing runtime/state roots for legacy discovery. Same-user file tampering is not excluded by this design and is not claimed to be.
-- Strict public-key wire parsing, fail-closed recovery parsing, unknown-status rejection, command-data minimization, and stale-poll/stop-event name checks are present. Corrupt recovery state raises an error; `main` displays a blocking error and preserves the file, rather than opening as if no session existed. No graphical Windows run was performed.
-- Stop uses a 65-second CLI budget, then requires explicit ended status. Exit 4 from info is now **uncertain**, preserving evidence because legacy executable/state context was not bound. Failed stop, malformed output, or lookup error does not call recovery cleanup.
-- Watchdog startup verifies a per-session receipt and cleans up its own newly spawned process on failed acknowledgement. Deadline checking combines wall and monotonic clocks; overdue sessions are attempted immediately. The five-attempt retry budget and one-shot GUI expiry attempt remain best-effort recovery, never an enforcement guarantee.
-- README, new handoff, and backend contract accurately label the candidate as blocked for new remote use and distinguish fake lifecycle tests from real security evidence. Build script was inspected, not executed.
+- GUI・ワーカーの入口は、ポート確認、実行ファイル検索、準備、起動の前に無条件の開始ゲートを通ります。SSHモードの引数生成と両方の共有コピー経路は無効です。ターミナルコマンドの生成は内部の骨組みで、利用可能な起動経路ではありません。
+- `run_upterm` は空の専用設定と `XDG_CONFIG_HOME` を使い、継承した `UPTERM_*` を除去します。旧セッション検索のため既存の実行時・状態ルートは保持します。同一ユーザーによるファイル改ざんは防いでいません。
+- 公開鍵のバイナリ形式検証、不正回復状態の拒否、不明状態の拒否、コマンドデータの最小化、古い照会・停止イベントの名前照合を実装しています。壊れた回復状態はエラーとなり、`main` はファイルを保持して起動を阻止する表示を出します。実Windows画面では検証していません。
+- 停止CLIの枠は65秒とし、その後の明示的な終了状態を要求していました。情報照会の終了コード4は旧実行ファイル・状態環境との結び付きがないため**不確実**として証拠を保持します。停止失敗、不正出力、検索エラーでは整理しません。明示的終了での整理も後続版では撤回しました。
+- 監視はセッションごとの起動応答を確認し、応答失敗時は自ら起動したプロセスを整理します。実時刻と単調時計を併用し、期限超過は即座に停止を試みます。5回の監視再試行とGUIの1回の期限処理は補助的回復であり、強制保証ではありません。
+- README、引き継ぎ、バックエンド契約は、新規遠隔利用不可と模擬試験の限界を明記しています。ビルドスクリプトは読み取ったのみで実行していません。
 
-### Remaining limits of this candidate
+## 当時の候補に残った限界
 
-Legacy records do not bind an executable hash, original `XDG_STATE_HOME`/`XDG_RUNTIME_DIR`, and immutable launch identity. An absolute executable path alone is mutable; no retroactive authenticity can be inferred. Even an explicit ended record is evidence from the selected CLI/context, not independent proof that every historical transport or descendant process is gone. A selected or replaced malicious executable could lie. Before any new session is enabled, record and verify binary and launch identity plus lookup context, and enforce containment outside guest control. The current gate prevents creating new sessions with these incomplete guarantees.
+旧記録は実行ファイルのハッシュ、元の `XDG_STATE_HOME`・`XDG_RUNTIME_DIR`、変更不能な起動同一性を保持していません。絶対パスだけでも実体は変更可能で、過去の真正性は推定できません。明示的な終了記録も選択したCLI・環境からの情報であり、過去のすべての通信・子孫プロセスの終了証明ではありません。置き換えられた実行ファイルが虚偽を返す可能性もあります。新規接続の前に実行ファイル、起動同一性、検索環境を記録・検証し、ゲストの制御外で封じ込める必要があります。開始ゲートは保証不足の新規接続を防いでいます。
 
-The unit suite includes negative key/config/state/stop cases, stale polls and stop events, dangling state symlinks, non-finite/overdue/rollback deadlines, and failed watchdog receipt cleanup. It does not exhaustively fault-inject every GUI event, filesystem race, process creation failure, sleep/resume path, or Windows ACL behavior. Corrupt-state startup handling was source-reviewed; no real GUI was exercised.
+試験には、不正鍵・設定・状態・停止、古い照会・停止イベント、リンク先のない状態シンボリックリンク、非有限・超過・巻き戻し期限、監視起動応答失敗時の整理を含みます。GUIイベント、ファイル競合、起動失敗、スリープ・復帰、Windows ACLの全障害を網羅していません。壊れた状態の起動処理はソース確認であり、実画面の試験ではありません。
 
-**Accepted only as a fail-closed development/recovery candidate, not approved for production remote access.** Fake CLI tests do not establish cryptographic SSH authentication, live TCP destination filtering, Windows process containment, or guaranteed revocation. The missing original HANDOFF/review and all release conditions above remain open.
+**安全側で停止する開発・回復候補としてのみ受け入れ、本番遠隔利用は承認しません。** 模擬CLI試験は暗号学的SSH認証、実TCP転送先制約、Windowsプロセス封じ込め、確実な失効を証明しません。元HANDOFF・レビューの欠落と上記リリース条件は未解決です。
