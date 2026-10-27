@@ -10,9 +10,9 @@
 
 | 標準GitHub-hosted runner | Python | アーキテクチャ |
 | --- | --- | --- |
-| `ubuntu-24.04` | `3.12.14` | x64 |
-| `windows-2022` | `3.12.14` | x64 |
-| `macos-15-intel` | `3.12.14` | x64 |
+| `ubuntu-24.04` | `3.13.17` | x64 |
+| `windows-2022` | `3.13.17` | x64 |
+| `macos-15-intel` | `3.13.17` | x64 |
 
 PythonとTkinterのimportを確認し、`unittest`の`discover('tests')`を詳細表示で実行した後、`python -m compileall -q src tests`で構文を検証します。
 探索結果が0件の場合も失敗とし、終了時に実行件数、skip件数、失敗件数、エラー件数を表示します。
@@ -40,6 +40,7 @@ forkのPRにも追加secretは不要です。
 公式の`actions/checkout`と`actions/setup-python`は、各公式リポジトリの`v7.0.0`タグと照合した40桁のcommit SHAに固定しています。
 固定したactionの入力、Node.js 24の実行定義、認証処理、Python配布元を確認しています。
 Pythonの取得は`setup-python`によるホスト済みキャッシュ、または公式`actions/python-versions`の配布を使います。
+固定版は[公式manifest](https://github.com/actions/python-versions/blob/main/versions-manifest.json)で3 OSのx64配布を確認して選んでいます。
 OS名とPython patch版は固定していますが、GitHubのrunner imageと配布キャッシュは更新されるため、環境全体の再現ビルドを保証しません。
 更新時は公式のタグとSHA、実行定義、3 OSの結果を再確認します。
 
