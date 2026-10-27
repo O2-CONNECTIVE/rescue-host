@@ -8,6 +8,8 @@ Rescue Host Tauri 未接続 GUI 評価版（内部評価専用・未署名）
 既存の Microsoft WebView2 Runtime が必要です。不足時は停止し報告してください。
 Runtime、依存 DLL、OS 設定を自動導入・変更する installer は含みません。
 Rust、Node、Python、SSH 設定や資格情報の入力は不要です。
+第三者コードの版・license・改変していない公式 source archive の取得先と checksum は
+licenses/DEPENDENCIES.json にあります。各 source の license 条件を維持します。
 
 1. ZIP と提供 SHA256 を Get-FileHash で照合し、専用の空フォルダーへ全体を展開します。
    MANIFEST.json の sourceCommit と、提供された CI の対象 SHA を確認します。

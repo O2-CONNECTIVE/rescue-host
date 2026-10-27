@@ -33,6 +33,11 @@ def supplement(package, root):
         data = file.read_bytes()
         if hashlib.sha256(data).hexdigest() != entry["sha256"]:
             raise ValueError("UPSTREAM_LICENSE_HASH_MISMATCH")
+        if entry.get("sourceNoticeFile"):
+            notice = root / entry["sourceNoticeFile"]
+            if (notice.is_symlink() or notice.parent != root or
+                    hashlib.sha256(notice.read_bytes()).hexdigest() != entry["sourceNoticeSha256"]):
+                raise ValueError("CRATE_LICENSE_NOTICE_MISMATCH")
         return data, entry
     return None
 
@@ -44,10 +49,22 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     metadata = json.loads(args.metadata.read_text(encoding="utf-8-sig"))
+    nodes = {node["id"]: node for node in metadata["resolve"]["nodes"]}
+    pending = [metadata["resolve"]["root"]]
+    resolved = set()
+    while pending:
+        current = pending.pop()
+        if current not in resolved:
+            resolved.add(current)
+            pending.extend(nodes[current].get("dependencies", []))
+    lock = tomllib.loads((ROOT / "ui/tauri/src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+    checksums = {(item["name"], item["version"]): item.get("checksum") for item in lock["package"]}
     collected = {}
     packages = []
     missing = []
     for package in metadata["packages"]:
+        if package["id"] not in resolved:
+            continue
         if package["source"] is None:
             continue
         if package["source"] != "registry+https://github.com/rust-lang/crates.io-index":
@@ -89,6 +106,8 @@ def main():
             extra = None
         packages.append({"name": package["name"], "version": package["version"],
                          "source": package["source"], "license": package["license"], "texts": texts,
+                         "sourceArchive": "https://static.crates.io/crates/" + package["name"] + "/" + name + ".crate",
+                         "crateChecksum": checksums.get((package["name"], package["version"])),
                          "supplement": extra[1] if extra else None})
     if missing:
         raise ValueError("CRATE_LICENSE_MISSING:" + ",".join(missing))
@@ -96,7 +115,7 @@ def main():
         raise ValueError("crate 0 件を成功にしません")
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
     collected["DEPENDENCIES.json"] = (json.dumps(
-        {"scope": "Cargo metadata 全 registry package。build/dev/非対象 OS を含み、linked SBOM ではない。",
+        {"scope": "Windows x64 / custom-protocol の Cargo resolve graph。build/dev を含み、linked SBOM ではない。",
          "tools": {"rust": "1.99.1", "node": "24.22.1", "python": sys.version.split()[0], "profile": "release"},
          "packages": sorted(packages, key=lambda item: (item["name"], item["version"]))},
         ensure_ascii=False, indent=2) + "\n").encode()

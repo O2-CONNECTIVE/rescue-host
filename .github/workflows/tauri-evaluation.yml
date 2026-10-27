@@ -49,7 +49,7 @@ jobs:
       - name: Read locked Cargo metadata before compiling
         working-directory: ui/tauri
         run: |
-          cargo +1.99.1 metadata --locked --format-version 1 --manifest-path src-tauri/Cargo.toml > "$env:RUNNER_TEMP/cargo-metadata.json"
+          cargo +1.99.1 metadata --locked --format-version 1 --features custom-protocol --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml > "$env:RUNNER_TEMP/cargo-metadata.json"
           exit $LASTEXITCODE
       - name: Collect complete dependency license texts before compiling
         run: python -B scripts/collect_tauri_licenses.py --metadata "$env:RUNNER_TEMP/cargo-metadata.json" --frontend-notice ui/tauri/dist/THIRD_PARTY_NOTICES.txt --output "$env:RUNNER_TEMP/evaluation-licenses"

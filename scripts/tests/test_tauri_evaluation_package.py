@@ -16,6 +16,31 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_package_license_scope_follows_the_filtered_windows_graph(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "LICENSE").write_text("fixture license", encoding="utf-8")
+            packages = [{"id": "windows-fixture", "name": "fixture", "version": "1.0.0",
+                         "license": "MIT", "source": "registry+https://github.com/rust-lang/crates.io-index",
+                         "manifest_path": str(folder / "Cargo.toml")},
+                        {"id": "other-os", "name": "other-os", "version": "1.0.0",
+                         "license": None, "source": "registry+https://github.com/rust-lang/crates.io-index",
+                         "manifest_path": str(folder / "not-used/Cargo.toml")}]
+            metadata = folder / "metadata.json"
+            metadata.write_text(json.dumps({"packages": packages,
+                                           "resolve": {"root": "windows-fixture", "nodes": [
+                                               {"id": "windows-fixture", "dependencies": []},
+                                               {"id": "other-os", "dependencies": []}]}}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/collect_tauri_licenses.py"),
+                 "--metadata", str(metadata), "--frontend-notice", str(folder / "LICENSE"),
+                 "--output", str(folder / "output")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            dependencies = json.loads((folder / "output/DEPENDENCIES.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["name"] for item in dependencies["packages"]], ["fixture"])
+
     def test_missing_crate_text_uses_only_its_fixed_upstream_revision(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
@@ -25,7 +50,8 @@ class EvaluationPackageTests(unittest.TestCase):
                 "path_in_vcs": "alloc-stdlib",
             }), encoding="utf-8")
             metadata = folder / "metadata.json"
-            metadata.write_text(json.dumps({"packages": [{
+            metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]}, "packages": [{
+                "id": "fixture",
                 "name": "alloc-stdlib", "version": "0.3.0", "license": "BSD-3-Clause",
                 "source": "registry+https://github.com/rust-lang/crates.io-index",
                 "manifest_path": str(folder / "Cargo.toml"),
@@ -59,7 +85,8 @@ class EvaluationPackageTests(unittest.TestCase):
             folder = Path(temporary)
             (folder / "NOTICE").write_text("fixture notice", encoding="utf-8")
             metadata = folder / "metadata.json"
-            metadata.write_text(json.dumps({"packages": [{
+            metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]}, "packages": [{
+                "id": "fixture",
                 "name": "fixture", "version": "1.0.0", "license": "MIT",
                 "source": "registry+https://github.com/rust-lang/crates.io-index",
                 "manifest_path": str(folder / "Cargo.toml"),

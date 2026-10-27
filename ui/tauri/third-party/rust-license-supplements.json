@@ -9,5 +9,51 @@
     "url": "https://raw.githubusercontent.com/dropbox/rust-alloc-no-stdlib/0a81fd6928ea3b33c8cd484aa4575d50ffb98012/LICENSE",
     "file": "LICENSE.alloc-stdlib",
     "sha256": "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae"
+  },
+  {
+    "name": "selectors",
+    "version": "0.38.0",
+    "license": "MPL-2.0",
+    "crateChecksum": "8adfa1c298912827b8a28b223b3b874357397ae706e6190acd9bf28cee99114d",
+    "vcsCommit": "572ecba2d1600e7c3d490586692a209faf703baa",
+    "pathInVcs": "selectors",
+    "url": "https://www.mozilla.org/media/MPL/2.0/index.f75d2927d3c1.txt",
+    "file": "LICENSE.selectors-MPL-2.0",
+    "sha256": "3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04",
+    "sourceNoticeFile": "lib.rs",
+    "sourceNoticeSha256": "d54c6e13e9e952dac17d209171df8657e3cae93beaddace4906150cdec8d02e9"
+  },
+  {
+    "name": "webview2-com",
+    "version": "0.39.1",
+    "license": "MIT",
+    "crateChecksum": "3f89fca7a704cee10dcb3654c1dbb8941d1783132f1917358af75bec37a7d7e6",
+    "vcsCommit": "edc2caf886175ccaebe86078c9cfe1ae2a187328",
+    "pathInVcs": "crates/webview2-com",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+    "file": "LICENSE.webview2-rs",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+  },
+  {
+    "name": "webview2-com-macros",
+    "version": "0.8.1",
+    "license": "MIT",
+    "crateChecksum": "67a921c1b6914c367b2b823cd4cde6f96beec77d30a939c8199bb377cf9b9b54",
+    "vcsCommit": "dffa41a8a46d3f5565eefbff2de57d38d399f158",
+    "pathInVcs": "crates/callback-macros",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/dffa41a8a46d3f5565eefbff2de57d38d399f158/LICENSE",
+    "file": "LICENSE.webview2-rs",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+  },
+  {
+    "name": "webview2-com-sys",
+    "version": "0.39.1",
+    "license": "MIT",
+    "crateChecksum": "b3a07132775117d6065853d9d1178157b8c90e228de47129d6bce2c7edebedfb",
+    "vcsCommit": "edc2caf886175ccaebe86078c9cfe1ae2a187328",
+    "pathInVcs": "crates/bindings",
+    "url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
+    "file": "LICENSE.webview2-rs",
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
   }
 ]

@@ -7,13 +7,16 @@ Go / SSH / sidecar、開始と停止、製品 gate は変更せず、PR #34 P2 h
 専用 `tauri-evaluation.yml` は固定 checkout SHA から Windows x64 release を build します。
 Node / Rust は既存 CI と同じ固定版、npm と Cargo は既存 lock と公式 registry を使います。
 packaging の Python も既存 CI と同じ 3.13.17 x64 に固定します。
-frontend notice と Cargo metadata の全 registry package の license 本文を収集します。
-後者は build / dev / 別 OS package も含む保守的な集合で、リンク済み SBOM ではありません。
+frontend notice と Windows x64 / custom-protocol の Cargo resolve graph にある registry package の license 本文を収集します。
+後者は build / dev も含む保守的な集合で、リンク済み SBOM ではありません。
+metadata は Cargo の正式な filter-platform を使い、未使用の別 OS package は収集対象にしません。
+Windows graph 内の不足を除外や skip で成功へ変えません。
 license 本文が欠けた場合は失敗とし、名称だけで代用しません。
-公式 crate に本文が未収録の alloc-stdlib 0.3.0 だけは、その crate に記録された
-VCS commit の upstream LICENSE を補います。crate checksum、版、SPDX、VCS commit/path、
-本文 hash を supplement 記録と照合し、異なる revision や未登録 crate への代用を拒否します。
-この確認済み本文1件は `.gitattributes` で改行変換せず、Windows checkout でも元の bytes を保持します。
+公式 crate に本文が未収録の固定5件は、crate に記録された VCS commit の upstream LICENSE、
+または selectors の固定ソース本文が指定する Mozilla 公式 MPL 2.0 全文を補います。
+crate checksum、版、SPDX、VCS commit/path、本文 hash を照合し、異なる revision や未登録 crate は拒否します。
+selectors は参照元 lib.rs の全 bytes hash も照合します。全 crate の未改変 source 取得 URL と checksum を同梱します。
+確認済み本文3件は `.gitattributes` で改行変換せず、Windows checkout でも元の bytes を保持します。
 不足は compile 前に全件検出し、欠落を無視して再試行しません。
 ZIP には EXE、license、両 lock、source SHA と個別 hash の manifest、日本語手順を含めます。
 署名のない EXE だけを対象とし、credential や installer を作りません。
