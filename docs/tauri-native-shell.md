@@ -44,7 +44,8 @@ CI は readonly、action SHA 固定、有限 timeout、secret なし、deploy �
 build が成功しても、新しい PC での起動、native WebView、支援技術、OS の DPI と高コントラストは合格済みとしません。
 
 版、lock、直接依存の license と実行手順は [shell README](../ui/tauri/README.md)にまとめています。
-Rust の lock は自己所有 CI で生成した候補を回収し、406 packages が公式 registry と checksum を持つ形であることを確認してコミットしました。
+Rust の lock は自己所有 CI で生成した候補を回収しました。
+全406 packages の内訳は自作アプリ1と外部依存405で、外部依存が公式 registry と checksum を持つ形であることを確認してコミットしました。
 以後の CI は `--locked` を使い、lock を生成して成功扱いする工程を残しません。
 完全な依存 license 棚卸し、配布 bundle、WebView2 のない環境とオフライン配布は[配布条件](distribution.md)の後続で扱います。
 
