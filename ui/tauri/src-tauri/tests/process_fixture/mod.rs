@@ -7,7 +7,10 @@ pub fn child() {
         std::thread::sleep(Duration::from_secs(2));
         std::process::exit(124);
     });
-    println!("{{\"fixtureVersion\":1,\"event\":\"boot\",\"pid\":{}}}", std::process::id());
+    println!(
+        "{{\"fixtureVersion\":1,\"event\":\"boot\",\"pid\":{}}}",
+        std::process::id()
+    );
     std::io::stdout().flush().unwrap();
     let mut command = String::new();
     std::io::stdin().lock().read_line(&mut command).unwrap();
