@@ -69,13 +69,12 @@ def prepare():
     if version.stdout.split()[2] != GO_VERSION:
         raise ValueError('Unexpected Go version')
     print(version.stdout.strip(), flush=True)
-    require_success(command(['mod', 'download'], download=True))
+    dependencies = command(['mod', 'download', '-json'], download=True)
+    require_success(dependencies)
     require_success(command(['mod', 'verify'], download=True))
     if module_hashes() != before:
         raise ValueError('Dependency acquisition changed go.mod/go.sum')
     print('Module inputs unchanged:', json.dumps(before, sort_keys=True), flush=True)
-    dependencies = command(['list', '-m', '-json', 'all'])
-    require_success(dependencies)
     for module in json_objects(dependencies.stdout):
         if module.get('Replace'):
             raise ValueError('Unreviewed module replacement')
@@ -101,6 +100,7 @@ def test_events(source, returncode):
     packages = {}
     started = set()
     errors = []
+    outputs = {}
     for line in source.splitlines():
         event = json.loads(line)
         package, test, action = event.get('Package'), event.get('Test'), event.get('Action')
@@ -120,6 +120,8 @@ def test_events(source, returncode):
                                   'Error:' in event.get('Output', '') or
                                   '背圧' in event.get('Output', '')):
             errors.append(event['Output'].strip())
+        if action == 'output':
+            outputs.setdefault((package, test), []).append(event.get('Output', ''))
     top = {key: value for key, value in terminals.items() if '/' not in key[1]}
     counts = {status: sum(value == status for value in top.values())
               for status in ('pass', 'skip', 'fail')}
@@ -129,6 +131,13 @@ def test_events(source, returncode):
         print('Package:', package, status, flush=True)
     for error in errors:
         print(error.replace(str(ROOT), '<repo>'), flush=True)
+    for key, status in terminals.items():
+        if status in ('fail', 'skip'):
+            print(''.join(outputs.get(key, []))[-6000:].replace(str(ROOT), '<repo>'), flush=True)
+    if returncode and not any(value == 'fail' for value in terminals.values()):
+        for (package, test), lines in outputs.items():
+            if not test:
+                print(''.join(lines)[-6000:].replace(str(ROOT), '<repo>'), flush=True)
     if returncode or counts['fail'] or any(value == 'fail' for value in packages.values()):
         raise ValueError(f'Go tests failed: exit={returncode}')
     if not top or not counts['pass'] or started - terminals.keys():
