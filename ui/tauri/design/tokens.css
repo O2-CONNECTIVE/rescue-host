@@ -42,6 +42,11 @@
   --ref-shadow-sm: 0 2px 8px rgb(23 40 54 / 8%);
   --ref-motion-none: 0ms;
   --ref-motion-fast: 120ms;
+  --ref-icon-sm: 1rem;
+  --ref-icon-md: 1.25rem;
+  --ref-icon-lg: 1.5rem;
+  --ref-icon-stroke: 2;
+  --ref-motion-spin: 1000ms;
   --ref-motion-ease: ease-out;
 
   --sys-surface-canvas: var(--ref-slate-50);
@@ -98,6 +103,12 @@
   --sys-motion-duration: var(--ref-motion-fast);
   --sys-motion-ease: var(--ref-motion-ease);
   --sys-target-min: 2.75rem;
+  --sys-icon-status-size: var(--ref-icon-lg);
+  --sys-icon-size: var(--ref-icon-md);
+  --sys-icon-stroke: var(--ref-icon-stroke);
+  --sys-icon-color: currentColor;
+  --sys-icon-gap: var(--ref-space-2);
+  --sys-motion-spin: var(--ref-motion-spin);
 
   --cmp-button-height: var(--sys-target-min);
   --cmp-button-padding-x: var(--sys-space-xl);
@@ -122,6 +133,9 @@
   --cmp-input-border: var(--sys-border-default);
   --cmp-input-bg: var(--sys-surface-default);
   --cmp-input-fg: var(--sys-text-primary);
+  --cmp-button-icon-size: var(--sys-icon-size);
+  --cmp-status-icon-size: var(--sys-icon-status-size);
+  --cmp-disclosure-icon-size: var(--sys-icon-size);
   --cmp-input-error: var(--sys-danger-fg);
 }
 

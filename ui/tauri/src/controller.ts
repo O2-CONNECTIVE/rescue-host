@@ -1,17 +1,25 @@
 const timeout = Symbol('timeout');
 const closed = Symbol('closed');
 
-function acceptsStatus(status) {
-  return status && typeof status === 'object' && !Array.isArray(status)
+function acceptsStatus(status: unknown) {
+  return status !== null && typeof status === 'object' && !Array.isArray(status)
     && Object.keys(status).sort().join(',') === 'canStart,canStop,integration,protocolVersion,termination'
+    && 'protocolVersion' in status && 'integration' in status && 'canStart' in status && 'canStop' in status && 'termination' in status
     && status.protocolVersion === 1 && status.integration === 'not_connected'
     && status.canStart === false && status.canStop === false && status.termination === 'unconfirmed';
 }
 
-export function createShellController({ invoke, onChange, timeoutMs = 2000 }) {
+export type ShellState =
+  | { kind: 'checking'; diagnostic: 'CHECKING' }
+  | { kind: 'not_connected'; diagnostic: 'SHELL_UNWIRED' }
+  | { kind: 'unavailable'; diagnostic: 'BRIDGE_MISSING' | 'IPC_TIMEOUT' | 'INVALID_RESPONSE' | 'IPC_ERROR' };
+export type ShellInvoke = (command: 'get_shell_status', args: { request: { protocolVersion: 1 } }) => Promise<unknown>;
+interface Options { invoke: ShellInvoke | undefined; onChange: (state: ShellState) => void; timeoutMs?: number }
+
+export function createShellController({ invoke, onChange, timeoutMs = 2000 }: Options) {
   let disposed = false;
   let pending = false;
-  let cancelPending;
+  let cancelPending: (() => void) | undefined;
   return {
     async refresh() {
       if (disposed || pending) return;
@@ -21,7 +29,7 @@ export function createShellController({ invoke, onChange, timeoutMs = 2000 }) {
         return;
       }
       pending = true;
-      let timer;
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         const status = await Promise.race([
           invoke('get_shell_status', { request: { protocolVersion: 1 } }),

@@ -1,14 +1,13 @@
 fn main() {
-    let attributes = tauri_build::Attributes::new().app_manifest(
-            tauri_build::AppManifest::new().commands(&["get_shell_status"]),
-        );
+    let attributes = tauri_build::Attributes::new()
+        .app_manifest(tauri_build::AppManifest::new().commands(&["get_shell_status"]));
     // Tauri's binary-only resource does not reach library test executables.
     // See https://github.com/tauri-apps/tauri/issues/13419.
     let attributes = if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
         && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
     {
-        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("windows-app.manifest");
+        let manifest =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("windows-app.manifest");
         println!("cargo:rerun-if-changed={}", manifest.display());
         println!("cargo:rustc-link-arg=/MANIFEST:EMBED");
         println!("cargo:rustc-link-arg=/MANIFESTINPUT:{}", manifest.display());
