@@ -13,3 +13,5 @@ Adaptations: semantic CSS instead of Tailwind utilities; individual official Rad
 | collapsible.tsx | `c6598e5584f4258b5d9fefadbc5ad6a66888ad58729f4b634a0bb2d9c513188b` |
 
 Runtime npm license texts and applicable notices are assembled from the locked installed packages into dist/THIRD_PARTY_NOTICES.txt. Build fails when a runtime package has no license file. This does not claim the separate Rust distribution inventory is complete.
+
+Run `node scripts/notices.mjs --check` after building to reject a missing, modified or stale generated notice without rewriting it. Empty licenses and unclassified optional runtime packages fail closed. See [commands, scope and fixture checks](../../../docs/frontend-notices.md).
