@@ -1,0 +1,2 @@
+# 照合済み upstream license の bytes を Windows checkout でも保持する。
+ui/tauri/third-party/LICENSE.alloc-stdlib -text

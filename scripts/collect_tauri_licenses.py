@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import sys
 import tomllib
 
 
@@ -96,7 +97,7 @@ def main():
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
     collected["DEPENDENCIES.json"] = (json.dumps(
         {"scope": "Cargo metadata 全 registry package。build/dev/非対象 OS を含み、linked SBOM ではない。",
-         "tools": {"rust": "1.99.1", "node": "24.22.1", "profile": "release"},
+         "tools": {"rust": "1.99.1", "node": "24.22.1", "python": sys.version.split()[0], "profile": "release"},
          "packages": sorted(packages, key=lambda item: (item["name"], item["version"]))},
         ensure_ascii=False, indent=2) + "\n").encode()
     args.output.mkdir(parents=True, exist_ok=False)
