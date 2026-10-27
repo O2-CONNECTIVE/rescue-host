@@ -57,7 +57,6 @@ type owned struct {
 	transport                              bool               // 生の受理済SSH接続。転送先は含めない。
 	reservation                            *lease.Reservation // 両停止経路を確認するまで容量を保持する。
 	channelPending                         bool               // SSH channel の終了待ちも同じ容量で所有する。
-	servePending                           bool               // Serve と認証後の SSH 終了確認まで transport を所有する。
 	onFailure                              func()
 }
 
@@ -254,7 +253,7 @@ func (s *Session) closeOneLocked(h *owned) {
 }
 
 func (s *Session) releaseClosedLocked(h *owned) {
-	if h.adapterClosed && (h.cutoff == nil || h.cut) && !h.channelPending && !h.servePending {
+	if h.adapterClosed && (h.cutoff == nil || h.cut) && !h.channelPending {
 		if _, ok := s.owners[h]; ok {
 			delete(s.owners, h)
 			if h.transport {
@@ -268,12 +267,6 @@ func (s *Session) releaseClosedLocked(h *owned) {
 }
 
 func (s *Session) closeOne(h *owned) { s.mu.Lock(); defer s.mu.Unlock(); s.closeOneLocked(h) }
-func (s *Session) finishServe(h *owned) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	h.servePending = false
-	s.releaseClosedLocked(h)
-}
 func (s *Session) finishChannel(h *owned) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -316,13 +309,12 @@ func (s *Session) serve(conn net.Conn, cutoff func() error) error {
 	h := s.ownLocked(conn)
 	h.cutoff = cutoff
 	h.transport = true
-	h.servePending = true
 	s.transports++
 	s.handshakes++
 	s.workers.Add(1)
 	s.mu.Unlock()
+	// 接続の close 確認と Serve の終了を分離し、SSH 後処理まで worker で追跡する。
 	defer s.workers.Done()
-	defer s.finishServe(h)
 	defer s.closeOne(h)
 	handshakeCounted := true
 	defer func() {
