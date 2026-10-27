@@ -2,6 +2,8 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Driver } from './webdriver.ts';
+import { armRefresh, disarmRefresh, waitForRefresh } from './refresh-observer.ts';
+import { checkKeyboard } from './keyboard.ts';
 import { checkUnwired } from './assert-unwired.ts';
 
 const output = process.env.NATIVE_OUTPUT_DIR;
@@ -35,9 +37,30 @@ try {
     invoke: () => driver.invoke()
   });
   if (result.checks !== 3) throw new Error('NATIVE_ZERO_OR_INCOMPLETE_CHECKS');
+  const keyboard = await checkKeyboard({
+    press: key => driver.press(key),
+    read: () => driver.execute(`const active = document.activeElement;
+      const trigger = document.querySelector('[data-slot="collapsible-trigger"]');
+      const refresh = document.querySelector('#refresh');
+      return {
+        focused: active === trigger ? 'diagnostics' : active === refresh ? 'refresh' : 'other',
+        expanded: trigger?.getAttribute('aria-expanded') === 'true',
+        title: document.querySelector('#status-title')?.textContent ?? '',
+        startDisabled: [...document.querySelectorAll('button')].find(b=>b.textContent==='サポートを開始')?.disabled === true,
+        stopDisabled: [...document.querySelectorAll('button')].find(b=>b.textContent==='接続を停止')?.disabled === true,
+        diagnostic: document.querySelector('#diagnostic')?.textContent ?? null,
+        busy: refresh?.getAttribute('aria-busy') === 'true',
+        focusVisible: active?.matches(':focus-visible') === true,
+        outlineWidth: active ? parseFloat(getComputedStyle(active).outlineWidth) : 0
+      };`),
+    armRefresh: () => armRefresh(driver),
+    disarmRefresh: () => disarmRefresh(driver),
+    settle: () => waitForRefresh(driver)
+  });
+  if (keyboard.cycles !== 3 || keyboard.checks !== 22 || keyboard.refreshes !== 3) throw new Error('NATIVE_KEYBOARD_INCOMPLETE');
   await driver.execute("document.querySelector('[data-slot=\"collapsible-content\"]')?.scrollIntoView({block:'end',behavior:'instant'}); return true;");
   await writeFile(path.join(output, 'native-diagnostics.png'), await driver.screenshot());
-  await writeFile(path.join(output, 'webview-result.json'), JSON.stringify({ phase: 'webview-observed-awaiting-normal-close', nativeTestsStarted: 1, checks: result.checks, browserVersion, actualRustIpc: true }));
+  await writeFile(path.join(output, 'webview-result.json'), JSON.stringify({ phase: 'webview-observed-awaiting-normal-close', nativeTestsStarted: 1, checks: result.checks, browserVersion, actualRustIpc: true, keyboard }));
   // Keep both drivers alive. The supervisor must observe normal close before any session/driver cleanup.
   console.log('NATIVE_WEBVIEW_AND_REAL_IPC_OBSERVED');
 } catch {

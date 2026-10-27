@@ -130,3 +130,67 @@ void test('再確認の待機中もfocusと診断を保ち、重複要求と遅�
   assert.equal(await page.locator(':focus').getAttribute('id'), 'refresh');
   await page.close();
 });
+
+void test('browserで逆順focusと診断の反復開閉を保ち、完了した再確認を繰り返せる', async () => {
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    let calls = 0;
+    window.__TAURI__ = { core: { invoke: () => {
+      document.documentElement.dataset.calls = String(++calls);
+      return Promise.resolve({ protocolVersion: 1, integration: 'not_connected', canStart: false, canStop: false, termination: 'unconfirmed' });
+    } } };
+  });
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector('#status-title')?.textContent === 'バックエンド未接続');
+  const trigger = page.getByRole('button', { name: '診断情報', exact: true });
+  const refresh = page.getByRole('button', { name: '状態を再確認' });
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  for (const [index, activation] of ['Enter', 'Space', 'Enter'].entries()) {
+    await page.keyboard.press('Tab');
+    assert.equal(await page.locator(':focus').getAttribute('id'), 'refresh');
+    await page.keyboard.press('Shift+Tab');
+    assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Space');
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'false');
+    assert.equal(await refresh.count(), 0);
+    assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
+    await page.keyboard.press('Enter');
+    assert.equal(await trigger.getAttribute('aria-expanded'), 'true');
+    await page.keyboard.press('Tab');
+    await page.keyboard.press(activation);
+    await page.waitForFunction(expected => document.documentElement.dataset.calls === String(expected) && document.querySelector('#diagnostic')?.textContent === 'SHELL_UNWIRED', index + 2);
+    assert.equal(await page.locator(':focus').getAttribute('id'), 'refresh');
+    assert.equal(await refresh.evaluate(node => node.matches(':focus-visible') && parseFloat(getComputedStyle(node).outlineWidth) >= 1), true);
+    assert.equal(await page.getByRole('button', { name: 'サポートを開始' }).isDisabled(), true);
+    assert.equal(await page.getByRole('button', { name: '接続を停止' }).isDisabled(), true);
+    await page.keyboard.press('Shift+Tab');
+  }
+  assert.deepEqual(await page.locator('.shell-permissions dd').allTextContents(), ['未確認', '未確認', '未確認', '未確認']);
+  await page.close();
+});
+
+void test('browserの取得失敗後もfocusを失わずkeyboardで再確認して回復できる', async () => {
+  const page = await browser.newPage();
+  await page.addInitScript(() => {
+    let calls = 0;
+    window.__TAURI__ = { core: { invoke: () => ++calls === 2 ? Promise.reject(new Error('fixture-secret-detail'))
+      : Promise.resolve({ protocolVersion: 1, integration: 'not_connected', canStart: false, canStop: false, termination: 'unconfirmed' }) } };
+  });
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector('#status-title')?.textContent === 'バックエンド未接続');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('#diagnostic')?.textContent === 'IPC_ERROR');
+  assert.equal(await page.locator(':focus').getAttribute('id'), 'refresh');
+  assert.equal(await page.locator('body').innerText().then(text => text.includes('fixture-secret-detail')), false);
+  assert.equal(await page.locator('#status-title').innerText(), '状態を取得できません');
+  await page.keyboard.press('Space');
+  await page.waitForFunction(() => document.querySelector('#diagnostic')?.textContent === 'SHELL_UNWIRED');
+  assert.equal(await page.locator(':focus').getAttribute('id'), 'refresh');
+  assert.equal(await page.locator('#status-title').innerText(), 'バックエンド未接続');
+  assert.equal(await page.getByRole('button', { name: '接続を停止' }).isDisabled(), true);
+  await page.close();
+});
