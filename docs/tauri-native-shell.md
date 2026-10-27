@@ -33,6 +33,8 @@ shell、filesystem、外部 URL、イベント購読、プロセス起動の per
 bundled page だけを使い、CSP と navigation の制限、React の text node 表示で外部ページと HTML 注入を避けます。
 ウィンドウを閉じても通信終了の証明にはならないことを画面に示します。
 sidecar の起動、親死、中断、停止のライフサイクルは未配線です。
+製品から参照しない [Rust の有限自己子 fixture](rust-process-fixture.md)で、所有子の起動・応答上限・停止と回収の試験準備を行います。
+この試験は実 Go の protocol 採用や sidecar 配線ではありません。
 
 ## 検証と依存の扱い
 
