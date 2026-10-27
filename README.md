@@ -68,5 +68,6 @@ GUIの操作モード選択は実権限制御や管理者昇格の認可では�
 - [安全要件と接続停止の理由](docs/security.md)
 - [提供段階、対応環境、公開済み検証結果](docs/status.md)
 - [開発とオフライン検証](docs/development.md)
+- [リポジトリの配置方針](docs/repository-layout.md)
 - [旧セッションの回復と画面終了](docs/recovery.md)
 - [変更履歴](CHANGELOG.md) / [ライセンス](LICENSE)

@@ -44,6 +44,7 @@ Pythonビルド依存の完全なハッシュ固定と再現ビルドは未実�
 ## 詳細と履歴
 
 - [構成と実装境界](architecture.md)
+- [リポジトリの配置方針](repository-layout.md)
 - [接続再開のバックエンド契約](../SECURITY_BACKEND_CONTRACT.md)
 - [v0.2.1の引き継ぎ](../HANDOFF_V021.md)
 - [前段候補の引き継ぎ](../HANDOFF_V02.md)（履歴。現仕様はv0.2.1を優先）
