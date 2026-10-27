@@ -1,0 +1,31 @@
+.shell { width: min(100% - 2rem, 52rem); margin-inline: auto; padding-block: var(--sys-space-xl); }
+.shell > * + * { margin-top: var(--sys-space-xl); }
+.shell header { display: grid; gap: var(--sys-space-sm); }
+.shell-panel { padding: var(--sys-space-xl); border: 1px solid var(--sys-border-default); border-radius: var(--sys-radius-panel); background: var(--sys-surface-default); }
+.shell-panel > * + * { margin-top: var(--sys-space-lg); }
+.shell-permissions { display: grid; grid-template-columns: auto 1fr; gap: var(--sys-space-sm) var(--sys-space-xl); margin: 0; }
+.shell-permissions dt { color: var(--sys-text-secondary); }
+.shell-permissions dd { margin: 0; font-weight: var(--sys-weight-heading); }
+.shell-actions { display: flex; flex-wrap: wrap; gap: var(--sys-space-md); }
+.shell-actions .button { flex: 1 1 12rem; }
+.shell-code { font-family: var(--sys-font-code); color: var(--sys-text-secondary); }
+@media (max-width: 30rem) {
+  .shell-panel { padding: var(--sys-space-lg); }
+  .shell-permissions { gap: var(--sys-space-sm) var(--sys-space-lg); }
+}
+
+/* shadcn owned components map to the canonical semantic/component tokens. */
+.button { gap: var(--sys-icon-gap); }
+.button--quiet { background: var(--sys-surface-default); color: var(--sys-text-primary); border-color: transparent; justify-content: flex-start; padding-inline: var(--sys-space-sm); }
+.button--quiet:hover { background: var(--sys-surface-subtle); }
+.button[aria-disabled="true"], .button[aria-disabled="true"]:hover { background: var(--cmp-button-disabled-bg); color: var(--cmp-button-disabled-fg); border-color: var(--cmp-button-disabled-border); cursor: wait; }
+.icon { width: var(--cmp-button-icon-size); height: var(--cmp-button-icon-size); stroke-width: var(--sys-icon-stroke); color: var(--sys-icon-color); flex-shrink: 0; pointer-events: none; }
+.status__icon { display: inline-flex; margin-block-start: var(--sys-space-xs); }
+.status__icon .icon { width: var(--cmp-status-icon-size); height: var(--cmp-status-icon-size); }
+.disclosure .icon { width: var(--cmp-disclosure-icon-size); height: var(--cmp-disclosure-icon-size); }
+.disclosure[data-state="open"] .icon { transform: rotate(90deg); }
+.diagnostics > * + * { margin-top: var(--sys-space-lg); }
+.icon-spin { animation: spin var(--sys-motion-spin) linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .icon-spin { animation: none; } }
+@media (forced-colors: active) { .button[aria-disabled="true"] { border-color: GrayText; } }

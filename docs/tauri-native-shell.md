@@ -30,7 +30,7 @@ Rust は未配線である事実だけを返し、既存の TCP や別プロセ�
 
 application manifest と `main` 限定 capability で、この command だけを許可します。
 shell、filesystem、外部 URL、イベント購読、プロセス起動の permission は追加しません。
-bundled page だけを使い、CSP と navigation の制限、文字列の `textContent` 表示で外部ページと HTML 注入を避けます。
+bundled page だけを使い、CSP と navigation の制限、React の text node 表示で外部ページと HTML 注入を避けます。
 ウィンドウを閉じても通信終了の証明にはならないことを画面に示します。
 sidecar の起動、親死、中断、停止のライフサイクルは未配線です。
 
@@ -43,6 +43,7 @@ fixture で実接続や実停止の成功を作りません。
 CI は readonly、action SHA 固定、有限 timeout、secret なし、deploy なしです。
 build が成功しても、新しい PC での起動、native WebView、支援技術、OS の DPI と高コントラストは合格済みとしません。
 
+[React 移行とアイコン方針](tauri-react-ui.md)では同じ IPC 契約を維持し、表示層だけを置き換えます。
 版、lock、直接依存の license と実行手順は [shell README](../ui/tauri/README.md)にまとめています。
 Rust の lock は自己所有 CI で生成した候補を回収しました。
 全406 packages の内訳は自作アプリ1と外部依存405で、外部依存が公式 registry と checksum を持つ形であることを確認してコミットしました。
