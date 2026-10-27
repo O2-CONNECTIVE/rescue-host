@@ -132,3 +132,24 @@ void test('WebView観測の成功を所有プロセス終了の証明へ変換�
   assert.equal(record.status, 'webview-passed-awaiting-close');
   assert.equal('normalCloseVerified' in record, false);
 });
+
+void test('headers受信後もbodyの期限切れ・通信断・JSON不正を分ける', async t => {
+  const { Driver } = await import('../native-smoke/webdriver.ts');
+  t.mock.method(globalThis, 'fetch', () => Promise.reject(new Error('REAL_NETWORK_FORBIDDEN')));
+  const cases = [
+    { error: new DOMException('PRIVATE_BODY_TIMEOUT', 'TimeoutError'), code: 'NATIVE_DRIVER_TIMEOUT', outcome: 'timeout' },
+    { error: new DOMException('PRIVATE_BODY_ABORT', 'AbortError'), code: 'NATIVE_DRIVER_TIMEOUT', outcome: 'timeout' },
+    { error: new TypeError('PRIVATE_BODY_TRANSPORT'), code: 'NATIVE_DRIVER_TRANSPORT_FAILED', outcome: 'transport' },
+    { error: new SyntaxError('PRIVATE_BODY_JSON'), code: 'NATIVE_DRIVER_INVALID_ENVELOPE', outcome: 'invalid-response' }
+  ];
+  for (const scenario of cases) {
+    const response = new Response('unused', { status: 200 });
+    t.mock.method(response, 'json', () => Promise.reject(scenario.error));
+    const traces: { outcome: string; status?: number }[] = [];
+    const driver = new Driver('http://127.0.0.1:4444', () => Promise.resolve(response), value => { traces.push(value); });
+    await assert.rejects(driver.request('POST', '/session', {}), new RegExp(scenario.code));
+    assert.equal(traces.at(-1)?.outcome, scenario.outcome);
+    assert.equal(traces.at(-1)?.status, 200);
+    assert.equal(JSON.stringify(traces).includes('PRIVATE_BODY_'), false);
+  }
+});

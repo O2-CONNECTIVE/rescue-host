@@ -1,5 +1,6 @@
 import type { UiKey } from './keyboard.ts';
 import { normalizeDriverError, type DriverTrace } from './observation.ts';
+function timedOut(error: unknown): boolean { return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'); }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 export class Driver {
   session = '';
@@ -21,13 +22,18 @@ export class Driver {
     try {
       response = await this.transport(this.base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
     } catch (error) {
-      const timeout = error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
+      const timeout = timedOut(error);
       emit(timeout ? 'timeout' : 'transport');
       throw new Error(timeout ? 'NATIVE_DRIVER_TIMEOUT' : 'NATIVE_DRIVER_TRANSPORT_FAILED', { cause: error });
     }
     let envelope: unknown;
     try { envelope = await response.json(); }
-    catch { emit('invalid-response', response.status); throw new Error('NATIVE_DRIVER_INVALID_ENVELOPE'); }
+    catch (error) {
+      const outcome = timedOut(error) ? 'timeout' : error instanceof SyntaxError ? 'invalid-response' : 'transport';
+      emit(outcome, response.status);
+      const code = outcome === 'timeout' ? 'NATIVE_DRIVER_TIMEOUT' : outcome === 'transport' ? 'NATIVE_DRIVER_TRANSPORT_FAILED' : 'NATIVE_DRIVER_INVALID_ENVELOPE';
+      throw new Error(code, { cause: error });
+    }
     if (!record(envelope)) { emit('invalid-response', response.status); throw new Error('NATIVE_DRIVER_INVALID_ENVELOPE'); }
     const value = envelope.value;
     if (!response.ok || (record(value) && typeof value.error === 'string')) {
