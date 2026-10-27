@@ -46,6 +46,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--metadata", type=Path, required=True)
     parser.add_argument("--frontend-notice", type=Path, required=True)
+    parser.add_argument("--rust-docs", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     metadata = json.loads(args.metadata.read_text(encoding="utf-8-sig"))
@@ -114,9 +115,19 @@ def main():
     if not packages:
         raise ValueError("crate 0 件を成功にしません")
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
+    rust_notices = {}
+    if args.rust_docs:
+        for name in ["COPYRIGHT", "LICENSE-APACHE", "LICENSE-MIT"]:
+            file = args.rust_docs / name
+            if file.is_symlink() or not file.is_file() or not file.read_bytes().strip():
+                raise ValueError("RUST_RUNTIME_NOTICE_MISSING")
+            data = file.read_bytes()
+            collected["rust-toolchain/" + name] = data
+            rust_notices[name] = hashlib.sha256(data).hexdigest()
     collected["DEPENDENCIES.json"] = (json.dumps(
         {"scope": "Windows x64 / custom-protocol の Cargo resolve graph。build/dev を含み、linked SBOM ではない。",
          "tools": {"rust": "1.99.1", "node": "24.22.1", "python": sys.version.split()[0], "profile": "release"},
+         "rustToolchainNotices": rust_notices,
          "packages": sorted(packages, key=lambda item: (item["name"], item["version"]))},
         ensure_ascii=False, indent=2) + "\n").encode()
     args.output.mkdir(parents=True, exist_ok=False)

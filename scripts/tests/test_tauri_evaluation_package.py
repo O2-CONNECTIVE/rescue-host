@@ -16,6 +16,29 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_rust_standard_runtime_notices_are_in_the_collected_distribution(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "LICENSE").write_text("crate fixture license", encoding="utf-8")
+            docs = folder / "rust-docs"
+            docs.mkdir()
+            for name in ["COPYRIGHT", "LICENSE-APACHE", "LICENSE-MIT"]:
+                (docs / name).write_text("Rust fixture " + name, encoding="utf-8")
+            metadata = folder / "metadata.json"
+            metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]},
+                                           "packages": [{"id": "fixture", "name": "fixture", "version": "1.0.0",
+                                                         "license": "MIT", "source": "registry+https://github.com/rust-lang/crates.io-index",
+                                                         "manifest_path": str(folder / "Cargo.toml")}]}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/collect_tauri_licenses.py"),
+                 "--metadata", str(metadata), "--frontend-notice", str(folder / "LICENSE"),
+                 "--rust-docs", str(docs), "--output", str(folder / "output")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual((folder / "output/rust-toolchain/LICENSE-MIT").read_text(),
+                             "Rust fixture LICENSE-MIT")
+
     def test_package_license_scope_follows_the_filtered_windows_graph(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
