@@ -13,6 +13,9 @@
 色のほか番号、文字、線種でも区別しています。
 GUIから実セッションへの接続線はありません。
 
+公開CLIと未公開の限定評価stdio、将来のTauri adapter案の区別は[通信契約](communication-contract.md)を参照してください。
+保護資産と信頼境界、残る受入条件は[脅威モデル](threat-model.md)に整理しています。
+
 | 部分 | 役割と境界 | 公開ソースまたは詳細 |
 |---|---|---|
 | 設定 | GUIで操作範囲を保存。`Settings.to_operation_policy()`で不変方針に変換するが、起動や認可はしない | [GUI](../src/rescue_host.py)、[設定と回復処理](../src/rescue_core.py) |
