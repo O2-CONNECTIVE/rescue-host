@@ -1,3 +1,4 @@
+import { createNativeObservation } from './observation.ts';
 import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,21 +10,34 @@ import { checkUnwired } from './assert-unwired.ts';
 const output = process.env.NATIVE_OUTPUT_DIR;
 const application = process.env.NATIVE_APP_EXE;
 const profile = process.env.NATIVE_PROFILE;
-if (process.platform !== 'win32' || !output || !application || !profile) throw new Error('NATIVE_ENV_NOT_CONFIGURED');
-const deadline = setTimeout(() => { console.error('NATIVE_TEST_DEADLINE'); process.exit(1); }, 60000);
+let observation: ReturnType<typeof createNativeObservation> | undefined;
+let deadline: ReturnType<typeof setTimeout> | undefined;
 try {
-  const driver = new Driver('http://127.0.0.1:4444');
+  if (process.platform !== 'win32' || !output || !application || !profile) throw new Error('NATIVE_ENV_NOT_CONFIGURED');
+  observation = createNativeObservation(output);
+  deadline = setTimeout(() => {
+    try { observation?.fail(new Error('NATIVE_TEST_DEADLINE')); } catch { console.error('NATIVE_EVIDENCE_WRITE_FAILED'); }
+    console.error('NATIVE_TEST_DEADLINE'); process.exit(1);
+  }, 60000);
+  const driver = new Driver('http://127.0.0.1:4444', fetch, value => { observation?.request(value); });
+  observation.phase('session-create');
   const browserVersion = await driver.create(application, profile);
+  observation.phase('origin-check');
   const origin = await driver.execute('return location.origin;');
+  observation.origin(origin);
   if (origin !== 'http://tauri.localhost') throw new Error('NATIVE_ORIGIN_MISMATCH');
+  observation.phase('readiness');
   const until = Date.now() + 10000;
   let title: unknown;
   do {
     title = await driver.execute("return document.querySelector('#status-title')?.textContent ?? null;");
+    observation.title(title);
     if (title && title !== '状態を確認中') break;
     await delay(100);
   } while (Date.now() < until);
+  observation.phase('main-screenshot');
   await writeFile(path.join(output, 'native-main.png'), await driver.screenshot());
+  observation.phase('unwired-contract');
   const result = await checkUnwired({
     read: () => driver.execute(`return {
       title: document.querySelector('#status-title')?.textContent ?? '',
@@ -37,6 +51,7 @@ try {
     invoke: () => driver.invoke()
   });
   if (result.checks !== 3) throw new Error('NATIVE_ZERO_OR_INCOMPLETE_CHECKS');
+  observation.phase('keyboard');
   const keyboard = await checkKeyboard({
     press: key => driver.press(key),
     read: () => driver.execute(`const active = document.activeElement;
@@ -58,12 +73,16 @@ try {
     settle: () => waitForRefresh(driver)
   });
   if (keyboard.cycles !== 3 || keyboard.checks !== 22 || keyboard.refreshes !== 3) throw new Error('NATIVE_KEYBOARD_INCOMPLETE');
+  observation.phase('diagnostics-screenshot');
   await driver.execute("document.querySelector('[data-slot=\"collapsible-content\"]')?.scrollIntoView({block:'end',behavior:'instant'}); return true;");
   await writeFile(path.join(output, 'native-diagnostics.png'), await driver.screenshot());
+  observation.phase('result-write');
   await writeFile(path.join(output, 'webview-result.json'), JSON.stringify({ phase: 'webview-observed-awaiting-normal-close', nativeTestsStarted: 1, checks: result.checks, browserVersion, actualRustIpc: true, keyboard }));
   // Keep both drivers alive. The supervisor must observe normal close before any session/driver cleanup.
+  observation.pass();
   console.log('NATIVE_WEBVIEW_AND_REAL_IPC_OBSERVED');
-} catch {
+} catch (error) {
+  try { observation?.fail(error); } catch { console.error('NATIVE_EVIDENCE_WRITE_FAILED'); }
   console.error('NATIVE_WEBVIEW_OR_IPC_FAILED');
   process.exitCode = 1;
 } finally { clearTimeout(deadline); }
