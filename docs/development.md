@@ -10,6 +10,7 @@ Python 3.11以上とTkinterを想定し、実行時の追加Python依存はあ�
 ## オフライン試験
 
 共通入口は追加pip依存のない`scripts/dev.py`です。
+新しいcommitのsubjectと説明bodyは[日本語commit方針](commit-messages.md)で別々に検査します。
 開発時の下限はPython 3.11、既存CIの固定参照版はPython 3.13.17 x64です。
 参照版は[CI workflow](../.github/workflows/python-offline.yml)と揃え、更新時は両方を照合します。
 別のpatch版で実行した場合は版の差を表示し、3.11未満は失敗します。
