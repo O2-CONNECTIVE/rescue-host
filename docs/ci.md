@@ -14,8 +14,13 @@
 | `windows-2022` | `3.13.17` | x64 |
 | `macos-15-intel` | `3.13.17` | x64 |
 
-PythonとTkinterのimportを確認し、`unittest`の`discover('tests')`を詳細表示で実行した後、`python -m compileall -q src tests`で構文を検証します。
-探索結果が0件の場合も失敗とし、終了時に実行件数、skip件数、失敗件数、エラー件数を表示します。
+PythonとTkinterのimportを確認し、共通入口`python scripts/dev.py check`を実行します。
+入口は既存の`unittest`探索を詳細表示し、その後`src/`、`tests/`、`scripts/`を組み込み`compile()`で構文検証します。
+構文検証はbytecodeを保存しません。
+対象欠落、探索結果0件、全件skipも失敗とし、総数、実行数、合格数、skip数、失敗数、エラー数を表示します。
+続けて`python -m unittest discover -s scripts/tests -v`で開発ツールの異常条件7件を別に実行します。
+両コマンドとも非0終了はCIの失敗に伝わり、`continue-on-error`で隠しません。
+この7件は既存82件と区別する開発ツールの検証で、製品の受入条件やTDD実績へ加算しません。
 追加のpip依存はなく、ビルド用の`requirements-build.txt`はインストールしません。
 ローカルで同じテストを再現するコマンドは[開発手順](development.md#オフライン試験)を参照してください。
 

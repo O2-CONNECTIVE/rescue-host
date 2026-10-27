@@ -23,7 +23,6 @@ jobs:
       matrix:
         os: [ubuntu-24.04, windows-2022, macos-15-intel]
     env:
-      PYTHONPATH: src
       PYTHONUTF8: '1'
     steps:
       - name: Check out source
@@ -37,19 +36,7 @@ jobs:
           architecture: x64
       - name: Check Python and Tkinter import
         run: python -c "import sys, tkinter; print(sys.version); print('Tk', tkinter.TkVersion)"
-      - name: Run existing offline tests and report skips
-        shell: python
-        run: |
-          import sys
-          import unittest
-
-          suite = unittest.defaultTestLoader.discover('tests')
-          result = unittest.TextTestRunner(verbosity=2).run(suite)
-          print(
-              f'Offline tests: run={result.testsRun}, skipped={len(result.skipped)}, '
-              f'failures={len(result.failures)}, errors={len(result.errors)}',
-              flush=True,
-          )
-          sys.exit(0 if result.wasSuccessful() and result.testsRun > 0 else 1)
-      - name: Compile Python source and tests
-        run: python -m compileall -q src tests
+      - name: Run existing offline tests and syntax through development entry
+        run: python scripts/dev.py check
+      - name: Verify development-tool failure handling
+        run: python -m unittest discover -s scripts/tests -v
