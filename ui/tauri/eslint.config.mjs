@@ -6,7 +6,7 @@ import globals from 'globals';
 
 export default defineConfig(
   globalIgnores(['dist/**', 'src-tauri/**']),
-  { files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts', '*.ts'],
+  { files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts', 'native-smoke/**/*.ts', '*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: { globals: { ...globals.browser, ...globals.node }, parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } } },
   { files: ['src/**/*.tsx'], extends: [hooks.configs.flat.recommended] },

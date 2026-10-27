@@ -1,0 +1,51 @@
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+. "$PSScriptRoot/processes.ps1"
+function Entry($Number, $Parent, $Path, $Name) {
+    return [pscustomobject]@{ ProcessId = $Number; ParentProcessId = $Parent; ExecutablePath = $Path; Name = $Name; CreationDate = [DateTime]::Parse('2026-10-27T00:00:00Z').ToUniversalTime() }
+}
+$driver = Entry 10 1 'driver.exe' 'driver.exe'
+$edge = Entry 11 10 'edge.exe' 'edge.exe'
+$app = Entry 12 11 'app.exe' 'app.exe'
+$webview = Entry 13 12 'webview.exe' 'msedgewebview2.exe'
+$other = Entry 14 1 'app.exe' 'app.exe'
+$valid = @($driver, $edge, $app, $webview, $other)
+$observed = Get-OwnedApp $driver $edge 'app.exe' $valid
+if ($observed.App.ProcessId -ne 12 -or $observed.Webviews.Count -ne 1) { throw 'PROCESS_CONTRACT_POSITIVE_FAILED' }
+$script:checks = 1
+function Reject($Body, [string]$Expected) {
+    $rejected = $false
+    try { & $Body | Out-Null } catch {
+        if ($_.Exception.Message -ne $Expected) { throw }
+        $rejected = $true
+    }
+    if (-not $rejected) { throw 'PROCESS_CONTRACT_FALSE_SUCCESS' }
+    $script:checks += 1
+}
+Reject { Get-OwnedApp $driver $edge 'wrong.exe' $valid } 'NATIVE_APP_OWNERSHIP_AMBIGUOUS'
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($driver, $edge, $app) } 'NATIVE_WEBVIEW_CHILD_NOT_OBSERVED'
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($edge, $app, $webview) } 'NATIVE_DRIVER_EXITED_OR_IDENTITY_CHANGED'
+$reused = Entry 10 1 'driver.exe' 'driver.exe'
+$reused.CreationDate = 'different-creation'
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($reused, $edge, $app, $webview) } 'NATIVE_DRIVER_EXITED_OR_IDENTITY_CHANGED'
+$fake = [pscustomobject]@{ ExitCode = 0; Id = 12; Path = 'app.exe'; HasExited = $false; SafeHandle = 1; StartTime = $app.CreationDate }
+$fake | Add-Member ScriptMethod CloseMainWindow { return $true }
+$fake | Add-Member ScriptMethod WaitForExit { param($TimeoutMs) return $false }
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_APP_CLOSE_TIMEOUT'
+$fake.StartTime = $app.CreationDate.AddSeconds(1)
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH'
+$fake.StartTime = $app.CreationDate
+$fake.Path = 'unowned.exe'
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH'
+$loop4 = [pscustomobject]@{ LocalPort = 4444; LocalAddress = '127.0.0.1'; OwningProcess = 10 }
+$edge4 = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '127.0.0.1'; OwningProcess = 11 }
+$edge6 = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '::1'; OwningProcess = 11 }
+Assert-ListenerSnapshot @($loop4, $edge4, $edge6) 10 11
+$checks += 1
+$wildcard = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '0.0.0.0'; OwningProcess = 11 }
+Reject { Assert-ListenerSnapshot @($loop4, $wildcard) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+$unowned = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '::1'; OwningProcess = 99 }
+Reject { Assert-ListenerSnapshot @($loop4, $unowned) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+Reject { Assert-ListenerSnapshot @($loop4) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+if ($checks -ne 12) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
+Write-Output "PROCESS_CONTRACT_PASS checks=$checks (fixtures only; not native evidence)"

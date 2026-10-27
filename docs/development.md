@@ -107,3 +107,5 @@ Python/Tk等を含む環境全体の固定と再現ビルドは未実装です�
 今後の実接続と有効化は[安全要件](security.md)に従う別工程です。
 
 [React 画面層・Lucide 規則と品質ゲート](tauri-react-ui.md) / [実行手順](../ui/tauri/README.md)
+
+[Windows WebView2 native smoke の実測と未検証範囲](tauri-native-smoke.md)

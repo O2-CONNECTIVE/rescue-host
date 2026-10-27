@@ -77,7 +77,8 @@ cargo +1.99.1 run --locked --manifest-path src-tauri/Cargo.toml --features custo
 
 ローカル Rust は不在で、native build は CI の証跡と分けます。
 通常の close で通信終了を捏造しません。
-native 起動と close、Windows WebView2、スクリーンリーダー、OS DPI と高コントラスト、新 PC、macOS/Linux の native 表示は未検証です。
+Windows hosted runner の限定した WebView2 起動・実 IPC・通常 close は [native smoke の実測](../../docs/tauri-native-smoke.md)で確認しました。
+新 PC、配布 executable、native keyboard、スクリーンリーダー、OS DPI と高コントラスト、macOS/Linux の native 表示は未検証です。
 ブラウザーの文字200%と forced colors/reduced motion 模擬だけで OS 実機を合格にしません。
 CI は installer、bundle、署名、更新、Release を作成・公開しません。
 Rust を含む完全な配布 license 棚卸し、WebView2 未導入とオフライン配布は[配布条件](../../docs/distribution.md)の後続です。

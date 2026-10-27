@@ -1,0 +1,8 @@
+{
+  "runtimeVersion": "131.0.2903.86",
+  "driverVersion": "131.0.2903.86",
+  "driverZipSha256": "16ad3ea073e26f0000d1315e0a851eeb44b2754c66d47652e265cce5dea662af",
+  "driverExeSha256": "c34a6b22814a18599f2a67bef922ba879ae44158f216d4d2df797d293f545665",
+  "tauriDriverVersion": "2.1.0",
+  "tauriDriverCrateSha256": "2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953"
+}
