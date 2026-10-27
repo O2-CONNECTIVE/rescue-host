@@ -104,7 +104,7 @@ def check_range(repo, base, head, linear=False):
         git(repo, 'merge-base', base, head)
     commits = git(repo, 'rev-list', '--reverse', '--topo-order', '--max-count=1001', base + '..' + head).splitlines()
     if not commits or len(commits) > 1000:
-        raise ValueError('New commit range must contain 1–1000 commits')
+        raise ValueError('New commit range must contain 1-1000 commits')
     failures = []
     for sha in commits:
         message = git(repo, 'show', '-s', '--no-show-signature', '--format=%B', sha)

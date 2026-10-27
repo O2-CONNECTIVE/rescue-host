@@ -221,6 +221,12 @@ class CommitMessageTests(unittest.TestCase):
         self.assert_rejected(self.check_event({'ref': 'refs/heads/other', 'before': base, 'after': head}), 'Expected a main')
         self.assert_rejected(self.check_event({'pull_request': {}}), 'Invalid event structure')
 
+    def test_empty_range_diagnostic_is_ascii_for_windows_pipe_compatibility(self):
+        base = self.init_repo()
+        result = self.check_range('--base', base, '--head', base)
+        self.assertEqual(result.returncode, 1)
+        self.assertTrue(result.stderr.isascii(), result.stderr)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -77,7 +77,7 @@ python -m unittest discover -s scripts/tests -p test_commit_messages.py -v
 別のrepositoryを調べる場合は`--repo <directory>`を指定します。
 初期機能はメッセージ、技術表記、trailer、Git範囲、PR eventの順にCLIでRED→GREENを確認し、後続の境界・拒否fixtureは回帰検証として追加しています。
 これは開発ツールの検証で、製品のSSH/UI TDDとは区別します。
-stdout/stderrには原文を出さず、SHA、subject/bodyの区別、字数と失敗理由だけを出します。
+stdout/stderrには原文を出さず、SHA、subject/bodyの区別、字数と失敗理由だけをASCIIで出します。
 
 統合担当は実際に使うmerge/squashのsubject/bodyを同じ`--message-file`で確認します。
 GitHubの標準`Merge pull request #N from owner/branch`は日本語subjectではないため、そのままなら失敗します。
