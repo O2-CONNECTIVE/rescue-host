@@ -56,7 +56,7 @@ jobs:
           import base64
           import json
           import subprocess
-          for path in ('backend/channel_lifecycle_test.go', 'backend/ci_parallelism_test.go'):
+          for path in ('backend/channel_lifecycle_test.go', 'backend/ci_parallelism_test.go', 'backend/session.go'):
               content = subprocess.check_output(['gofmt', path])
               print('GOFMT_JSON ' + json.dumps({'path': path, 'content': base64.b64encode(content).decode()}), flush=True)
       - name: Focused P1 reproduction (diagnostic head)

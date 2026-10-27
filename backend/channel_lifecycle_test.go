@@ -30,10 +30,10 @@ import (
 // a peer which withholds the SSH close handshake. No production code uses it.
 // RFC 4253 sections 6-8, RFC 4252 section 7, and RFC 8731 define the wire forms.
 type lifecycleWireClient struct {
-	conn net.Conn
-	reader *bufio.Reader
-	readCipher, writeCipher cipher.Stream
-	readMAC, writeMAC []byte
+	conn                        net.Conn
+	reader                      *bufio.Reader
+	readCipher, writeCipher     cipher.Stream
+	readMAC, writeMAC           []byte
 	readSequence, writeSequence uint32
 }
 
@@ -118,7 +118,7 @@ func (c *lifecycleWireClient) read() ([]byte, error) {
 	if padding < 4 || padding+1 >= len(body) {
 		return nil, errors.New("fixture invalid SSH padding")
 	}
-	return body[1:len(body)-padding], nil
+	return body[1 : len(body)-padding], nil
 }
 
 func (c *lifecycleWireClient) expect(kind byte) ([]byte, error) {
@@ -178,7 +178,7 @@ func lifecycleHandshake(conn net.Conn, cfg Config, signer ssh.Signer) (*lifecycl
 	if err != nil {
 		return nil, err
 	}
-	var reply struct { Host, Public, Signature []byte }
+	var reply struct{ Host, Public, Signature []byte }
 	if err = ssh.Unmarshal(replyBytes, &reply); err != nil {
 		return nil, err
 	}
@@ -194,8 +194,12 @@ func lifecycleHandshake(conn net.Conn, cfg Config, signer ssh.Signer) (*lifecycl
 		return nil, err
 	}
 	// SSH interprets the X25519 output as an unsigned big-endian mpint.
-	for len(secret) > 0 && secret[0] == 0 { secret = secret[1:] }
-	if len(secret) > 0 && secret[0]&128 != 0 { secret = append([]byte{0}, secret...) }
+	for len(secret) > 0 && secret[0] == 0 {
+		secret = secret[1:]
+	}
+	if len(secret) > 0 && secret[0]&128 != 0 {
+		secret = append([]byte{0}, secret...)
+	}
 	encodedSecret := lifecycleString(nil, secret)
 	var exchange []byte
 	for _, value := range [][]byte{clientVersion, serverVersion, clientKex, serverKex, reply.Host, clientPublic, reply.Public} {
@@ -225,9 +229,13 @@ func lifecycleHandshake(conn net.Conn, cfg Config, signer ssh.Signer) (*lifecycl
 		return nil, err
 	}
 	writeBlock, err := aes.NewCipher(derive('C')[:16])
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	readBlock, err := aes.NewCipher(derive('D')[:16])
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	c.writeCipher = cipher.NewCTR(writeBlock, derive('A')[:16])
 	c.readCipher = cipher.NewCTR(readBlock, derive('B')[:16])
 	c.writeMAC, c.readMAC = derive('E'), derive('F')
@@ -235,7 +243,9 @@ func lifecycleHandshake(conn net.Conn, cfg Config, signer ssh.Signer) (*lifecycl
 		return nil, err
 	}
 	service, err := c.expect(6)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	if !bytes.Equal(service, lifecycleString(nil, []byte("ssh-userauth"))) {
 		return nil, errors.New("fixture userauth service mismatch")
 	}
@@ -245,11 +255,17 @@ func lifecycleHandshake(conn net.Conn, cfg Config, signer ssh.Signer) (*lifecycl
 	auth = lifecycleString(auth, signer.PublicKey().Marshal())
 	signed := append(lifecycleString(nil, hash[:]), auth...)
 	sig, err := signer.Sign(rand.Reader, signed)
-	if err != nil { return nil, err }
+	if err != nil {
+		return nil, err
+	}
 	sigBytes := lifecycleString(nil, []byte(sig.Format))
 	sigBytes = lifecycleString(sigBytes, sig.Blob)
-	if err = c.write(lifecycleString(auth, sigBytes)); err != nil { return nil, err }
-	if _, err = c.expect(52); err != nil { return nil, err }
+	if err = c.write(lifecycleString(auth, sigBytes)); err != nil {
+		return nil, err
+	}
+	if _, err = c.expect(52); err != nil {
+		return nil, err
+	}
 	return c, nil
 }
 
@@ -259,7 +275,9 @@ func (c *lifecycleWireClient) open(id uint32) ([]byte, error) {
 	p = binary.BigEndian.AppendUint32(p, 65536)
 	p = binary.BigEndian.AppendUint32(p, 32768)
 	p = append(p, ssh.Marshal(wireTarget{"127.0.0.1", 22, "127.0.0.1", 1234})...)
-	if err := c.write(p); err != nil { return nil, err }
+	if err := c.write(p); err != nil {
+		return nil, err
+	}
 	return c.read()
 }
 
@@ -268,11 +286,15 @@ func (c *lifecycleWireClient) eofAndWithholdClose(confirmation []byte, id uint32
 		return errors.New("fixture invalid channel confirmation")
 	}
 	serverID := binary.BigEndian.Uint32(confirmation[5:9])
-	if err := c.write(binary.BigEndian.AppendUint32([]byte{96}, serverID)); err != nil { return err }
+	if err := c.write(binary.BigEndian.AppendUint32([]byte{96}, serverID)); err != nil {
+		return err
+	}
 	seenEOF := false
 	for n := 0; n < 8; n++ {
 		p, err := c.read()
-		if err != nil { return err }
+		if err != nil {
+			return err
+		}
 		if len(p) < 5 || binary.BigEndian.Uint32(p[1:5]) != id {
 			return errors.New("fixture unexpected channel packet")
 		}
@@ -280,7 +302,9 @@ func (c *lifecycleWireClient) eofAndWithholdClose(confirmation []byte, id uint32
 		case 96:
 			seenEOF = true
 		case 97:
-			if !seenEOF { return errors.New("fixture CLOSE without preceding EOF") }
+			if !seenEOF {
+				return errors.New("fixture CLOSE without preceding EOF")
+			}
 			return nil // Deliberately do not transmit the reciprocal CLOSE.
 		case 93: // A bounded window adjustment is harmless.
 		default:
@@ -293,14 +317,17 @@ func (c *lifecycleWireClient) eofAndWithholdClose(confirmation []byte, id uint32
 type lifecycleTarget struct {
 	net.Conn
 	closed chan struct{}
-	once sync.Once
+	once   sync.Once
 }
+
 func (c *lifecycleTarget) CloseWrite() error {
-	return c.Conn.(interface { CloseWrite() error }).CloseWrite()
+	return c.Conn.(interface{ CloseWrite() error }).CloseWrite()
 }
 func (c *lifecycleTarget) Close() error {
 	err := c.Conn.Close()
-	if err == nil { c.once.Do(func() { close(c.closed) }) }
+	if err == nil {
+		c.once.Do(func() { close(c.closed) })
+	}
 	return err
 }
 
@@ -313,37 +340,53 @@ func TestChannelCloseHandshakeKeepsCapacity(t *testing.T) {
 	var dials atomic.Int32
 	s, err := newSessionWithCutoff(cfg, func(ctx context.Context) (net.Conn, func() error, error) {
 		conn, raw, e := fixtureTarget(ctx, f.l.Addr().String())
-		if e != nil { return nil, nil, e }
+		if e != nil {
+			return nil, nil, e
+		}
 		dials.Add(1)
 		done := make(chan struct{})
 		closed <- done
 		return &lifecycleTarget{Conn: conn, closed: done}, tcpCutoff(raw), nil
 	})
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	// Restrict algorithms only on this test instance, before it starts serving.
 	s.config.KeyExchanges = []string{"curve25519-sha256"}
 	s.config.Ciphers = []string{"aes128-ctr"}
 	s.config.MACs = []string{"hmac-sha2-256"}
 	address := start(t, s, cfg)
 	conn, err := testDial(context.Background(), address)
-	if err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer conn.Close()
-	if err = conn.SetDeadline(time.Now().Add(3*time.Second)); err != nil { t.Fatal(err) }
+	if err = conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
 	wire, err := lifecycleHandshake(conn, cfg, signer)
-	if err != nil { t.Fatalf("bounded wire handshake: %v", err) }
+	if err != nil {
+		t.Fatalf("bounded wire handshake: %v", err)
+	}
 	baseline := s.workers.Count()
 	first, err := wire.open(0)
-	if err != nil { t.Fatalf("first fixture channel: %v", err) }
-	if err = wire.eofAndWithholdClose(first, 0); err != nil { t.Fatal(err) }
+	if err != nil {
+		t.Fatalf("first fixture channel: %v", err)
+	}
+	if err = wire.eofAndWithholdClose(first, 0); err != nil {
+		t.Fatal(err)
+	}
 	waitTarget := func() {
 		t.Helper()
 		select {
 		case done := <-closed:
 			select {
 			case <-done:
-			case <-time.After(time.Second): t.Fatal("target adapter close not completed")
+			case <-time.After(time.Second):
+				t.Fatal("target adapter close not completed")
 			}
-		case <-time.After(time.Second): t.Fatal("fixture target was not dialed")
+		case <-time.After(time.Second):
+			t.Fatal("fixture target was not dialed")
 		}
 		awaitSnapshot(t, s, func(v Snapshot) bool { return v.Closing == 0 })
 	}
@@ -354,19 +397,31 @@ func TestChannelCloseHandshakeKeepsCapacity(t *testing.T) {
 		if e != nil {
 			// A deliberate transport shutdown is also a safe admission outcome;
 			// a timeout is not evidence of either rejection or shutdown.
-			if ne, ok := e.(net.Error); ok && ne.Timeout() { t.Fatalf("open stalled instead of rejecting: %v", e) }
+			if ne, ok := e.(net.Error); ok && ne.Timeout() {
+				t.Fatalf("open stalled instead of rejecting: %v", e)
+			}
 			var networkError *net.OpError
-			if !errors.Is(e, io.EOF) && !errors.Is(e, io.ErrUnexpectedEOF) && !errors.Is(e, net.ErrClosed) && !errors.As(e, &networkError) { t.Fatalf("wire transport error: %v", e) }
+			if !errors.Is(e, io.EOF) && !errors.Is(e, io.ErrUnexpectedEOF) && !errors.Is(e, net.ErrClosed) && !errors.As(e, &networkError) {
+				t.Fatalf("wire transport error: %v", e)
+			}
 			break
 		}
-		if p[0] == 1 { break } // SSH_MSG_DISCONNECT is an explicit shutdown.
+		if p[0] == 1 {
+			break
+		} // SSH_MSG_DISCONNECT is an explicit shutdown.
 		if p[0] == 92 {
-			if len(p) < 9 || binary.BigEndian.Uint32(p[1:5]) != id { t.Fatal("invalid channel rejection") }
+			if len(p) < 9 || binary.BigEndian.Uint32(p[1:5]) != id {
+				t.Fatal("invalid channel rejection")
+			}
 			continue
 		}
-		if p[0] != 91 { t.Fatalf("unexpected open response %d", p[0]) }
+		if p[0] != 91 {
+			t.Fatalf("unexpected open response %d", p[0])
+		}
 		accepted++
-		if err = wire.eofAndWithholdClose(p, id); err != nil { t.Fatal(err) }
+		if err = wire.eofAndWithholdClose(p, id); err != nil {
+			t.Fatal(err)
+		}
 		waitTarget()
 	}
 	t.Logf("withheld_CLOSE=true extra_accepted=%d target_dials=%d workers_baseline=%d workers_after=%d snapshot=%+v", accepted, dials.Load(), baseline, s.workers.Count(), s.Snapshot())
@@ -377,5 +432,7 @@ func TestChannelCloseHandshakeKeepsCapacity(t *testing.T) {
 	// channel and all workers; no leaked peer or listener survives the test.
 	conn.Close()
 	closeSession(t, s)
-	if s.workers.Count() != 0 || s.Snapshot().Owned != 0 { t.Fatal("wire fixture cleanup left owners/workers") }
+	if s.workers.Count() != 0 || s.Snapshot().Owned != 0 {
+		t.Fatal("wire fixture cleanup left owners/workers")
+	}
 }

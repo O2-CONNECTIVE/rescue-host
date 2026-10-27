@@ -138,7 +138,7 @@ def test_events(source, returncode):
         for (package, test), lines in outputs.items():
             if not test:
                 print(''.join(lines)[-6000:].replace(str(ROOT), '<repo>'), flush=True)
-    if returncode or counts['fail'] or any(value == 'fail' for value in packages.values()):
+    if returncode or any(value == 'fail' for value in terminals.values()) or any(value == 'fail' for value in packages.values()):
         raise ValueError(f'Go tests failed: exit={returncode}')
     if not top or not counts['pass'] or started - terminals.keys():
         raise ValueError('Zero/all-skipped/incomplete Go tests')
@@ -180,12 +180,12 @@ def tests(race=False, focused=False):
     print(f'Lane: race={race}, requested CPU={cpu}; no test exclusions', flush=True)
     result = command(arguments, timeout=900 if race else 600)
     try:
+        if result.stderr:
+            print(result.stderr.replace(str(ROOT), '<repo>'), file=sys.stderr)
         test_events(result.stdout, result.returncode)
         check_network_record()
     finally:
         record.unlink(missing_ok=True)
-    if result.stderr:
-        print(result.stderr.replace(str(ROOT), '<repo>'), file=sys.stderr)
 
 
 def main():

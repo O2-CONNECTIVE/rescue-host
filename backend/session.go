@@ -56,6 +56,7 @@ type owned struct {
 	cutting, cut, cutFailed, adapterClosed bool               // Session.mu が保護する独立停止経路
 	transport                              bool               // 生の受理済SSH接続。転送先は含めない。
 	reservation                            *lease.Reservation // 両停止経路を確認するまで容量を保持する。
+	channelPending                         bool               // SSH channel の終了待ちも同じ容量で所有する。
 	onFailure                              func()
 }
 
@@ -252,7 +253,7 @@ func (s *Session) closeOneLocked(h *owned) {
 }
 
 func (s *Session) releaseClosedLocked(h *owned) {
-	if h.adapterClosed && (h.cutoff == nil || h.cut) {
+	if h.adapterClosed && (h.cutoff == nil || h.cut) && !h.channelPending {
 		if _, ok := s.owners[h]; ok {
 			delete(s.owners, h)
 			if h.transport {
@@ -266,6 +267,12 @@ func (s *Session) releaseClosedLocked(h *owned) {
 }
 
 func (s *Session) closeOne(h *owned) { s.mu.Lock(); defer s.mu.Unlock(); s.closeOneLocked(h) }
+func (s *Session) finishChannel(h *owned) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h.channelPending = false
+	s.releaseClosedLocked(h)
+}
 func (s *Session) closeOwned() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -393,11 +400,13 @@ func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
 	h := s.ownLocked(target)
 	h.cutoff = cutoff
 	h.reservation = reservation
+	h.channelPending = true
 	transferred = true
 	if s.closing || !s.authority.IsActive() {
 		s.closeOneLocked(h)
 	}
 	s.mu.Unlock()
+	defer s.finishChannel(h)
 	defer s.closeOne(h)
 	if e = reservation.Promote(); e != nil {
 		open.Reject(ssh.Prohibited, "失効しました")
@@ -407,7 +416,20 @@ func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
 	if e != nil {
 		return
 	}
-	defer channel.Close()
+	requestsDone := make(chan struct{})
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		defer close(requestsDone)
+		ssh.DiscardRequests(requests)
+	}()
+	defer func() {
+		// TCP cleanup proceeds now; admission remains charged until the SSH
+		// channel ends. Session revocation closes the owning transport too.
+		s.closeOne(h)
+		channel.Close()
+		<-requestsDone
+	}()
 	if !s.authority.IsActive() {
 		return
 	}
@@ -415,8 +437,7 @@ func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
 	s.forwarding++
 	s.mu.Unlock()
 	defer func() { s.mu.Lock(); s.forwarding--; s.mu.Unlock() }()
-	s.workers.Add(2)
-	go func() { defer s.workers.Done(); ssh.DiscardRequests(requests) }()
+	s.workers.Add(1)
 	done := make(chan struct{})
 	// 正常EOFは書込側だけ閉じ、反対方向の応答を待つ。
 	// error/失効時は独立した所有ソケット停止経路で全停止する。
