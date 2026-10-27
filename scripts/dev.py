@@ -72,6 +72,8 @@ def check_tokens():
 
 
 def check_source_sizes():
+    if sys.version_info < (3, 13):
+        raise ValueError('Source-size checks require Python 3.13 or newer')
     checker = ROOT / 'scripts/check_source_sizes.py'
     if not checker.is_file():
         raise ValueError('Missing source-size checker: scripts/check_source_sizes.py')

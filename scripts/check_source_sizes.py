@@ -1,5 +1,6 @@
 """Check tracked UI JS/TS, including maintained shadcn component source.
 
+Requires Python 3.13+ for recursive PurePosixPath.full_match glob semantics.
 Limits and ordered role overrides live in .source-size-policy.json. Physical
 lines include comments/blanks; CRLF/CR become LF, UTF-8 BOM is ignored, and the
 byte metric uses normalized UTF-8. Other languages require separate policies.

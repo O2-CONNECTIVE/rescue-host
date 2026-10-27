@@ -48,26 +48,3 @@ jobs:
         run: python scripts/check_source_sizes.py --verify-report
       - name: Verify development-tool and token-checker fixtures
         run: python -m unittest discover -s scripts/tests -v
-      - name: Diagnostic expected failure - finite oversized fixture
-        shell: python
-        run: |
-          import os
-          import subprocess
-          import sys
-          sys.path.insert(0, 'scripts/tests')
-          from test_source_sizes import SourceSizeTests
-          fixture = SourceSizeTests()
-          try:
-              fixture.setUp()
-              fixture.write('ui/app.tsx', 'value\n' * 4)
-              result = subprocess.run(
-                  [sys.executable, str(fixture.root / 'scripts/dev.py'), 'sizes'],
-                  cwd=fixture.root.parent, capture_output=True, text=True, timeout=30,
-                  env=dict(os.environ, SOURCE_SIZE_REPORT=str(fixture.report), SOURCE_SIZE_NONCE='failure-probe'),
-              )
-              print(result.stdout)
-              print(result.stderr)
-              print('FINITE_SIZE_FAILURE_EXIT=' + str(result.returncode))
-          finally:
-              fixture.doCleanups()
-          sys.exit(result.returncode)
