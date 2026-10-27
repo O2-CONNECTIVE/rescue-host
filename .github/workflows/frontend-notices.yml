@@ -1,0 +1,45 @@
+name: Frontend runtime notices
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['ui/tauri/package*.json', 'ui/tauri/scripts/notices.mjs', 'ui/tauri/tests/notices.test.mjs', '.github/workflows/frontend-notices.yml', 'docs/frontend-notices.md', 'ui/tauri/third-party/**']
+  push:
+    branches: [main]
+    paths: ['ui/tauri/package*.json', 'ui/tauri/scripts/notices.mjs', 'ui/tauri/tests/notices.test.mjs', '.github/workflows/frontend-notices.yml', 'docs/frontend-notices.md', 'ui/tauri/third-party/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notices:
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022, macos-15-intel]
+    defaults:
+      run:
+        working-directory: ui/tauri
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Test notice CLI with finite offline fixtures
+        run: node --test tests/notices.test.mjs
+      - name: Install locked packages without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build frontend and generate runtime notices
+        run: npm run build
+      - name: Independently verify generated notice
+        run: node scripts/notices.mjs --check
