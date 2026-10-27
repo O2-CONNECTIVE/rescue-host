@@ -18,9 +18,14 @@ PythonとTkinterのimportを確認し、共通入口`python scripts/dev.py check
 入口は既存の`unittest`探索を詳細表示し、その後`src/`、`tests/`、`scripts/`を組み込み`compile()`で構文検証します。
 構文検証はbytecodeを保存しません。
 対象欠落、探索結果0件、全件skipも失敗とし、総数、実行数、合格数、skip数、失敗数、エラー数を表示します。
-続けて`python -m unittest discover -s scripts/tests -v`で開発ツールの異常条件7件を別に実行します。
-両コマンドとも非0終了はCIの失敗に伝わり、`continue-on-error`で隠しません。
-この7件は既存82件と区別する開発ツールの検証で、製品の受入条件やTDD実績へ加算しません。
+続けて`python scripts/dev.py tokens`で公開済みのtoken checkerを実行します。
+現在の対象は120 tokensの参照規則とライトテーマの23組のコントラストです。
+同じPythonの`-I`モードで起動し、`PYTHONOPTIMIZE`環境変数によるassert無効化を避けます。
+`python -m unittest discover -s scripts/tests -v`は従来の異常条件7件とtoken checkerの3件を合わせた10件を別に実行します。
+token checkerの3件は、正常例と、一時コピーでの不正参照、コントラスト1:1への低下を検証します。
+各コマンドの非0終了はCIの失敗に伝わり、`continue-on-error`で隠しません。
+この10件は既存82件と区別する開発ツールと静的checkerの検証で、製品の受入条件やUIのTDD実績へ加算しません。
+token検証は生成物の一致、描画、Tauri native動作を保証しません。
 追加のpip依存はなく、ビルド用の`requirements-build.txt`はインストールしません。
 ローカルで同じテストを再現するコマンドは[開発手順](development.md#オフライン試験)を参照してください。
 

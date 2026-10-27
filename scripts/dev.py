@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 import tokenize
 import unittest
@@ -62,9 +63,17 @@ def check_syntax():
     return True
 
 
+def check_tokens():
+    checker = ROOT / 'ui/tauri/design/check_tokens.py'
+    if not checker.is_file():
+        raise ValueError('Missing token checker: ui/tauri/design/check_tokens.py')
+    # The existing checker uses assertions; ignore PYTHONOPTIMIZE from the shell.
+    return subprocess.run([sys.executable, '-I', str(checker)]).returncode == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('test', 'syntax', 'check'))
+    parser.add_argument('command', choices=('test', 'syntax', 'check', 'tokens'))
     args = parser.parse_args()
     actual = platform.python_version()
     print(f'Python: {actual}; CI reference: {CI_PYTHON}; platform: {sys.platform}', flush=True)
@@ -73,9 +82,11 @@ def main():
     if actual != CI_PYTHON:
         print('Version differs from CI; this result covers only the current interpreter.', flush=True)
     try:
+        os.chdir(ROOT)
+        if args.command == 'tokens':
+            return 0 if check_tokens() else 1
         python_files('src')
         python_files('tests')
-        os.chdir(ROOT)
         if args.command in ('test', 'check') and not run_tests():
             return 1
         if args.command in ('syntax', 'check'):

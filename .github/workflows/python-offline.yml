@@ -38,5 +38,7 @@ jobs:
         run: python -c "import sys, tkinter; print(sys.version); print('Tk', tkinter.TkVersion)"
       - name: Run existing offline tests and syntax through development entry
         run: python scripts/dev.py check
-      - name: Verify development-tool failure handling
+      - name: Validate published design tokens
+        run: python scripts/dev.py tokens
+      - name: Verify development-tool and token-checker fixtures
         run: python -m unittest discover -s scripts/tests -v
