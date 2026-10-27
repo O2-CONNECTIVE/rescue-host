@@ -2,6 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Driver } from './webdriver.ts';
+import { armRefresh, waitForRefresh } from './refresh-observer.ts';
 import { checkKeyboard } from './keyboard.ts';
 import { checkUnwired } from './assert-unwired.ts';
 
@@ -52,16 +53,10 @@ try {
         focusVisible: active?.matches(':focus-visible') === true,
         outlineWidth: active ? parseFloat(getComputedStyle(active).outlineWidth) : 0
       };`),
-    settle: async () => {
-      const until = Date.now() + 3000;
-      do {
-        if (await driver.execute("return document.querySelector('#diagnostic')?.textContent === 'SHELL_UNWIRED' && document.querySelector('#refresh')?.getAttribute('aria-busy') === 'false';") === true) return;
-        await delay(100);
-      } while (Date.now() < until);
-      throw new Error('NATIVE_KEYBOARD_SETTLE_TIMEOUT');
-    }
+    armRefresh: () => armRefresh(driver),
+    settle: () => waitForRefresh(driver)
   });
-  if (keyboard.cycles !== 3 || keyboard.checks !== 22) throw new Error('NATIVE_KEYBOARD_INCOMPLETE');
+  if (keyboard.cycles !== 3 || keyboard.checks !== 22 || keyboard.refreshes !== 3) throw new Error('NATIVE_KEYBOARD_INCOMPLETE');
   await driver.execute("document.querySelector('[data-slot=\"collapsible-content\"]')?.scrollIntoView({block:'end',behavior:'instant'}); return true;");
   await writeFile(path.join(output, 'native-diagnostics.png'), await driver.screenshot());
   await writeFile(path.join(output, 'webview-result.json'), JSON.stringify({ phase: 'webview-observed-awaiting-normal-close', nativeTestsStarted: 1, checks: result.checks, browserVersion, actualRustIpc: true, keyboard }));

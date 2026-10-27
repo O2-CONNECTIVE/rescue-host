@@ -15,6 +15,7 @@ UI 修正は実際の操作不具合を再現した場合だけ行います。
 
 - 診断 trigger と再確認の間を Tab / Shift+Tab で往復し、無効な開始・停止へ focus が移らない。
 - Enter / Space で診断を反復開閉し、閉じた後は trigger に focus を保ち、隠れた内容へ focus を残さない。
+- native は毎回キー入力前に読み取り専用 MutationObserver を準備し、新しい aria-busy true→false を観測する。旧状態の維持だけでは合格しない。
 - 完了した再確認を繰り返しても focus、無効操作、未接続と終了未確認を維持する。
 - browser では取得失敗後の keyboard 再確認と回復を確認し、秘密を含む例外文を表示しない。
 - keyboard による focus-visible と視認できる outline を確認する。
@@ -23,3 +24,6 @@ UI 修正は実際の操作不具合を再現した場合だけ行います。
 [WCAG2.2 focus order](https://www.w3.org/TR/2024/REC-WCAG22-20241212/#focus-order)と既存 UI-02/04/05/06/09 の限定した操作検証です。
 [WebDriver Actions](https://www.w3.org/TR/webdriver2/#actions) は2026-07-02 Working Draftを確認した protocol の参考で、準拠認証を宣言する基準ではありません。
 支援技術、発話、native OS のキー設定、DPI/高コントラスト、新 PC、他 OS の native は未検証です。
+
+Observer は test-only の観測領域を使い、DOM の focus/click、UI 状態、Rust bridge を置換しません。
+各回で切断して破棄し、開始または完了を観測できなければ失敗にします。
