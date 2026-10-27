@@ -26,6 +26,8 @@ py -3 -m unittest discover -s tests -v
 この成功は実接続の安全性を証明しません。
 モデルだけの試験は[既存の実行手順](../OFFLINE_BACKEND_MODEL.md#実行)を参照してください。
 
+既存テストの3 OS自動実行、skipの読み方、未検証範囲は[PythonオフラインCI](ci.md)を参照してください。
+
 ## GUIとWindowsビルド
 
 `python src/rescue_host.py`はGUIを開きます。
