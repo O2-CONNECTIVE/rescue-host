@@ -28,6 +28,9 @@ py -3 -m unittest discover -s tests -v
 
 既存テストの3 OS自動実行、skipの読み方、未検証範囲は[PythonオフラインCI](ci.md)を参照してください。
 
+Tauri移行は[デザイントークン案と状態見本](tauri-design-tokens.md)から進めます。
+現段階はライトテーマのHTML/CSS見本で、Tauri runtimeとバックエンドは未配線です。
+
 ## GUIとWindowsビルド
 
 `python src/rescue_host.py`はGUIを開きます。

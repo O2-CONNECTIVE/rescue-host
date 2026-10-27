@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'">
+  <title>Rescue Host — デザイントークン・状態見本</title>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="components.css">
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <a class="button preview-skip" href="#states">状態見本へ移動</a>
+  <main class="preview">
+    <header class="preview-header">
+      <p class="preview-eyebrow">RESCUE HOST / DESIGN PROPOSAL 01</p>
+      <h1>状態を、迷わず読み分ける。</h1>
+      <p>ライトテーマの暫定トークン案。基礎値から意味、部品へつなぎます。</p>
+      <p class="preview-notice"><strong>デザインの状態見本です。接続機能はありません。</strong><br>下の「接続中」「終了確認済」も固定の表示例です。実際の接続・停止結果を示しません。</p>
+    </header>
+
+    <section class="preview-section" aria-labelledby="roles-title">
+      <h2 id="roles-title">01 / 色は意味のために</h2>
+      <div class="preview-palette" aria-label="semantic role の色見本">
+        <span class="preview-chip preview-chip--info">情報・主操作</span>
+        <span class="preview-chip preview-chip--warning">警告・処理中</span>
+        <span class="preview-chip preview-chip--confirmation">終了の確認</span>
+        <span class="preview-chip preview-chip--danger">危険・確認不能</span>
+      </div>
+      <p class="caption">青い「接続中」は、通信状態を示す役割です。安全性の認定や操作範囲の保証を含みません。</p>
+    </section>
+
+    <section id="states" class="preview-section" aria-labelledby="states-title">
+      <h2 id="states-title">02 / 接続と終了を区別する</h2>
+      <p class="caption">すべて表示仕様の例。色が見えなくても、記号と文言で区別します。</p>
+      <div class="preview-grid">
+        <article class="status" aria-labelledby="state-unavailable">
+          <span class="status__icon" aria-hidden="true">○</span>
+          <div class="status__content"><h3 id="state-unavailable">バックエンド未接続</h3><p>接続状態と終了状態は確認できません。開始・停止は利用できません。</p></div>
+        </article>
+        <article class="status status--connected" aria-labelledby="state-connected">
+          <span class="status__icon" aria-hidden="true">↔</span>
+          <div class="status__content"><h3 id="state-connected">接続中</h3><p>接続を観測した場合の見本です。許可相手・範囲・期限は別に確認します。</p></div>
+        </article>
+        <article class="status status--stopping" aria-labelledby="state-stopping">
+          <span class="status__icon" aria-hidden="true">…</span>
+          <div class="status__content"><h3 id="state-stopping">停止中</h3><p>終了を確認しています。停止要求だけでは「終了確認済」にしません。</p></div>
+        </article>
+        <article class="status status--terminated" aria-labelledby="state-terminated">
+          <span class="status__icon" aria-hidden="true">✓</span>
+          <div class="status__content"><h3 id="state-terminated">終了確認済</h3><p>所有通信の終了を確認できた場合の見本です。実行済みの変更は取り消しません。</p></div>
+        </article>
+        <article class="status status--unconfirmed" aria-labelledby="state-unconfirmed">
+          <span class="status__icon" aria-hidden="true">!</span>
+          <div class="status__content"><h3 id="state-unconfirmed">終了を確認できません</h3><p>終了の証拠が足りません。画面を閉じても、通信が止まった証明にはなりません。</p></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="preview-section" aria-labelledby="components-title">
+      <h2 id="components-title">03 / 操作部品の最小セット</h2>
+      <div class="preview-grid">
+        <section class="preview-panel" aria-labelledby="actions-title">
+          <h3 id="actions-title">バックエンド未接続時の操作</h3>
+          <dl class="preview-values"><dt>許可相手</dt><dd>未確認</dd><dt>操作範囲</dt><dd>未確認</dd><dt>期限</dt><dd>未確認</dd></dl>
+          <div class="preview-actions">
+            <button class="button" type="button" disabled aria-describedby="actions-help">サポートを開始</button>
+            <button class="button button--danger" type="button" disabled aria-describedby="actions-help"><span aria-hidden="true">■</span> すべて停止</button>
+          </div>
+          <p id="actions-help" class="caption">未配線のため両方とも無効です。接続・停止・期限の判定はバックエンドが担います。</p>
+          <a class="button" href="#rules">状態の読み方へ</a>
+          <p class="caption">上のリンクで主操作色と keyboard focus を確認できます。</p>
+        </section>
+        <section class="preview-panel" aria-labelledby="input-title">
+          <h3 id="input-title">入力エラーの表示例</h3>
+          <p class="caption">保存も送信もしない、読み取り専用の部品見本です。</p>
+          <div class="field">
+            <label for="recipient">許可相手</label>
+            <input id="recipient" class="input" value="" placeholder="未入力（表示例）" readonly aria-invalid="true" aria-describedby="recipient-error">
+            <p id="recipient-error" class="field__error"><span aria-hidden="true">!</span> 許可相手を確認してください。担当者と照合してから指定します。</p>
+          </div>
+          <details><summary>診断情報の表示位置</summary><p class="caption">詳細ログや診断はこの別領域へ分けます。この見本ではログの読取・表示機能はありません。</p></details>
+        </section>
+      </div>
+    </section>
+
+    <section id="rules" class="preview-panel" aria-labelledby="rules-title">
+      <h2 id="rules-title">状態の読み方</h2>
+      <ul class="preview-rule-list">
+        <li>接続中と、安全に認可されていることを同じ意味にしません。</li>
+        <li>停止要求 → 停止中 → 終了の観測結果、の違いを保ちます。</li>
+        <li>残り時間やボタンの色は、権限・失効・終了の根拠にしません。</li>
+      </ul>
+      <p class="caption">ライトのみ実装。dark theme、Tauri 実画面、実接続、Windows 配布の確認は次の段階です。</p>
+    </section>
+  </main>
+</body>
+</html>

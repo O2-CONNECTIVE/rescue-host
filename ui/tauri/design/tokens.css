@@ -1,0 +1,164 @@
+/* Temporary light proposal. ref → sys → cmp; see docs/tauri-design-tokens.md. */
+:root {
+  color-scheme: light;
+  --ref-white: #ffffff;
+  --ref-slate-50: #f4f6f9;
+  --ref-slate-100: #e7edf3;
+  --ref-slate-400: #748598;
+  --ref-slate-600: #526479;
+  --ref-slate-900: #172836;
+  --ref-blue-50: #ebf3fa;
+  --ref-blue-700: #155a92;
+  --ref-blue-800: #104a79;
+  --ref-red-50: #fceef0;
+  --ref-red-700: #b42337;
+  --ref-red-800: #921d30;
+  --ref-amber-50: #fff6e5;
+  --ref-amber-800: #805000;
+  --ref-teal-50: #eaf6f1;
+  --ref-teal-700: #007f60;
+  --ref-font-sans: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", "Meiryo", system-ui, sans-serif;
+  --ref-font-mono: "Cascadia Code", "Consolas", monospace;
+  --ref-type-sm: 0.875rem;
+  --ref-type-md: 1rem;
+  --ref-type-lg: 1.25rem;
+  --ref-type-xl: 1.75rem;
+  --ref-leading-body: 1.75;
+  --ref-leading-heading: 1.4;
+  --ref-weight-regular: 400;
+  --ref-weight-strong: 700;
+  --ref-space-0: 0;
+  --ref-space-1: 0.25rem;
+  --ref-space-2: 0.5rem;
+  --ref-space-3: 0.75rem;
+  --ref-space-4: 1rem;
+  --ref-space-6: 1.5rem;
+  --ref-space-8: 2rem;
+  --ref-space-12: 3rem;
+  --ref-radius-sm: 0.25rem;
+  --ref-radius-md: 0.5rem;
+  --ref-radius-lg: 0.75rem;
+  --ref-shadow-none: none;
+  --ref-shadow-sm: 0 2px 8px rgb(23 40 54 / 8%);
+  --ref-motion-none: 0ms;
+  --ref-motion-fast: 120ms;
+  --ref-motion-ease: ease-out;
+
+  --sys-surface-canvas: var(--ref-slate-50);
+  --sys-surface-default: var(--ref-white);
+  --sys-surface-subtle: var(--ref-slate-100);
+  --sys-text-primary: var(--ref-slate-900);
+  --sys-text-secondary: var(--ref-slate-600);
+  --sys-border-default: var(--ref-slate-400);
+  --sys-border-strong: var(--ref-slate-600);
+  --sys-action-primary: var(--ref-blue-700);
+  --sys-action-primary-hover: var(--ref-blue-800);
+  --sys-action-on-primary: var(--ref-white);
+  --sys-danger-fg: var(--ref-red-700);
+  --sys-danger-surface: var(--ref-red-50);
+  --sys-danger-action: var(--ref-red-700);
+  --sys-danger-hover: var(--ref-red-800);
+  --sys-danger-on-action: var(--ref-white);
+  --sys-warning-fg: var(--ref-amber-800);
+  --sys-warning-surface: var(--ref-amber-50);
+  --sys-info-fg: var(--ref-blue-700);
+  --sys-info-surface: var(--ref-blue-50);
+  --sys-confirmation-fg: var(--ref-teal-700);
+  --sys-confirmation-surface: var(--ref-teal-50);
+  --sys-neutral-fg: var(--ref-slate-600);
+  --sys-neutral-surface: var(--ref-slate-50);
+  --sys-focus-ring: var(--ref-blue-700);
+  --sys-focus-offset: var(--ref-white);
+  --sys-focus-width: 0.1875rem;
+  --sys-focus-gap: 0.125rem;
+  --sys-disabled-fg: var(--ref-slate-600);
+  --sys-disabled-surface: var(--ref-slate-100);
+  --sys-disabled-border: var(--ref-slate-400);
+  --sys-font-body: var(--ref-font-sans);
+  --sys-font-code: var(--ref-font-mono);
+  --sys-type-body: var(--ref-type-md);
+  --sys-type-caption: var(--ref-type-sm);
+  --sys-type-heading: var(--ref-type-lg);
+  --sys-type-title: var(--ref-type-xl);
+  --sys-leading-body: var(--ref-leading-body);
+  --sys-leading-heading: var(--ref-leading-heading);
+  --sys-weight-body: var(--ref-weight-regular);
+  --sys-weight-heading: var(--ref-weight-strong);
+  --sys-space-xs: var(--ref-space-1);
+  --sys-space-sm: var(--ref-space-2);
+  --sys-space-md: var(--ref-space-3);
+  --sys-space-lg: var(--ref-space-4);
+  --sys-space-xl: var(--ref-space-6);
+  --sys-space-2xl: var(--ref-space-8);
+  --sys-space-section: var(--ref-space-12);
+  --sys-radius-control: var(--ref-radius-md);
+  --sys-radius-panel: var(--ref-radius-lg);
+  --sys-radius-inline: var(--ref-radius-sm);
+  --sys-shadow-panel: var(--ref-shadow-none);
+  --sys-motion-duration: var(--ref-motion-fast);
+  --sys-motion-ease: var(--ref-motion-ease);
+  --sys-target-min: 2.75rem;
+
+  --cmp-button-height: var(--sys-target-min);
+  --cmp-button-padding-x: var(--sys-space-xl);
+  --cmp-button-radius: var(--sys-radius-control);
+  --cmp-button-primary-bg: var(--sys-action-primary);
+  --cmp-button-primary-fg: var(--sys-action-on-primary);
+  --cmp-button-primary-hover: var(--sys-action-primary-hover);
+  --cmp-button-danger-bg: var(--sys-danger-action);
+  --cmp-button-danger-fg: var(--sys-danger-on-action);
+  --cmp-button-danger-hover: var(--sys-danger-hover);
+  --cmp-button-disabled-bg: var(--sys-disabled-surface);
+  --cmp-button-disabled-fg: var(--sys-disabled-fg);
+  --cmp-button-disabled-border: var(--sys-disabled-border);
+  --cmp-status-padding: var(--sys-space-xl);
+  --cmp-status-radius: var(--sys-radius-panel);
+  --cmp-status-border-width: 0.125rem;
+  --cmp-status-fg: var(--sys-neutral-fg);
+  --cmp-status-bg: var(--sys-neutral-surface);
+  --cmp-input-height: var(--sys-target-min);
+  --cmp-input-padding: var(--sys-space-md);
+  --cmp-input-radius: var(--sys-radius-control);
+  --cmp-input-border: var(--sys-border-default);
+  --cmp-input-bg: var(--sys-surface-default);
+  --cmp-input-fg: var(--sys-text-primary);
+  --cmp-input-error: var(--sys-danger-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --sys-motion-duration: var(--ref-motion-none); }
+}
+
+/* OS palette wins; wording and symbols carry the state without color. */
+@media (forced-colors: active) {
+  :root {
+    --sys-surface-canvas: Canvas;
+    --sys-surface-default: Canvas;
+    --sys-surface-subtle: Canvas;
+    --sys-text-primary: CanvasText;
+    --sys-text-secondary: CanvasText;
+    --sys-border-default: CanvasText;
+    --sys-border-strong: CanvasText;
+    --sys-action-primary: ButtonFace;
+    --sys-action-primary-hover: ButtonFace;
+    --sys-action-on-primary: ButtonText;
+    --sys-danger-action: ButtonFace;
+    --sys-danger-hover: ButtonFace;
+    --sys-danger-on-action: ButtonText;
+    --sys-danger-fg: CanvasText;
+    --sys-danger-surface: Canvas;
+    --sys-warning-fg: CanvasText;
+    --sys-warning-surface: Canvas;
+    --sys-info-fg: CanvasText;
+    --sys-info-surface: Canvas;
+    --sys-confirmation-fg: CanvasText;
+    --sys-confirmation-surface: Canvas;
+    --sys-neutral-fg: CanvasText;
+    --sys-neutral-surface: Canvas;
+    --sys-focus-ring: Highlight;
+    --sys-focus-offset: Canvas;
+    --sys-disabled-fg: GrayText;
+    --sys-disabled-surface: Canvas;
+    --sys-disabled-border: GrayText;
+  }
+}
