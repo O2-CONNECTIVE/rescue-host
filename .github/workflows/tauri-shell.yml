@@ -52,17 +52,12 @@ jobs:
             ui/tauri/src-tauri/target
           key: tauri-windows-rust-1.99.1-${{ hashFiles('ui/tauri/src-tauri/Cargo.lock', 'ui/tauri/src-tauri/Cargo.toml') }}
           restore-keys: tauri-windows-rust-1.99.1-
-      - name: Bootstrap candidate Cargo lock for review
-        run: cargo +1.99.1 generate-lockfile --manifest-path src-tauri/Cargo.toml
-      - name: Upload candidate lock only
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tauri-cargo-lock-candidate
-          path: ui/tauri/src-tauri/Cargo.lock
-          if-no-files-found: error
-          retention-days: 1
       - name: Test Rust public IPC boundary
+        id: rust-ipc
         run: cargo +1.99.1 test --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Diagnose owned test executable loader failure
+        if: failure() && steps.rust-ipc.outcome == 'failure'
+        run: python scripts/diagnose-pe.py
       - name: Build native unwired shell without installer
         run: cargo +1.99.1 build --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
       - name: Save compilation cache including red-phase build work
