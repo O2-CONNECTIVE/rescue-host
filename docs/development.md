@@ -68,6 +68,8 @@ py -3 -m unittest discover -s tests -v
 
 Tauri移行は[デザイントークン案と状態見本](tauri-design-tokens.md)から進めます。
 現段階はライトテーマのHTML/CSS見本で、Tauri runtimeとバックエンドは未配線です。
+共通部品と画面を変更するときは[デザインとアクセシビリティの基準案](design-accessibility.md)を参照してください。
+自動検査と実機確認の分担は[確認方法と証跡](design-accessibility-verification.md)へまとめています。
 
 ## GUIとWindowsビルド
 
