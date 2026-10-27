@@ -43,7 +43,7 @@ Windowsでは`py -3.13 scripts/dev.py tokens`を使います。
 checkerが使用するassertを`PYTHONOPTIMIZE`環境変数で無効にしないため、[Pythonの隔離モード`-I`](https://docs.python.org/3.13/using/cmdline.html#cmdoption-I)を指定しています。
 CIも独立stepでこの入口を使い、非0終了を失敗として扱います。
 トークン関係の開発ツール試験は正常例、不正参照、白文字と白背景のコントラスト低下の3件で、従来の共通入口7件と合わせて10件です。
-全件試験にはsource-sizeの29件も含まれ、合計39件を実行します。
+全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件の合計49件を実行します。
 不正例は一時コピーにだけ作成し、公開tokenを変更しません。
 検証範囲は既存checkerの参照規則と指定されたライトテーマのコントラストで、生成物の一致、ブラウザー描画、Tauri実機、製品UIのTDDではありません。
 
@@ -87,7 +87,7 @@ EXEは未生成で、ARM64も未検証です。
 実行時に固定版Upterm v0.39.0とPyInstallerを取得します。
 `-UseLocalUpterm`には独立に確認した`-LocalUptermSha256`と対応ライセンスが必要です。
 ダウンロードと同じ経路のチェックサムだけでは配布元侵害を防げません。
-Windows向けPyInstallerと推移依存7個は版とwheel hashを固定し、一時venv内で導入・整合検証します。
+Windows向けPyInstallerと推移依存6個（計7個）は版とwheel hashを固定し、一時venv内で導入・整合検証します。
 Python/Tk等を含む環境全体の固定と再現ビルドは未実装です。
 ビルドしても新規接続は有効になりません。
 未署名の配布候補に必要なmanifest、ハッシュ、license、依存一覧、sourceとの対応は[配布候補の準備条件](distribution.md)を参照してください。

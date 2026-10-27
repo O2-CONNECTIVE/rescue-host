@@ -1,4 +1,5 @@
 # Windows x64 only; see docs/distribution.md.
+# Seven packages: PyInstaller and six transitive dependencies. Python/Tk/pip/Upterm are outside this lock.
 altgraph==0.17.5 --hash=sha256:f3a22400bce1b0c701683820ac4f3b159cd301acab067c51c653e06961600597
 packaging==26.3 --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
 pefile==2024.8.26 --hash=sha256:76f8b485dcd3b1bb8166f1128d395fa3d87af26360c2358fb75b80019b957c6f
