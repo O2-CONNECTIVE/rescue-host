@@ -1,19 +1,46 @@
 import type { UiKey } from './keyboard.ts';
-interface Envelope { value?: unknown }
+import { normalizeDriverError, type DriverTrace } from './observation.ts';
+function timedOut(error: unknown): boolean { return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'); }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 export class Driver {
   session = '';
   private readonly base: string;
-  constructor(base: string) {
+  private readonly transport: typeof fetch;
+  private readonly trace: ((value: DriverTrace) => void) | undefined;
+  constructor(base: string, transport: typeof fetch = fetch, trace?: (value: DriverTrace) => void) {
     this.base = base;
+    this.transport = transport;
+    this.trace = trace;
     if (base !== 'http://127.0.0.1:4444') throw new Error('NATIVE_DRIVER_ORIGIN_REJECTED');
   }
   async request(method: string, route: string, body?: unknown): Promise<unknown> {
-    const response = await fetch(this.base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
-    const envelope: unknown = await response.json();
-    if (!record(envelope)) throw new Error('NATIVE_DRIVER_INVALID_ENVELOPE');
-    const value = (envelope as Envelope).value;
-    if (!response.ok || (record(value) && typeof value.error === 'string')) throw new Error('NATIVE_DRIVER_REQUEST_FAILED');
+    const operation: DriverTrace['operation'] = route === '/session' ? 'create-session' : route.endsWith('/execute/sync') ? 'execute-sync' : route.endsWith('/execute/async') ? 'execute-async' : route.endsWith('/element') ? 'find-element' : route.endsWith('/click') ? 'click-element' : route.endsWith('/actions') ? 'keys' : route.endsWith('/screenshot') ? 'screenshot' : 'other';
+    const started = performance.now();
+    const emit = (outcome: DriverTrace['outcome'], status?: number, driverError?: string) => this.trace?.({ operation, outcome, elapsedMs: Math.round(performance.now() - started), status, driverError });
+    emit('started');
+    let response: Response;
+    try {
+      response = await this.transport(this.base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    } catch (error) {
+      const timeout = timedOut(error);
+      emit(timeout ? 'timeout' : 'transport');
+      throw new Error(timeout ? 'NATIVE_DRIVER_TIMEOUT' : 'NATIVE_DRIVER_TRANSPORT_FAILED', { cause: error });
+    }
+    let envelope: unknown;
+    try { envelope = await response.json(); }
+    catch (error) {
+      const outcome = timedOut(error) ? 'timeout' : error instanceof SyntaxError ? 'invalid-response' : 'transport';
+      emit(outcome, response.status);
+      const code = outcome === 'timeout' ? 'NATIVE_DRIVER_TIMEOUT' : outcome === 'transport' ? 'NATIVE_DRIVER_TRANSPORT_FAILED' : 'NATIVE_DRIVER_INVALID_ENVELOPE';
+      throw new Error(code, { cause: error });
+    }
+    if (!record(envelope)) { emit('invalid-response', response.status); throw new Error('NATIVE_DRIVER_INVALID_ENVELOPE'); }
+    const value = envelope.value;
+    if (!response.ok || (record(value) && typeof value.error === 'string')) {
+      emit(response.ok ? 'webdriver' : 'http', response.status, record(value) ? normalizeDriverError(value.error) : 'other');
+      throw new Error('NATIVE_DRIVER_REQUEST_FAILED');
+    }
+    emit('ok', response.status);
     return value;
   }
   async create(application: string, profile: string): Promise<string> {

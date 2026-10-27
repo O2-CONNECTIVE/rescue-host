@@ -81,3 +81,75 @@ void test('nativeキー送信失敗でもその回のrefresh観測を破棄す�
   }), /fixture-key-failure/);
   assert.equal(armed, false);
 });
+
+void test('native失敗のphaseとrequest区分を残し、生の例外文やpayloadを公開しない', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { createNativeObservation } = await import('../native-smoke/observation.ts');
+  const directory = await mkdtemp(path.join(tmpdir(), 'native-evidence-contract-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const evidence = createNativeObservation(directory);
+  evidence.phase('session-create');
+  evidence.request({ operation: 'create-session', outcome: 'timeout', elapsedMs: 15000 });
+  evidence.fail(new Error('PRIVATE_FIXTURE_DETAIL /not-public/path'));
+  const raw = await readFile(path.join(directory, 'native-observation.json'), 'utf8');
+  const record: unknown = JSON.parse(raw);
+  assert.ok(record !== null && typeof record === 'object' && 'phase' in record && 'status' in record && 'lastRequest' in record);
+  assert.equal(record.phase, 'session-create');
+  assert.equal(record.status, 'failed');
+  assert.deepEqual(record.lastRequest, { operation: 'create-session', outcome: 'timeout', elapsedMs: 15000 });
+  assert.equal(raw.includes('PRIVATE_FIXTURE_DETAIL'), false);
+  assert.equal(raw.includes('/not-public/path'), false);
+});
+
+void test('WebDriver timeoutとHTTP拒否を識別し、生のdriverメッセージを捨てる', async t => {
+  t.mock.method(globalThis, 'fetch', () => Promise.reject(new DOMException('PRIVATE_TIMEOUT_DETAIL', 'TimeoutError')));
+  const { Driver } = await import('../native-smoke/webdriver.ts');
+  const traces: { operation: string; outcome: string; elapsedMs: number; status?: number; driverError?: string }[] = [];
+  const timeout = new Driver('http://127.0.0.1:4444', () => Promise.reject(new DOMException('PRIVATE_TIMEOUT_DETAIL', 'TimeoutError')), value => { traces.push(value); });
+  await assert.rejects(timeout.request('POST', '/session', {}), /NATIVE_DRIVER_TIMEOUT/);
+  assert.equal(traces.at(-1)?.operation, 'create-session');
+  assert.equal(traces.at(-1)?.outcome, 'timeout');
+  const rejected = new Driver('http://127.0.0.1:4444', () => Promise.resolve(new Response(JSON.stringify({ value: { error: 'session not created', message: 'PRIVATE_DRIVER_DETAIL /not-public/path' } }), { status: 500 })), value => { traces.push(value); });
+  await assert.rejects(rejected.request('POST', '/session', {}), /NATIVE_DRIVER_REQUEST_FAILED/);
+  assert.equal(traces.at(-1)?.outcome, 'http');
+  assert.equal(traces.at(-1)?.driverError, 'session not created');
+  assert.equal(JSON.stringify(traces).includes('PRIVATE_'), false);
+  assert.equal(JSON.stringify(traces).includes('/not-public/path'), false);
+});
+
+void test('WebView観測の成功を所有プロセス終了の証明へ変換しない', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const { createNativeObservation } = await import('../native-smoke/observation.ts');
+  const directory = await mkdtemp(path.join(tmpdir(), 'native-stage-contract-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  createNativeObservation(directory).pass();
+  const record: unknown = JSON.parse(await readFile(path.join(directory, 'native-observation.json'), 'utf8'));
+  assert.ok(record !== null && typeof record === 'object' && 'status' in record);
+  assert.equal(record.status, 'webview-passed-awaiting-close');
+  assert.equal('normalCloseVerified' in record, false);
+});
+
+void test('headers受信後もbodyの期限切れ・通信断・JSON不正を分ける', async t => {
+  const { Driver } = await import('../native-smoke/webdriver.ts');
+  t.mock.method(globalThis, 'fetch', () => Promise.reject(new Error('REAL_NETWORK_FORBIDDEN')));
+  const cases = [
+    { error: new DOMException('PRIVATE_BODY_TIMEOUT', 'TimeoutError'), code: 'NATIVE_DRIVER_TIMEOUT', outcome: 'timeout' },
+    { error: new DOMException('PRIVATE_BODY_ABORT', 'AbortError'), code: 'NATIVE_DRIVER_TIMEOUT', outcome: 'timeout' },
+    { error: new TypeError('PRIVATE_BODY_TRANSPORT'), code: 'NATIVE_DRIVER_TRANSPORT_FAILED', outcome: 'transport' },
+    { error: new SyntaxError('PRIVATE_BODY_JSON'), code: 'NATIVE_DRIVER_INVALID_ENVELOPE', outcome: 'invalid-response' }
+  ];
+  for (const scenario of cases) {
+    const response = new Response('unused', { status: 200 });
+    t.mock.method(response, 'json', () => Promise.reject(scenario.error));
+    const traces: { outcome: string; status?: number }[] = [];
+    const driver = new Driver('http://127.0.0.1:4444', () => Promise.resolve(response), value => { traces.push(value); });
+    await assert.rejects(driver.request('POST', '/session', {}), new RegExp(scenario.code));
+    assert.equal(traces.at(-1)?.outcome, scenario.outcome);
+    assert.equal(traces.at(-1)?.status, 200);
+    assert.equal(JSON.stringify(traces).includes('PRIVATE_BODY_'), false);
+  }
+});

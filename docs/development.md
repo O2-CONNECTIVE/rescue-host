@@ -2,6 +2,8 @@
 
 [READMEへ戻る](../README.md)
 
+エージェントで開始・再開・編集委譲・レビューを行う場合は[共通エージェント開発手順](agent-workflow.md)を参照してください。
+
 対象は新規接続を無効にしたv0.2.1-devです。
 Python 3.11以上とTkinterを想定し、実行時の追加Python依存はありません。
 全OSや全Python版での検証済み宣言ではありません。
@@ -10,6 +12,7 @@ Python 3.11以上とTkinterを想定し、実行時の追加Python依存はあ�
 ## オフライン試験
 
 共通入口は追加pip依存のない`scripts/dev.py`です。
+新しいcommitのsubjectと説明bodyは[日本語commit方針](commit-messages.md)で別々に検査します。
 開発時の下限はPython 3.11、既存CIの固定参照版はPython 3.13.17 x64です。
 参照版は[CI workflow](../.github/workflows/python-offline.yml)と揃え、更新時は両方を照合します。
 別のpatch版で実行した場合は版の差を表示し、3.11未満は失敗します。
@@ -43,7 +46,7 @@ Windowsでは`py -3.13 scripts/dev.py tokens`を使います。
 checkerが使用するassertを`PYTHONOPTIMIZE`環境変数で無効にしないため、[Pythonの隔離モード`-I`](https://docs.python.org/3.13/using/cmdline.html#cmdoption-I)を指定しています。
 CIも独立stepでこの入口を使い、非0終了を失敗として扱います。
 トークン関係の開発ツール試験は正常例、不正参照、白文字と白背景のコントラスト低下の3件で、従来の共通入口7件と合わせて10件です。
-全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件の合計49件を実行します。
+全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件・commit-message23件の合計72件を実行します。
 不正例は一時コピーにだけ作成し、公開tokenを変更しません。
 検証範囲は既存checkerの参照規則と指定されたライトテーマのコントラストで、生成物の一致、ブラウザー描画、Tauri実機、製品UIのTDDではありません。
 
