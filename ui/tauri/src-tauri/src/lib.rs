@@ -37,21 +37,25 @@ fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> 
 pub fn run() {
     commands(tauri::Builder::default())
         .setup(|app| {
-            tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title("Rescue Host（未配線 shell）")
-                .inner_size(900.0, 780.0)
-                .min_inner_size(360.0, 480.0)
-                .on_navigation(|url| {
-                    if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
-                        return false;
-                    }
-                    #[cfg(windows)]
-                    let bundled = url.scheme() == "http" && url.host_str() == Some("tauri.localhost");
-                    #[cfg(not(windows))]
-                    let bundled = url.scheme() == "tauri" && url.host_str() == Some("localhost");
-                    bundled
-                })
-                .build()?;
+            tauri::WebviewWindowBuilder::new(
+                app,
+                "main",
+                tauri::WebviewUrl::App("index.html".into()),
+            )
+            .title("Rescue Host（未配線 shell）")
+            .inner_size(900.0, 780.0)
+            .min_inner_size(360.0, 480.0)
+            .on_navigation(|url| {
+                if !url.username().is_empty() || url.password().is_some() || url.port().is_some() {
+                    return false;
+                }
+                #[cfg(windows)]
+                let bundled = url.scheme() == "http" && url.host_str() == Some("tauri.localhost");
+                #[cfg(not(windows))]
+                let bundled = url.scheme() == "tauri" && url.host_str() == Some("localhost");
+                bundled
+            })
+            .build()?;
             Ok(())
         })
         .run(tauri::generate_context!())
@@ -63,9 +67,12 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn ipc(label: &str, origin: &str, command: &str, body: serde_json::Value)
-        -> Result<serde_json::Value, serde_json::Value>
-    {
+    fn ipc(
+        label: &str,
+        origin: &str,
+        command: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
         let app = commands(tauri::test::mock_builder())
             .build(tauri::generate_context!())
             .unwrap();
@@ -89,40 +96,70 @@ mod tests {
 
     #[test]
     fn public_ipc_reports_unwired_and_cannot_start_or_confirm_termination() {
-        let response = ipc("main", "http://tauri.localhost", "get_shell_status",
-            json!({"request": {"protocolVersion": 1}})).unwrap();
-        assert_eq!(response, json!({
-            "protocolVersion": 1, "integration": "not_connected",
-            "canStart": false, "canStop": false, "termination": "unconfirmed"
-        }));
+        let response = ipc(
+            "main",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}}),
+        )
+        .unwrap();
+        assert_eq!(
+            response,
+            json!({
+                "protocolVersion": 1, "integration": "not_connected",
+                "canStart": false, "canStop": false, "termination": "unconfirmed"
+            })
+        );
     }
 
     #[test]
     fn rejects_unsupported_version() {
-        let error = ipc("main", "http://tauri.localhost", "get_shell_status",
-            json!({"request": {"protocolVersion": 2}})).unwrap_err();
+        let error = ipc(
+            "main",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 2}}),
+        )
+        .unwrap_err();
         assert_eq!(error, json!("UNSUPPORTED_SHELL_VERSION"));
     }
 
     #[test]
     fn rejects_unknown_request_field_and_wrong_type() {
-        for request in [json!({"protocolVersion": 1, "executable": "not-allowed"}),
-            json!({"protocolVersion": "1"})] {
-            assert!(ipc("main", "http://tauri.localhost", "get_shell_status",
-                json!({"request": request})).is_err());
+        for request in [
+            json!({"protocolVersion": 1, "executable": "not-allowed"}),
+            json!({"protocolVersion": "1"}),
+        ] {
+            assert!(ipc(
+                "main",
+                "http://tauri.localhost",
+                "get_shell_status",
+                json!({"request": request})
+            )
+            .is_err());
         }
     }
 
     #[test]
     fn denies_window_without_capability() {
-        assert!(ipc("other", "http://tauri.localhost", "get_shell_status",
-            json!({"request": {"protocolVersion": 1}})).is_err());
+        assert!(ipc(
+            "other",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}})
+        )
+        .is_err());
     }
 
     #[test]
     fn denies_remote_origin() {
-        assert!(ipc("main", "https://example.invalid", "get_shell_status",
-            json!({"request": {"protocolVersion": 1}})).is_err());
+        assert!(ipc(
+            "main",
+            "https://example.invalid",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}})
+        )
+        .is_err());
     }
 
     #[test]
