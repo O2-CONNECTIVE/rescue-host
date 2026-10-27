@@ -34,7 +34,15 @@ function Get-OwnedApp($Driver, $Edge, [string]$AppPath, $Snapshot) {
     if ($webviews.Count -lt 1) { throw 'NATIVE_WEBVIEW_CHILD_NOT_OBSERVED' }
     return [pscustomobject]@{ App = $apps[0]; Children = $children; Webviews = $webviews }
 }
-function Request-NormalClose($Process, [int]$TimeoutMs) {
+function Assert-CloseTarget($Recorded, $Process) {
+    # Open the original process handle before reading identity; never act on PID alone.
+    $null = $Process.SafeHandle
+    $expectedTime = $Recorded.CreationDate.ToUniversalTime().ToString('yyyyMMddHHmmss.ffffff')
+    $actualTime = $Process.StartTime.ToUniversalTime().ToString('yyyyMMddHHmmss.ffffff')
+    if ($Process.Id -ne $Recorded.ProcessId -or $Process.HasExited -or $Process.Path -ne $Recorded.ExecutablePath -or $actualTime -ne $expectedTime) { throw 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH' }
+}
+function Request-NormalClose($Recorded, $Process, [int]$TimeoutMs) {
+    Assert-CloseTarget $Recorded $Process
     if (-not $Process.CloseMainWindow()) { throw 'NATIVE_NORMAL_CLOSE_REQUEST_REJECTED' }
     if (-not $Process.WaitForExit($TimeoutMs)) { throw 'NATIVE_APP_CLOSE_TIMEOUT' }
     if ($Process.ExitCode -ne 0) { throw 'NATIVE_APP_ABNORMAL_EXIT' }

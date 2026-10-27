@@ -46,7 +46,7 @@ try {
     $phase = 'normal-close'
     $appProcess = Get-Process -Id $app.ProcessId -ErrorAction Stop
     $appProcess.Refresh()
-    Request-NormalClose $appProcess 10000
+    Request-NormalClose $app $appProcess 10000
     $until = [DateTime]::UtcNow.AddSeconds(10)
     do {
         $snapshot = Get-Snapshot

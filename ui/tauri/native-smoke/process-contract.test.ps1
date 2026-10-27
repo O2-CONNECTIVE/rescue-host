@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
 function Entry($Number, $Parent, $Path, $Name) {
-    return [pscustomobject]@{ ProcessId = $Number; ParentProcessId = $Parent; ExecutablePath = $Path; Name = $Name; CreationDate = 'fixed-creation' }
+    return [pscustomobject]@{ ProcessId = $Number; ParentProcessId = $Parent; ExecutablePath = $Path; Name = $Name; CreationDate = [DateTime]::Parse('2026-10-27T00:00:00Z').ToUniversalTime() }
 }
 $driver = Entry 10 1 'driver.exe' 'driver.exe'
 $edge = Entry 11 10 'edge.exe' 'edge.exe'
@@ -28,9 +28,14 @@ Reject { Get-OwnedApp $driver $edge 'app.exe' @($edge, $app, $webview) } 'NATIVE
 $reused = Entry 10 1 'driver.exe' 'driver.exe'
 $reused.CreationDate = 'different-creation'
 Reject { Get-OwnedApp $driver $edge 'app.exe' @($reused, $edge, $app, $webview) } 'NATIVE_DRIVER_EXITED_OR_IDENTITY_CHANGED'
-$fake = [pscustomobject]@{ ExitCode = 0 }
+$fake = [pscustomobject]@{ ExitCode = 0; Id = 12; Path = 'app.exe'; HasExited = $false; SafeHandle = 1; StartTime = $app.CreationDate }
 $fake | Add-Member ScriptMethod CloseMainWindow { return $true }
 $fake | Add-Member ScriptMethod WaitForExit { param($TimeoutMs) return $false }
-Reject { Request-NormalClose $fake 1 } 'NATIVE_APP_CLOSE_TIMEOUT'
-if ($checks -ne 6) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_APP_CLOSE_TIMEOUT'
+$fake.StartTime = $app.CreationDate.AddSeconds(1)
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH'
+$fake.StartTime = $app.CreationDate
+$fake.Path = 'unowned.exe'
+Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH'
+if ($checks -ne 8) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
 Write-Output "PROCESS_CONTRACT_PASS checks=$checks (fixtures only; not native evidence)"
