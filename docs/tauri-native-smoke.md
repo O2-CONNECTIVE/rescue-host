@@ -22,7 +22,7 @@ runner に既にある WebView2 を read-only で検出し、[実 Runtime と Dr
 
 最初は read-only 環境 inventory だけを CI へ公開します。
 `nativeTestsRun: 0` であり、inventory job の成功は native smoke の合格ではありません。
-実 Runtime と対応 Driver の固定 version/hash を確認してから、起動試験と0件拒否の受入を接続します。
+その後に実 Runtime と対応 Driver の固定 version/hash を確認し、起動試験と0件拒否の受入を接続しました。
 
 ## 実装した境界
 
@@ -54,3 +54,23 @@ harness の UI/IPC 条件は `NATIVE_ASSERTIONS_UNIMPLEMENTED` の赤から最�
 別の PowerShell 契約試験では所有 path 不一致、子ゼロ、driver 先行終了、PID 再利用、close timeout の拒否を確認します。
 実 native の最終判定は1件の実行と1件の成功、実 IPC、通常 close の観測を必須にし、0件を成功にしません。
 CI の最終結果と native の実測は、実行後の PR に head とともに記録します。
+
+
+## Windows hosted CI の限定した実測
+
+head `35c5bb37504fdc90503144b52e2435e825b36322` の [native CI](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40515180926) で1件実行・1件成功しました。
+Windows Server 2022 runner image `20261022.344.1`、WebView2/EdgeDriver `131.0.2903.86`、tauri-driver `2.1.0`、Rust `1.99.1`、Node `24.22.1` の組合せです。
+未接続表示、開始停止 disabled、許可条件と終了未確認、診断 `SHELL_UNWIRED`、生の Rust IPC の厳密な未配線応答を観測しました。
+通常 close の要求後、app exit code 0 と観測済み WebView 子6件の終了を、両 driver が同じ identity で生存し cleanup を開始する前に確認しました。
+artifact の `normalCloseVerified`、`closeObservedBeforeCleanup`、`driverStableThroughClose` は true、失敗 phase は null です。
+その後で試験用 driver を cleanup しています。
+
+先行した [CI 40514392703](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40514392703) は listener 検査で app 起動前に停止し、native0件の環境/harness 失敗でした。
+単一 IPv4 行という前提を修正し、成功した CI で native driver に IPv4/IPv6 の loopback2行、intermediary に IPv4 の1行、全行の所有一致を観測しました。
+広い bind や所有外を許容した修正ではなく、PS 契約12 checks で wildcard、所有外、欠落の拒否も確認しました。
+試験の再実行で成功を拾う設定はなく、根拠を伴う source 修正後の別 head として記録します。
+
+画像は実 WebView の viewport です。
+主画面と、診断を開いて内容へ scroll した画面を分け、他アプリや desktop を含めません。
+これはこの runner/Runtime の debug executable の結果で、新 PC、配布 EXE/installer、全 Windows/WebView2 版、native keyboard/支援技術/OS 設定の合格ではありません。
+既存44条件や Go/SSH/sidecar の終了条件は完了にしません。

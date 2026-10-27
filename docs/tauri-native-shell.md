@@ -67,7 +67,8 @@ installer や配布用 Release は生成していません。
 
 ![実HTML/CSSのブラウザー描画。Rust IPCがない取得不能状態であり、native起動や実接続の証拠ではありません。](assets/tauri-native-shell-browser.png)
 
-native ウィンドウの起動と close、Windows WebView2、実 DPI、高コントラストの実 OS 設定、スクリーンリーダー、新しい PC、macOS と Linux の native build は未検証です。
+後続の [Windows hosted native smoke](tauri-native-smoke.md)で、限定した WebView2 起動・実 IPC・通常 close と観測済み子の終了を確認しました。
+新しい PC、配布物、native keyboard、実 DPI、高コントラストの実 OS 設定、スクリーンリーダー、macOS と Linux の native build は未検証です。
 browser の破棄で遅延応答を抑止できたことを、native process や所有通信の終了証明へ読み替えません。
 この shell には終了すべき sidecar や接続資源を作る処理がありません。
 同一ユーザー攻撃者の隔離も完成したとは扱いません。

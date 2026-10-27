@@ -72,4 +72,6 @@ UI-02/03/09 は成功風応答・失敗・timeout の拒否、UI-04/05/06 は可
 元ソースへ probe は残していません。
 通常と production の Knip はいずれも必須で、CI は frontend gate、GUI controller/build/browser、Rust fmt/clippy、公開 IPC 試験、Windows build を段階ごとに表示します。
 controller/build/browser は同一 step 内で順に実行し、非0終了を伝播します。build と browser の別 step 化は後続の設計です。
-native 起動・close、実 WebView2、支援技術、OS 設定、新 PC、SSH fixture、GUI と実 sidecar、配布 EXE は未検証です。
+React 移行時点では native 起動・close、実 WebView2 も未検証でした。
+後続の [native smoke](tauri-native-smoke.md)では Windows hosted runner の限定した実起動・実 IPC・通常 close を確認しました。
+支援技術、OS 設定、新 PC、SSH fixture、GUI と実 sidecar、配布 EXE は引き続き未検証です。

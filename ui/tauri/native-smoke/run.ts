@@ -35,6 +35,7 @@ try {
     invoke: () => driver.invoke()
   });
   if (result.checks !== 3) throw new Error('NATIVE_ZERO_OR_INCOMPLETE_CHECKS');
+  await driver.execute("document.querySelector('[data-slot=\"collapsible-content\"]')?.scrollIntoView({block:'end',behavior:'instant'}); return true;");
   await writeFile(path.join(output, 'native-diagnostics.png'), await driver.screenshot());
   await writeFile(path.join(output, 'webview-result.json'), JSON.stringify({ phase: 'webview-observed-awaiting-normal-close', nativeTestsStarted: 1, checks: result.checks, browserVersion, actualRustIpc: true }));
   // Keep both drivers alive. The supervisor must observe normal close before any session/driver cleanup.
