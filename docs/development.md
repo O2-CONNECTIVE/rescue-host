@@ -31,6 +31,7 @@ Pythonの導入やOS設定変更はコマンドに含みません。
 
 開発ツール自身の異常条件は`python3 -m unittest discover -s scripts/tests -v`で別に検証します。
 この全件試験はsource-sizeの29件を含むためPython 3.13以上が必要です（CI固定版は3.13.17）。既存の`check`の下限Python 3.11とは区別します。
+build-lockの有限fixtureは同じPythonのpipも使い、ネットワークなしでhash不一致を拒否することを確認します。
 Windowsでは同じ引数を`py -3.13`に渡します。
 対象欠落、空対象、テスト0件、全件skip、テスト失敗、構文不正の7条件で、実際のコマンドが非0終了することを確認します。
 これは開発ツールの検証であり、製品の既存82件や新しい製品境界のTDDへ加算しません。
@@ -81,12 +82,13 @@ shellにも接続や停止のバックエンドは配線していません。
 回復動作は[回復と画面終了](recovery.md)を参照してください。
 
 [build_windows.ps1](../build_windows.ps1)はWindows x64向けの未検証スクリプトです。
-想定前提はWindows 10/11、Python 3.11以上、Pythonランチャー`py`、インターネット接続です。
+想定前提はWindows 10/11 x64、CPython 3.11–3.15 x64、Pythonランチャー`py`、インターネット接続です。
 EXEは未生成で、ARM64も未検証です。
 実行時に固定版Upterm v0.39.0とPyInstallerを取得します。
 `-UseLocalUpterm`には独立に確認した`-LocalUptermSha256`と対応ライセンスが必要です。
 ダウンロードと同じ経路のチェックサムだけでは配布元侵害を防げません。
-Pythonビルド依存の完全なハッシュ固定と再現ビルドは未実装です。
+Windows向けPyInstallerと推移依存7個は版とwheel hashを固定し、一時venv内で導入・整合検証します。
+Python/Tk等を含む環境全体の固定と再現ビルドは未実装です。
 ビルドしても新規接続は有効になりません。
 未署名の配布候補に必要なmanifest、ハッシュ、license、依存一覧、sourceとの対応は[配布候補の準備条件](distribution.md)を参照してください。
 開発コマンドはGUIやビルドを自動実行しません。

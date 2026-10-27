@@ -1,5 +1,5 @@
 # 検証済みの Upterm バイナリを埋め込み、Windows x64 向けの単一ファイル RescueHost.exe をビルドする。
-# 前提条件：Windows 10/11、Python 3.11 以降、Python ランチャー 'py'、インターネット接続。
+# 前提条件：Windows 10/11 x64、CPython 3.11–3.15 x64、Python ランチャー 'py'、インターネット接続。
 param(
     [string]$UptermVersion = 'v0.39.0',
     [switch]$UseLocalUpterm,
@@ -14,6 +14,8 @@ if ($UseLocalUpterm -and $LocalUptermSha256 -notmatch '^[0-9a-fA-F]{64}$') {
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $Root
+& py -3 -I (Join-Path $Root 'scripts\check_build_lock.py') --target
+if ($LASTEXITCODE -ne 0) { throw 'Python build target or dependency lock check failed' }
 New-Item -Type Directory -Force (Join-Path $Root 'vendor') | Out-Null
 New-Item -Type Directory -Force (Join-Path $Root 'third_party') | Out-Null
 $Binary = Join-Path $Root 'vendor\upterm.exe'
@@ -61,13 +63,26 @@ if ($UseLocalUpterm) {
 }
 # アーカイブと同じ場所から取得するチェックサムは破損を検出するが、公開元の侵害は検出できない。
 # ビルドしても新規セッションは有効にならない。v0.2 の実行時リリース制御は閉じたままとする。
-& py -3 -m pip install -r (Join-Path $Root 'requirements-build.txt')
-if ($LASTEXITCODE -ne 0) { throw 'PyInstaller setup failed' }
-& py -3 -m PyInstaller --onefile --noconsole --clean --noconfirm --name RescueHost `
-    --paths (Join-Path $Root 'src') `
-    --add-binary "$Binary;." `
-    --add-data "$(Join-Path $Root 'assets\upterm_known_hosts');assets" `
-    (Join-Path $Root 'src\rescue_host.py')
-if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed' }
+$BuildEnv = Join-Path $env:TEMP ('rescue-python-build-' + [guid]::NewGuid().ToString('N'))
+try {
+    & py -3 -m venv $BuildEnv
+    if ($LASTEXITCODE -ne 0) { throw 'Build venv creation failed' }
+    $BuildPython = Join-Path $BuildEnv 'Scripts\python.exe'
+    & $BuildPython -m pip --isolated --disable-pip-version-check install --index-url https://pypi.org/simple `
+        --no-cache-dir --force-reinstall --require-hashes --only-binary=:all: -r (Join-Path $Root 'requirements-build.txt')
+    if ($LASTEXITCODE -ne 0) { throw 'Locked PyInstaller setup failed' }
+    & $BuildPython -m pip --isolated --disable-pip-version-check check
+    if ($LASTEXITCODE -ne 0) { throw 'Build dependency consistency check failed' }
+    & $BuildPython -I (Join-Path $Root 'scripts\check_build_lock.py') --installed
+    if ($LASTEXITCODE -ne 0) { throw 'Installed build versions differ from lock' }
+    & $BuildPython -m PyInstaller --onefile --noconsole --clean --noconfirm --name RescueHost `
+        --paths (Join-Path $Root 'src') `
+        --add-binary "$Binary;." `
+        --add-data "$(Join-Path $Root 'assets\upterm_known_hosts');assets" `
+        (Join-Path $Root 'src\rescue_host.py')
+    if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed' }
+} finally {
+    if (Test-Path $BuildEnv) { Remove-Item -Recurse -Force $BuildEnv }
+}
 Write-Host "Built: $(Join-Path $Root 'dist\RescueHost.exe')"
 Write-Host 'Distribute the third_party/UPTERM-LICENSE.txt notice alongside the EXE.'
