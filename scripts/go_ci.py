@@ -5,6 +5,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -95,16 +96,36 @@ def build():
     print('Vet/build: 4 packages; 5 production Go files; no fixture files or tags', flush=True)
 
 
-def test_events(source, returncode):
+def test_inventory():
+    result = command(['list', '-mod=readonly', '-json', './...'])
+    require_success(result)
+    expected = set()
+    for package in json_objects(result.stdout):
+        for name in package.get('TestGoFiles', []) + package.get('XTestGoFiles', []):
+            path = Path(package['Dir']) / name
+            if not path.resolve().is_relative_to(MODULE):
+                raise ValueError('Test source outside public module')
+            for test in re.findall(r'^func (Test\w+)\(', path.read_text(encoding='utf-8'), re.MULTILINE):
+                if test != 'TestMain':
+                    expected.add((package['ImportPath'], test))
+    if not expected:
+        raise ValueError('Empty Go test inventory')
+    return expected
+
+
+def test_events(source, returncode, expected_cpu=None, expected_tests=None):
     terminals = {}
     packages = {}
     started = set()
     errors = []
     outputs = {}
+    cpus = set()
     for line in source.splitlines():
         event = json.loads(line)
         package, test, action = event.get('Package'), event.get('Test'), event.get('Action')
         if not package:
+            if event.get('Output'):
+                outputs.setdefault((event.get('ImportPath', 'build'), None), []).append(event['Output'])
             continue
         if test:
             key = (package, test)
@@ -122,6 +143,7 @@ def test_events(source, returncode):
             errors.append(event['Output'].strip())
         if action == 'output':
             outputs.setdefault((package, test), []).append(event.get('Output', ''))
+            cpus.update(int(value) for value in re.findall(r'observed_test_GOMAXPROCS=(\d+)', event.get('Output', '')))
     top = {key: value for key, value in terminals.items() if '/' not in key[1]}
     counts = {status: sum(value == status for value in top.values())
               for status in ('pass', 'skip', 'fail')}
@@ -138,12 +160,18 @@ def test_events(source, returncode):
         for (package, test), lines in outputs.items():
             if not test:
                 print(''.join(lines)[-6000:].replace(str(ROOT), '<repo>'), flush=True)
+    if expected_cpu is not None:
+        print('Observed test GOMAXPROCS:', sorted(cpus), flush=True)
+        if cpus != {int(expected_cpu)}:
+            raise ValueError('Requested CPU lane was not observed inside tests')
     if returncode or any(value == 'fail' for value in terminals.values()) or any(value == 'fail' for value in packages.values()):
         raise ValueError(f'Go tests failed: exit={returncode}')
     if not top or not counts['pass'] or started - terminals.keys():
         raise ValueError('Zero/all-skipped/incomplete Go tests')
     if set(packages) != set(PRODUCT_FILES):
         raise ValueError('Missing package test result')
+    if expected_tests is not None and set(top) != expected_tests:
+        raise ValueError('Selected Go tests did not match the public-source inventory')
     return counts
 
 
@@ -170,6 +198,7 @@ def tests(race=False, focused=False):
     record = MODULE / 'go-result.json'
     record.unlink(missing_ok=True)
     cpu = '2' if race else '1'
+    inventory = None if focused else test_inventory()
     arguments = ['test', '-mod=readonly', '-trimpath', '-count=1', '-json',
                  '-p=1', '-parallel=1', '-cpu=' + cpu, '-timeout=5m' if race else '-timeout=2m']
     if race:
@@ -182,7 +211,8 @@ def tests(race=False, focused=False):
     try:
         if result.stderr:
             print(result.stderr.replace(str(ROOT), '<repo>'), file=sys.stderr)
-        test_events(result.stdout, result.returncode)
+        test_events(result.stdout, result.returncode, expected_cpu=None if focused else cpu,
+                    expected_tests=inventory)
         check_network_record()
     finally:
         record.unlink(missing_ok=True)

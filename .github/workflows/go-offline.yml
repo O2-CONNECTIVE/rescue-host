@@ -22,7 +22,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        os: [ubuntu-24.04]
+        os: [ubuntu-24.04, windows-2022, macos-15-intel]
     env:
       PYTHONUTF8: '1'
       GOTOOLCHAIN: local
@@ -50,15 +50,9 @@ jobs:
       - name: Vet and check production source boundary
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
         run: python scripts/go_ci.py build
-      - name: Collect public test formatting (diagnostic head)
-        shell: python
-        run: |
-          import base64
-          import json
-          import subprocess
-          for path in ('backend/channel_lifecycle_test.go', 'backend/ci_parallelism_test.go', 'backend/session.go'):
-              content = subprocess.check_output(['gofmt', path])
-              print('GOFMT_JSON ' + json.dumps({'path': path, 'content': base64.b64encode(content).decode()}), flush=True)
-      - name: Focused P1 reproduction (diagnostic head)
+      - name: Normal tests on one CPU
         if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
-        run: python scripts/go_ci.py repro
+        run: python scripts/go_ci.py test
+      - name: Race tests on two CPUs
+        if: ${{ !cancelled() && steps.prepare.outcome == 'success' }}
+        run: python scripts/go_ci.py race
