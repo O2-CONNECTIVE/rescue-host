@@ -23,7 +23,7 @@ class SourceSizeTests(unittest.TestCase):
         self.report = Path(temporary.name) / 'report.json'
         self.policy = {
             'version': 1,
-            'scope': {'root': 'ui', 'extensions': ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx']},
+            'scope': {'root': 'ui', 'extensions': ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts']},
             'limits': {'max_lines': 3, 'max_bytes': 128},
             'rationale': 'Finite fixture limits, not repository recommendations.',
             'roles': [], 'exclusions': [], 'exceptions': [],
@@ -155,6 +155,31 @@ class SourceSizeTests(unittest.TestCase):
         self.write('ui/tauri/src/components/ui/button.tsx', 'value\n' * 4)
         self.git('add', '.')
         self.assert_failure(self.run_gate(), 'components/ui/button.tsx')
+
+    def test_typescript_module_extensions_are_checked(self):
+        for extension in ('.mts', '.cts', '.d.mts', '.d.cts'):
+            with self.subTest(extension=extension):
+                path = 'ui/module' + extension
+                self.write(path, 'value\n' * 4)
+                self.git('add', path)
+                self.assert_failure(self.run_gate(), path)
+                self.git('rm', '--cached', '-q', path)
+                (self.root / path).unlink()
+
+    def test_recursive_patterns_match_zero_directory_levels(self):
+        self.policy['exclusions'] = [{'pattern': 'ui/**/dist/**', 'reason': 'Generated.'}]
+        self.policy['roles'] = [{'name': 'tests', 'patterns': ['ui/**/tests/**', 'ui/**/*.test.*'],
+                                 'max_lines': 5, 'max_bytes': 128, 'reason': 'Scenario assertions.'}]
+        self.save_policy()
+        self.write('ui/dist/generated.js', 'generated\n' * 9)
+        self.write('ui/tests/scenario.tsx', 'value\n' * 4)
+        self.write('ui/app.test.tsx', 'value\n' * 4)
+        self.git('add', '.')
+        result = self.run_gate()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(self.report.read_text())
+        self.assertEqual((report['checked'], report['excluded']), (3, 1))
+        self.assertEqual([item['role'] for item in report['files']].count('tests'), 2)
 
     def test_exception_cannot_grow_in_lines_or_bytes(self):
         self.policy['exceptions'] = [self.exception()]

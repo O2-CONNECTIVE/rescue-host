@@ -11,7 +11,6 @@ split or minify source to satisfy a count. No wallclock performance gate exists.
 """
 
 import hashlib
-import fnmatch
 import argparse
 import json
 import os
@@ -21,7 +20,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / '.source-size-policy.json'
-EXTENSIONS = {'.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx'}
+EXTENSIONS = {'.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts'}
 
 
 def git(*arguments):
@@ -95,7 +94,7 @@ def check(report):
         raise ValueError('No tracked UI source files')
     selected = []
     for path in candidates:
-        exclusion = next((entry for entry in policy['exclusions'] if fnmatch.fnmatchcase(path, entry['pattern'])), None)
+        exclusion = next((entry for entry in policy['exclusions'] if PurePosixPath(path).full_match(entry['pattern'], case_sensitive=True)), None)
         if exclusion:
             print(f"EXCLUDED {path}: {exclusion['reason']}", flush=True)
         else:
@@ -108,7 +107,7 @@ def check(report):
     files = []
     for path in sorted(selected):
         item = inspect_source(path)
-        role = next((role for role in policy['roles'] if any(fnmatch.fnmatchcase(path, pattern) for pattern in role['patterns'])), None)
+        role = next((role for role in policy['roles'] if any(PurePosixPath(path).full_match(pattern, case_sensitive=True) for pattern in role['patterns'])), None)
         cap = role or policy['limits']
         item['role'] = role['name'] if role else 'default'
         exception = exceptions.get(path)

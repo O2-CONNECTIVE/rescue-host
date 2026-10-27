@@ -2,7 +2,7 @@
   "version": 1,
   "scope": {
     "root": "ui",
-    "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]
+    "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".mts", ".cts"]
   },
   "limits": {"max_lines": 180, "max_bytes": 24576},
   "rationale": "Public main 06a5847 has five UI scripts (15–85 lines). React PR35 f0a19cd has twelve scripts: ordinary source up to 60 lines, tests up to 132, scripts up to 17. These initial role budgets leave room for cohesive work; they are not proof of architecture or performance.",
