@@ -1,0 +1,37 @@
+name: Japanese commit messages
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check-messages:
+    name: New commit subjects and bodies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - name: Check out comparison history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13.17'
+          architecture: x64
+      - name: Verify finite message and Git range fixtures
+        run: python -I -m unittest discover -s scripts/tests -p test_commit_messages.py -v
+      - name: Check event base and head commit messages
+        run: python -I scripts/check_commit_messages.py --event "$GITHUB_EVENT_PATH"
