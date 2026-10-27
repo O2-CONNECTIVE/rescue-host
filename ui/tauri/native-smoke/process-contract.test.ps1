@@ -37,5 +37,15 @@ Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMAT
 $fake.StartTime = $app.CreationDate
 $fake.Path = 'unowned.exe'
 Reject { Request-NormalClose $app $fake 1 } 'NATIVE_CLOSE_TARGET_IDENTITY_MISMATCH'
-if ($checks -ne 8) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
+$loop4 = [pscustomobject]@{ LocalPort = 4444; LocalAddress = '127.0.0.1'; OwningProcess = 10 }
+$edge4 = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '127.0.0.1'; OwningProcess = 11 }
+$edge6 = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '::1'; OwningProcess = 11 }
+Assert-ListenerSnapshot @($loop4, $edge4, $edge6) 10 11
+$checks += 1
+$wildcard = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '0.0.0.0'; OwningProcess = 11 }
+Reject { Assert-ListenerSnapshot @($loop4, $wildcard) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+$unowned = [pscustomobject]@{ LocalPort = 4445; LocalAddress = '::1'; OwningProcess = 99 }
+Reject { Assert-ListenerSnapshot @($loop4, $unowned) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+Reject { Assert-ListenerSnapshot @($loop4) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
+if ($checks -ne 12) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
 Write-Output "PROCESS_CONTRACT_PASS checks=$checks (fixtures only; not native evidence)"

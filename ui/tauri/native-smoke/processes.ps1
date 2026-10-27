@@ -16,11 +16,13 @@ function Get-Descendants([int]$RootId, $Snapshot) {
     }
     return $found
 }
-function Assert-Listeners([int]$DriverId, [int]$EdgeId) {
-    $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
+function Assert-ListenerSnapshot($Listeners, [int]$DriverId, [int]$EdgeId) {
     foreach ($pair in @(@(4444, $DriverId), @(4445, $EdgeId))) {
-        $match = @($listeners | Where-Object LocalPort -eq $pair[0])
-        if ($match.Count -ne 1 -or $match[0].LocalAddress -ne '127.0.0.1' -or $match[0].OwningProcess -ne $pair[1]) { throw 'NATIVE_LISTENER_OWNERSHIP_MISMATCH' }
+        $matches = @($Listeners | Where-Object LocalPort -eq $pair[0])
+        if ($matches.Count -eq 0) { throw 'NATIVE_LISTENER_OWNERSHIP_MISMATCH' }
+        foreach ($listener in $matches) {
+            if (-not [Net.IPAddress]::IsLoopback([Net.IPAddress]::Parse($listener.LocalAddress)) -or $listener.OwningProcess -ne $pair[1]) { throw 'NATIVE_LISTENER_OWNERSHIP_MISMATCH' }
+        }
     }
 }
 function Get-OwnedApp($Driver, $Edge, [string]$AppPath, $Snapshot) {

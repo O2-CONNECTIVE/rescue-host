@@ -26,7 +26,12 @@ try {
     $driver = @($snapshot | Where-Object ProcessId -eq $driverProcess.Id)
     $edge = @($snapshot | Where-Object { $_.ParentProcessId -eq $driverProcess.Id -and $_.ExecutablePath -eq $edgePath })
     if ($driver.Count -ne 1 -or $edge.Count -ne 1 -or $driverProcess.HasExited -or $driver[0].ExecutablePath -ne $tauriPath) { throw 'NATIVE_DRIVER_IDENTITY_AMBIGUOUS' }
-    Assert-Listeners $driver[0].ProcessId $edge[0].ProcessId
+    $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
+    $report.listenerFacts = @($listeners | ForEach-Object {
+        $address = [Net.IPAddress]::Parse($_.LocalAddress)
+        [ordered]@{ port = $_.LocalPort; loopback = [Net.IPAddress]::IsLoopback($address); family = $address.AddressFamily.ToString(); owned = $_.OwningProcess -eq $(if ($_.LocalPort -eq 4444) { $driver[0].ProcessId } else { $edge[0].ProcessId }) }
+    })
+    Assert-ListenerSnapshot $listeners $driver[0].ProcessId $edge[0].ProcessId
     $phase = 'webview-and-ipc'
     $report.nativeTestsRun = 1
     $env:NATIVE_OUTPUT_DIR = $OutputDirectory
