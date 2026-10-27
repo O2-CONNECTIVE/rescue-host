@@ -46,7 +46,13 @@ pub fn read(stdout: ChildStdout, pid: u32, boot: SyncSender<()>) -> Result<(), &
             (0, Event::Boot { version: 1, pid: p }) if p == pid => {
                 boot.try_send(()).map_err(|_| "FIXTURE_IO_FAILED")?;
             }
-            (1, Event::Final { version: 1, stopped: true }) => {}
+            (
+                1,
+                Event::Final {
+                    version: 1,
+                    stopped: true,
+                },
+            ) => {}
             _ => return Err("FIXTURE_PROTOCOL_REJECTED"),
         }
         count += 1;

@@ -38,7 +38,11 @@ impl Owned {
         sent.map_err(|_| "FIXTURE_IO_FAILED")?;
         while Instant::now() < deadline {
             self.status = self.child.try_wait().map_err(|_| "FIXTURE_IO_FAILED")?;
-            if self.reader.as_ref().is_some_and(|reader| reader.is_finished()) {
+            if self
+                .reader
+                .as_ref()
+                .is_some_and(|reader| reader.is_finished())
+            {
                 self.reader
                     .take()
                     .unwrap()
@@ -59,7 +63,11 @@ impl Owned {
         while Instant::now() < deadline {
             self.status = self.child.try_wait().map_err(|_| "FIXTURE_IO_FAILED")?;
             if let Some(status) = self.status {
-                return if status.success() { Ok(()) } else { Err("FIXTURE_NONZERO_EXIT") };
+                return if status.success() {
+                    Ok(())
+                } else {
+                    Err("FIXTURE_NONZERO_EXIT")
+                };
             }
             thread::sleep(Duration::from_millis(5));
         }
@@ -75,10 +83,16 @@ impl Owned {
         }
         let deadline = Instant::now() + Duration::from_secs(1);
         while Instant::now() < deadline {
-            self.status = self.child.try_wait().map_err(|_| "FIXTURE_CLEANUP_UNCONFIRMED")?;
+            self.status = self
+                .child
+                .try_wait()
+                .map_err(|_| "FIXTURE_CLEANUP_UNCONFIRMED")?;
             if self.status.is_some() && self.reader.as_ref().is_none_or(|r| r.is_finished()) {
                 if let Some(reader) = self.reader.take() {
-                    reader.join().map_err(|_| "FIXTURE_CLEANUP_UNCONFIRMED")?.ok();
+                    reader
+                        .join()
+                        .map_err(|_| "FIXTURE_CLEANUP_UNCONFIRMED")?
+                        .ok();
                 }
                 return Ok(());
             }
@@ -106,7 +120,12 @@ pub fn run() -> Result<(), &'static str> {
         .stderr(Stdio::null())
         .spawn()
         .map_err(|_| "FIXTURE_LAUNCH_FAILED")?;
-    let mut owned = Owned { child, reader: None, status: None, cleanup_attempted: false };
+    let mut owned = Owned {
+        child,
+        reader: None,
+        status: None,
+        cleanup_attempted: false,
+    };
     let result = owned.exchange();
     owned.cleanup(result.is_err())?;
     result
