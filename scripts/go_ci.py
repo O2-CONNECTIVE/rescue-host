@@ -9,6 +9,7 @@ import re
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'backend'
@@ -27,6 +28,9 @@ def environment(download=False):
                GOPROXY='https://proxy.golang.org' if download else 'off',
                GOSUMDB='sum.golang.org', GOPRIVATE='', GONOSUMDB='',
                GONOPROXY='', CGO_ENABLED='1')
+    # Keep the one-second child-exit measurement; remove only the race runtime's
+    # documented extra one-second sleep after the program has already exited.
+    env['GORACE'] = 'atexit_sleep_ms=0'
     for key in tuple(env):
         if key.startswith('RESCUE_'):
             del env[key]
@@ -34,10 +38,12 @@ def environment(download=False):
 
 
 def command(arguments, *, download=False, timeout=600):
+    started = time.monotonic()
     completed = subprocess.run(
         ['go', *arguments], cwd=MODULE, env=environment(download),
         capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=timeout,
     )
+    print(f'Go command {arguments[0]}: elapsed_s={time.monotonic() - started:.3f}, exit={completed.returncode}', flush=True)
     return completed
 
 
@@ -70,6 +76,17 @@ def prepare():
     if version.stdout.split()[2] != GO_VERSION:
         raise ValueError('Unexpected Go version')
     print(version.stdout.strip(), flush=True)
+    information = command(['env', '-json', 'GOOS', 'GOARCH', 'CGO_ENABLED', 'CC'])
+    require_success(information)
+    metadata = json.loads(information.stdout)
+    compiler = metadata['CC']
+    metadata['CC'] = Path(compiler).name
+    print('Environment:', json.dumps(metadata, sort_keys=True), flush=True)
+    try:
+        compiler_version = subprocess.run([compiler, '--version'], capture_output=True, text=True, timeout=30)
+        print('Compiler:', compiler_version.stdout.splitlines()[0][:200], flush=True)
+    except (OSError, IndexError) as error:
+        print('Compiler unavailable:', type(error).__name__, flush=True)
     dependencies = command(['mod', 'download', '-json'], download=True)
     require_success(dependencies)
     require_success(command(['mod', 'verify'], download=True))
@@ -122,6 +139,8 @@ def test_events(source, returncode, expected_cpu=None, expected_tests=None):
     cpus = set()
     for line in source.splitlines():
         event = json.loads(line)
+        if not isinstance(event, dict):
+            raise ValueError('Go event is not an object')
         package, test, action = event.get('Package'), event.get('Test'), event.get('Action')
         if not package:
             if event.get('Output'):
@@ -168,6 +187,8 @@ def test_events(source, returncode, expected_cpu=None, expected_tests=None):
         raise ValueError(f'Go tests failed: exit={returncode}')
     if not top or not counts['pass'] or started - terminals.keys():
         raise ValueError('Zero/all-skipped/incomplete Go tests')
+    if any(value == 'skip' for value in terminals.values()):
+        raise ValueError('Unexpected Go test skip (no test-level exclusions approved)')
     if set(packages) != set(PRODUCT_FILES):
         raise ValueError('Missing package test result')
     if expected_tests is not None and set(top) != expected_tests:
@@ -181,6 +202,10 @@ def check_network_record():
         raise ValueError('Missing fixture resource record')
     record = json.loads(path.read_text(encoding='utf-8'))
     try:
+        counters = {key: record.get(key) if type(record.get(key)) is int else 'invalid'
+                    for key in ('test_exit_code', 'remaining_listeners', 'remaining_connections',
+                                'forbidden_dial_attempts', 'duration_ms')}
+        print('Fixture counters:', json.dumps(counters, sort_keys=True), flush=True)
         for key in ('test_exit_code', 'remaining_listeners', 'remaining_connections',
                     'forbidden_dial_attempts'):
             if record.get(key) != 0:
@@ -206,14 +231,24 @@ def tests(race=False, focused=False):
     if focused:
         arguments.extend(['-run', '^TestChannelCloseHandshakeKeepsCapacity$'])
     arguments.append('./...')
-    print(f'Lane: race={race}, requested CPU={cpu}; no test exclusions', flush=True)
+    scope = 'focused channel lifecycle reproduction' if focused else 'full suite, no test exclusions'
+    print(f'Lane: race={race}, requested CPU={cpu}; {scope}', flush=True)
     result = command(arguments, timeout=900 if race else 600)
     try:
         if result.stderr:
             print(result.stderr.replace(str(ROOT), '<repo>'), file=sys.stderr)
-        test_events(result.stdout, result.returncode, expected_cpu=None if focused else cpu,
-                    expected_tests=inventory)
-        check_network_record()
+        failures = []
+        try:
+            test_events(result.stdout, result.returncode, expected_cpu=None if focused else cpu,
+                        expected_tests=inventory)
+        except ValueError as error:
+            failures.append(str(error))
+        try:
+            check_network_record()
+        except (OSError, ValueError) as error:
+            failures.append(str(error))
+        if failures:
+            raise ValueError('; '.join(failures))
     finally:
         record.unlink(missing_ok=True)
 

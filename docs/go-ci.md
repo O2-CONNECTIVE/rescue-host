@@ -10,6 +10,8 @@ PythonとTauriのworkflowは独立しています。
 実行対象は公開`backend/`だけで、存在しない対象やテスト0件を成功にしません。
 通常試験は`-cpu=1`、raceは`-cpu=2`で、試験内のGOMAXPROCS観測と照合します。
 race検出の有無と、指定した並列度の観測を区別します。
+Goのrace runtimeは終了直前に既定で1000ms待つため、CIでは`GORACE=atexit_sleep_ms=0`を明示します。
+これは[race runtimeの終了時追加sleep](https://go.dev/doc/articles/race_detector)を除く設定で、検出や異常終了コード、子の終了確認1秒の条件は変更しません。
 packageとtestの並列はともに1に制限しますが、個別試験内のgoroutineは動作します。
 
 job上限は20分、通常のpackage timeoutは2分、raceは5分、各Go subprocessにも外側の上限があります。
@@ -22,6 +24,7 @@ raceはcgoと対応C compilerが必要です。
 これだけで試験プログラムの全ネットワーク通信を遮断するわけではありません。
 公開試験は自己所有の高位IPv4 loopbackとメモリ内鍵に限定し、host22、実ネット、外部relay、既存サービスを使いません。
 TestMainの資源記録は残留と禁止dialの件数、loopback境界だけを確認して削除し、生の接続記録をartifactへ公開しません。
+試験が失敗した場合も資源件数と経過時間を確認してから削除し、試験失敗と資源異常を両方報告します。
 
 通常buildに選択される4package、5製品ファイルを照合します。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。

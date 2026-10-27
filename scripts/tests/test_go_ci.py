@@ -68,6 +68,27 @@ class GoEventTests(unittest.TestCase):
         with self.assertRaises(ValueError), contextlib.redirect_stdout(io.StringIO()):
             test_events('{', 0)
 
+    def test_observed_cpu_matches_requested_lane(self):
+        events = self.events()
+        events.append({'Package': events[0]['Package'], 'Test': 'TestPublicBoundary',
+                       'Action': 'output', 'Output': 'observed_test_GOMAXPROCS=2\n'})
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(test_events('\n'.join(map(json.dumps, events)), 0, expected_cpu='2')['pass'], 1)
+            with self.assertRaises(ValueError):
+                test_events('\n'.join(map(json.dumps, events)), 0, expected_cpu='1')
+
+    def test_missing_public_test_is_rejected(self):
+        expected = {(self.events()[0]['Package'], 'TestPublicBoundary'),
+                    (self.events()[0]['Package'], 'TestRequiredBoundary')}
+        with self.assertRaises(ValueError), contextlib.redirect_stdout(io.StringIO()):
+            test_events('\n'.join(map(json.dumps, self.events())), 0, expected_tests=expected)
+
+    def test_new_skip_is_rejected_even_with_another_pass(self):
+        events = self.events()
+        events.append({'Package': events[0]['Package'], 'Test': 'TestOtherBoundary', 'Action': 'skip'})
+        with self.assertRaises(ValueError):
+            self.check(events)
+
 
 if __name__ == '__main__':
     unittest.main()
