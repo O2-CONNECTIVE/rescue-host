@@ -6,6 +6,7 @@ import { readFile, mkdir, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { chromium } from 'playwright-core';
+import { registerTextSpacingTests } from './text-spacing.ts';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const config = JSON.parse(await readFile(path.join(root, 'src-tauri/tauri.conf.json'), 'utf8')) as { app: { security: { csp: string } } };
@@ -23,6 +24,7 @@ await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
 after(async () => { await browser.close(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
+registerTextSpacingTests(browser, url);
 
 void test('browserではRust未取得を明示し、keyboard・focus・拡大でも無効操作と診断を保つ', async () => {
   const page = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
