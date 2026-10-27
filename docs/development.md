@@ -44,7 +44,7 @@ Windowsでは`py -3.13 scripts/dev.py tokens`を使います。
 checkerが使用するassertを`PYTHONOPTIMIZE`環境変数で無効にしないため、[Pythonの隔離モード`-I`](https://docs.python.org/3.13/using/cmdline.html#cmdoption-I)を指定しています。
 CIも独立stepでこの入口を使い、非0終了を失敗として扱います。
 トークン関係の開発ツール試験は正常例、不正参照、白文字と白背景のコントラスト低下の3件で、従来の共通入口7件と合わせて10件です。
-全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件の合計49件を実行します。
+全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件・commit-message23件の合計72件を実行します。
 不正例は一時コピーにだけ作成し、公開tokenを変更しません。
 検証範囲は既存checkerの参照規則と指定されたライトテーマのコントラストで、生成物の一致、ブラウザー描画、Tauri実機、製品UIのTDDではありません。
 
