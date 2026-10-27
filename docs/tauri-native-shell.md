@@ -24,7 +24,7 @@ Go、SSH、sidecar、資格情報、保存設定、旧セッション回復、�
 ## IPC と権限
 
 shell 専用 `get_shell_status` は `{ "request": { "protocolVersion": 1 } }` だけを受け付けます。
-未知 field と未対応 version を拒否し、出力の型と値も UI で検証します。
+`request` 内の未知 field と未対応 version を拒否し、出力の型と値も UI で検証します。
 この version は shell 専用で、未確定の Go 製品 protocol の採用ではありません。
 Rust は未配線である事実だけを返し、既存の TCP や別プロセスの終了を観測しません。
 
@@ -43,5 +43,31 @@ fixture で実接続や実停止の成功を作りません。
 CI は readonly、action SHA 固定、有限 timeout、secret なし、deploy なしです。
 build が成功しても、新しい PC での起動、native WebView、支援技術、OS の DPI と高コントラストは合格済みとしません。
 
-Rust と Node の版、lock、license、実行手順、最終結果は実装に合わせて追記します。
+版、lock、直接依存の license と実行手順は [shell README](../ui/tauri/README.md)にまとめています。
+Rust の lock は自己所有 CI で生成した候補を回収し、406 packages が公式 registry と checksum を持つ形であることを確認してコミットしました。
+以後の CI は `--locked` を使い、lock を生成して成功扱いする工程を残しません。
 完全な依存 license 棚卸し、配布 bundle、WebView2 のない環境とオフライン配布は[配布条件](distribution.md)の後続で扱います。
+
+## 確認した結果と未確認
+
+GUI controller の5件は、未配線の応答、不正な成功風応答、IPC error、有限待機、画面破棄の順に赤を観測し、最小実装で緑にしました。
+Chrome の3件は実 HTML/CSS を描画し、keyboard、focus、320 CSS px、文字200%、診断の独立開閉、HTML風応答の拒否、待機中の画面破棄を確認しました。
+reduced motion と forced colors はブラウザー模擬の確認であり、実 OS 設定の確認ではありません。
+
+Windows CI の[最初の失敗](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40494752899)は、試験 EXE の `STATUS_ENTRYPOINT_NOT_FOUND` で、TDD の赤には数えません。
+[再現と import 診断](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40495893299)では同じ失敗を再現し、直接 import の欠落はありませんでした。
+[Tauri の既知問題](https://github.com/tauri-apps/tauri/issues/13419)に沿い、試験 EXE にも Common Controls v6 の manifest を埋め込むことで起動できました。
+manifest は所有するアプリと試験に対する `asInvoker` の設定で、OS やサービスの設定は変更していません。
+その後、[公開IPC試験の赤](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40496623565)で `SHELL_NOT_IMPLEMENTED` を観測し、[最小応答の緑](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40497095768)へ進めました。
+Windows の6件は Tauri mock runtime と実際の command handler と capability を通る試験であり、WebView2 の操作試験ではありません。
+同じ CI で Windows の debug native executable の build も成功しました。
+installer や配布用 Release は生成していません。
+
+![実HTML/CSSのブラウザー描画。Rust IPCがない取得不能状態であり、native起動や実接続の証拠ではありません。](assets/tauri-native-shell-browser.png)
+
+native ウィンドウの起動と close、Windows WebView2、実 DPI、高コントラストの実 OS 設定、スクリーンリーダー、新しい PC、macOS と Linux の native build は未検証です。
+browser の破棄で遅延応答を抑止できたことを、native process や所有通信の終了証明へ読み替えません。
+この shell には終了すべき sidecar や接続資源を作る処理がありません。
+同一ユーザー攻撃者の隔離も完成したとは扱いません。
+
+公式参照: [Rust command](https://v2.tauri.app/develop/calling-rust/)、[capability](https://v2.tauri.app/security/capabilities/)、[CSP](https://v2.tauri.app/security/csp/)、[公開IPCの試験API](https://docs.rs/tauri/2.12.5/tauri/test/index.html)。

@@ -67,7 +67,8 @@ py -3 -m unittest discover -s tests -v
 既存テストの3 OS自動実行、skipの読み方、未検証範囲は[PythonオフラインCI](ci.md)を参照してください。
 
 Tauri移行は[デザイントークン案と状態見本](tauri-design-tokens.md)から進めます。
-現段階はライトテーマのHTML/CSS見本で、Tauri runtimeとバックエンドは未配線です。
+ライトテーマの状態見本と、[Tauriの最小未配線shell](tauri-native-shell.md)を分けて確認します。
+shellにも接続や停止のバックエンドは配線していません。
 共通部品と画面を変更するときは[デザインとアクセシビリティの基準案](design-accessibility.md)を参照してください。
 自動検査と実機確認の分担は[確認方法と証跡](design-accessibility-verification.md)へまとめています。
 

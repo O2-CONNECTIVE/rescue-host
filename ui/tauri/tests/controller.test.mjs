@@ -6,16 +6,25 @@ const unwired = () => ({ protocolVersion: 1, integration: "not_connected", canSt
 
 test("Rustの未配線応答を受けても開始と停止は不可、終了状態は未確認", async () => {
   const states = [];
-  const controller = createShellController({ invoke: async () => unwired(), onChange: state => states.push(state) });
+  const controller = createShellController({ invoke: async (command, args) => {
+    assert.equal(command, "get_shell_status");
+    assert.deepEqual(args, { request: { protocolVersion: 1 } });
+    return unwired();
+  }, onChange: state => states.push(state) });
   await controller.refresh();
   assert.deepEqual(states.at(-1), { kind: "not_connected", diagnostic: "SHELL_UNWIRED" });
 });
 
 test("未対応の成功風payloadを未接続の確認として受理しない", async () => {
-  const states = [];
-  const controller = createShellController({ invoke: async () => ({ ...unwired(), integration: "connected", canStart: true }), onChange: state => states.push(state) });
-  await controller.refresh();
-  assert.deepEqual(states.at(-1), { kind: "unavailable", diagnostic: "INVALID_RESPONSE" });
+  for (const payload of [null, [], { ...unwired(), integration: "connected" },
+    { ...unwired(), canStart: true }, { ...unwired(), canStop: true },
+    { ...unwired(), termination: "confirmed" }, { ...unwired(), protocolVersion: 2 },
+    { ...unwired(), unexpected: "field" }]) {
+    const states = [];
+    const controller = createShellController({ invoke: async () => payload, onChange: state => states.push(state) });
+    await controller.refresh();
+    assert.deepEqual(states.at(-1), { kind: "unavailable", diagnostic: "INVALID_RESPONSE" });
+  }
 });
 
 test("IPC失敗を秘密を含まない取得不能として表示する", async () => {
