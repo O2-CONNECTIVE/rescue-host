@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Driver } from './webdriver.ts';
-import { armRefresh, waitForRefresh } from './refresh-observer.ts';
+import { armRefresh, disarmRefresh, waitForRefresh } from './refresh-observer.ts';
 import { checkKeyboard } from './keyboard.ts';
 import { checkUnwired } from './assert-unwired.ts';
 
@@ -54,6 +54,7 @@ try {
         outlineWidth: active ? parseFloat(getComputedStyle(active).outlineWidth) : 0
       };`),
     armRefresh: () => armRefresh(driver),
+    disarmRefresh: () => disarmRefresh(driver),
     settle: () => waitForRefresh(driver)
   });
   if (keyboard.cycles !== 3 || keyboard.checks !== 22 || keyboard.refreshes !== 3) throw new Error('NATIVE_KEYBOARD_INCOMPLETE');

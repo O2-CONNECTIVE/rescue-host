@@ -16,25 +16,24 @@ export async function armRefresh(driver: Page): Promise<void> {
     return true;`);
   if (armed !== true) throw new Error('NATIVE_REFRESH_ARM_FAILED');
 }
+export async function disarmRefresh(driver: Page): Promise<void> {
+  await driver.execute('window.__rescueKeyboardRefresh?.observer.disconnect(); delete window.__rescueKeyboardRefresh; return true;');
+}
 export async function waitForRefresh(driver: Page): Promise<{ started: boolean; completed: boolean }> {
   const until = Date.now() + 3000;
   let started = false;
   let completed = false;
-  try {
-    do {
-      const value = await driver.execute(`const observation = window.__rescueKeyboardRefresh?.state;
-        return {started:observation?.started === true, completed:observation?.completed === true,
-          settled:document.querySelector('#diagnostic')?.textContent === 'SHELL_UNWIRED'
-            && document.querySelector('#refresh')?.getAttribute('aria-busy') === 'false'};`);
-      if (value !== null && typeof value === 'object' && 'started' in value && 'completed' in value && 'settled' in value) {
-        started = value.started === true;
-        completed = value.completed === true && value.settled === true;
-        if (started && completed) break;
-      }
-      await delay(100);
-    } while (Date.now() < until);
-    return { started, completed };
-  } finally {
-    await driver.execute('window.__rescueKeyboardRefresh?.observer.disconnect(); delete window.__rescueKeyboardRefresh; return true;');
-  }
+  do {
+    const value = await driver.execute(`const observation = window.__rescueKeyboardRefresh?.state;
+      return {started:observation?.started === true, completed:observation?.completed === true,
+        settled:document.querySelector('#diagnostic')?.textContent === 'SHELL_UNWIRED'
+          && document.querySelector('#refresh')?.getAttribute('aria-busy') === 'false'};`);
+    if (value !== null && typeof value === 'object' && 'started' in value && 'completed' in value && 'settled' in value) {
+      started = value.started === true;
+      completed = value.completed === true && value.settled === true;
+      if (started && completed) break;
+    }
+    await delay(100);
+  } while (Date.now() < until);
+  return { started, completed };
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 export type UiKey = 'Tab' | 'Shift+Tab' | 'Enter' | 'Space';
-interface Boundary { press(key: UiKey): Promise<void>; read(): Promise<unknown>; armRefresh(): Promise<void>; settle(): Promise<{ started: boolean; completed: boolean }> }
+interface Boundary { press(key: UiKey): Promise<void>; read(): Promise<unknown>; armRefresh(): Promise<void>; disarmRefresh(): Promise<void>; settle(): Promise<{ started: boolean; completed: boolean }> }
 export async function checkKeyboard(boundary: Boundary): Promise<{ cycles: number; checks: number; refreshes: number }> {
   let checks = 0;
   let refreshes = 0;
@@ -24,10 +24,12 @@ export async function checkKeyboard(boundary: Boundary): Promise<{ cycles: numbe
     await boundary.press('Enter'); await expect('diagnostics', true);
     await boundary.press('Tab'); await expect('refresh', true);
     await boundary.armRefresh();
-    await boundary.press(activation);
-    const observation = await boundary.settle();
-    if (!observation.started || !observation.completed) throw new Error('NATIVE_REFRESH_NOT_OBSERVED');
-    refreshes += 1;
+    try {
+      await boundary.press(activation);
+      const observation = await boundary.settle();
+      if (!observation.started || !observation.completed) throw new Error('NATIVE_REFRESH_NOT_OBSERVED');
+      refreshes += 1;
+    } finally { await boundary.disarmRefresh(); }
     await expect('refresh', true);
     await boundary.press('Shift+Tab'); await expect('diagnostics', true);
   }

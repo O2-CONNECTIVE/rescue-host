@@ -23,7 +23,7 @@ void test('native keyboard境界は逆順focusと反復開閉を3周し、各到
   const sample = (focused: string, expanded: boolean) => ({ focused, expanded, title: 'バックエンド未接続', startDisabled: true, stopDisabled: true, diagnostic: expanded ? 'SHELL_UNWIRED' : null, busy: false, focusVisible: true, outlineWidth: 3 });
   const cycle = [sample('refresh', true), sample('diagnostics', true), sample('diagnostics', false), sample('diagnostics', true), sample('refresh', true), sample('refresh', true), sample('diagnostics', true)];
   const snapshots = [sample('diagnostics', true), ...cycle, ...cycle, ...cycle];
-  const result = await checkKeyboard({ press: key => { keys.push(key); return Promise.resolve(); }, read: () => Promise.resolve(snapshots.shift()), armRefresh: () => Promise.resolve(), settle: () => Promise.resolve({ started: true, completed: true }) });
+  const result = await checkKeyboard({ press: key => { keys.push(key); return Promise.resolve(); }, read: () => Promise.resolve(snapshots.shift()), armRefresh: () => Promise.resolve(), disarmRefresh: () => Promise.resolve(), settle: () => Promise.resolve({ started: true, completed: true }) });
   assert.deepEqual(result, { cycles: 3, checks: 22, refreshes: 3 });
   assert.equal(snapshots.length, 0);
   assert.deepEqual(keys, [
@@ -39,7 +39,7 @@ void test('native keyboard境界はfocus逸脱・outline消失・無効操作の
   for (const bad of [{ focused: 'other' }, { focusVisible: false }, { outlineWidth: 0 }, { startDisabled: false }]) {
     const snapshots = [initial, { ...initial, focused: 'refresh', focusVisible: true, outlineWidth: 3, ...bad }];
     let presses = 0;
-    await assert.rejects(checkKeyboard({ press: () => { presses += 1; return Promise.resolve(); }, read: () => Promise.resolve(snapshots.shift()), armRefresh: () => Promise.resolve(), settle: () => Promise.resolve({ started: true, completed: true }) }));
+    await assert.rejects(checkKeyboard({ press: () => { presses += 1; return Promise.resolve(); }, read: () => Promise.resolve(snapshots.shift()), armRefresh: () => Promise.resolve(), disarmRefresh: () => Promise.resolve(), settle: () => Promise.resolve({ started: true, completed: true }) }));
     assert.equal(presses, 1);
   }
 });
@@ -56,7 +56,28 @@ void test('再確認キーが無反応なら旧状態の維持をnative再確認
       return Promise.resolve();
     },
     read: () => Promise.resolve({ focused, expanded, title: 'バックエンド未接続', startDisabled: true, stopDisabled: true, diagnostic: expanded ? 'SHELL_UNWIRED' : null, busy: false, focusVisible: true, outlineWidth: 3 }),
-    armRefresh: () => Promise.resolve(),
+    armRefresh: () => Promise.resolve(), disarmRefresh: () => Promise.resolve(),
     settle: () => Promise.resolve({ started: false, completed: false })
   }), /NATIVE_REFRESH_NOT_OBSERVED/);
+});
+
+void test('nativeキー送信失敗でもその回のrefresh観測を破棄する', async () => {
+  const { checkKeyboard } = await import('../native-smoke/keyboard.ts');
+  let focused = 'diagnostics';
+  let expanded = true;
+  let armed = false;
+  await assert.rejects(checkKeyboard({
+    press: key => {
+      if (focused === 'refresh' && (key === 'Enter' || key === 'Space')) return Promise.reject(new Error('fixture-key-failure'));
+      if (key === 'Tab') focused = 'refresh';
+      else if (key === 'Shift+Tab') focused = 'diagnostics';
+      else expanded = !expanded;
+      return Promise.resolve();
+    },
+    read: () => Promise.resolve({ focused, expanded, title: 'バックエンド未接続', startDisabled: true, stopDisabled: true, diagnostic: expanded ? 'SHELL_UNWIRED' : null, busy: false, focusVisible: true, outlineWidth: 3 }),
+    armRefresh: () => { armed = true; return Promise.resolve(); },
+    settle: () => Promise.resolve({ started: true, completed: true }),
+    disarmRefresh: () => { armed = false; return Promise.resolve(); }
+  }), /fixture-key-failure/);
+  assert.equal(armed, false);
 });
