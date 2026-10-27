@@ -40,21 +40,3 @@ jobs:
         run: python scripts/dev.py check
       - name: Verify development-tool failure handling
         run: python -m unittest discover -s scripts/tests -v
-      - name: Temporary expected-failure propagation probe
-        if: matrix.os == 'ubuntu-24.04'
-        shell: python
-        run: |
-          from pathlib import Path
-          import shutil
-          import subprocess
-          import sys
-          import tempfile
-
-          with tempfile.TemporaryDirectory(prefix='rescue-ci-exit-probe-') as temporary:
-              root = Path(temporary)
-              (root / 'scripts').mkdir()
-              command = root / 'scripts/dev.py'
-              shutil.copy2('scripts/dev.py', command)
-              result = subprocess.run([sys.executable, str(command), 'check'])
-              print(f'Expected missing-target probe exit: {result.returncode}', flush=True)
-              sys.exit(result.returncode)
