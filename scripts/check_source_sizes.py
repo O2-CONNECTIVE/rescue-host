@@ -135,6 +135,8 @@ def check(report):
 
 
 def verify_report(report):
+    if not report.is_file():
+        raise ValueError('Missing source-size report; checker did not run')
     result = json.loads(report.read_text(encoding='utf-8'))
     expected = {'version': 1, 'check': 'ui-source-size', 'status': 'pass',
                 'policy_sha256': hashlib.sha256(POLICY.read_bytes()).hexdigest(),

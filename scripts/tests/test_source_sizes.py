@@ -116,6 +116,12 @@ class SourceSizeTests(unittest.TestCase):
         self.write('ui/app.tsx', 'é' * 65 + '\n')
         self.assert_failure(self.run_gate(), 'Source size exceeded')
 
+    def test_exact_byte_limit_passes_and_one_byte_over_fails(self):
+        self.write('ui/app.tsx', 'a' * 127 + '\n')
+        self.assertEqual(self.run_gate().returncode, 0)
+        self.write('ui/app.tsx', 'a' * 128 + '\n')
+        self.assert_failure(self.run_gate(), 'bytes=129/128')
+
     def test_bom_unicode_and_newline_encodings_have_same_metrics(self):
         expected = 'const 名 = 1;\n' * 3
         for newline in ('\n', '\r\n', '\r'):
@@ -233,6 +239,16 @@ class SourceSizeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('SOURCE_SIZE_PASS checked=1', result.stdout)
         self.assertEqual(json.loads(self.report.read_text())['nonce'], 'entry-fixture')
+
+    def test_common_entry_propagates_checker_failure(self):
+        self.write('ui/app.tsx', 'value\n' * 4)
+        result = subprocess.run(
+            [sys.executable, str(self.root / 'scripts/dev.py'), 'sizes'],
+            cwd=self.root.parent, capture_output=True, text=True, timeout=30,
+            env=dict(os.environ, SOURCE_SIZE_REPORT=str(self.report), SOURCE_SIZE_NONCE='entry-fixture'),
+        )
+        self.assert_failure(result, 'lines=4/3')
+        self.assertFalse(self.report.exists())
 
 
 if __name__ == '__main__':
