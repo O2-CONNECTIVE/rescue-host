@@ -71,9 +71,16 @@ def check_tokens():
     return subprocess.run([sys.executable, '-I', str(checker)]).returncode == 0
 
 
+def check_source_sizes():
+    checker = ROOT / 'scripts/check_source_sizes.py'
+    if not checker.is_file():
+        raise ValueError('Missing source-size checker: scripts/check_source_sizes.py')
+    return subprocess.run([sys.executable, '-I', str(checker)]).returncode == 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=('test', 'syntax', 'check', 'tokens'))
+    parser.add_argument('command', choices=('test', 'syntax', 'check', 'tokens', 'sizes'))
     args = parser.parse_args()
     actual = platform.python_version()
     print(f'Python: {actual}; CI reference: {CI_PYTHON}; platform: {sys.platform}', flush=True)
@@ -85,6 +92,8 @@ def main():
         os.chdir(ROOT)
         if args.command == 'tokens':
             return 0 if check_tokens() else 1
+        if args.command == 'sizes':
+            return 0 if check_source_sizes() else 1
         python_files('src')
         python_files('tests')
         if args.command in ('test', 'check') and not run_tests():

@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scope": {
+    "root": "ui",
+    "extensions": [".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"]
+  },
+  "limits": {"max_lines": 180, "max_bytes": 24576},
+  "rationale": "Public main 06a5847 has five UI scripts (15–85 lines). React PR35 f0a19cd has twelve scripts: ordinary source up to 60 lines, tests up to 132, scripts up to 17. These initial role budgets leave room for cohesive work; they are not proof of architecture or performance.",
+  "roles": [
+    {
+      "name": "tests",
+      "patterns": ["ui/**/tests/**", "ui/**/*.test.*", "ui/**/*.spec.*"],
+      "max_lines": 240,
+      "max_bytes": 32768,
+      "reason": "Scenario setup and assertions have a different shape from production UI modules."
+    },
+    {
+      "name": "scripts",
+      "patterns": ["ui/**/scripts/**"],
+      "max_lines": 120,
+      "max_bytes": 16384,
+      "reason": "UI build helpers should retain a narrow task. Tests take priority when roles overlap."
+    }
+  ],
+  "exclusions": [
+    {"pattern": "ui/**/node_modules/**", "reason": "Installed third-party dependency output."},
+    {"pattern": "ui/**/dist/**", "reason": "Generated distribution output."},
+    {"pattern": "ui/**/target/**", "reason": "Generated compiler output."},
+    {"pattern": "ui/**/vendor/**", "reason": "Vendored third-party source, reviewed separately from maintained UI."},
+    {"pattern": "ui/**/.next/**", "reason": "Generated framework output."},
+    {"pattern": "ui/**/coverage/**", "reason": "Generated coverage output."},
+    {"pattern": "ui/**/src-tauri/gen/**", "reason": "Generated Tauri schema and binding output."}
+  ],
+  "exceptions": []
+}
