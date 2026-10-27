@@ -1,0 +1,33 @@
+name: Tauri Windows native smoke
+on:
+  pull_request:
+    branches: [main]
+    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+  push:
+    branches: [main]
+    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+permissions:
+  contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  native-smoke:
+    name: Native prerequisites inventory (smoke not implemented yet)
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Read existing WebView2 and driver versions
+        shell: pwsh
+        run: ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$env:RUNNER_TEMP/native-inventory.json"
+      - name: Save sanitized environment inventory
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: native-inventory
+          path: ${{ runner.temp }}/native-inventory.json
+          if-no-files-found: error
+          retention-days: 7
