@@ -166,4 +166,39 @@ mod tests {
     fn has_no_start_session_command() {
         assert!(ipc("main", "http://tauri.localhost", "start_session", json!({})).is_err());
     }
+
+    #[test]
+    fn shared_shell_v1_fixture_matches_public_mock_ipc() {
+        let fixture_text = include_str!("../../contracts/shell-status-v1.json");
+        let fixture: serde_json::Value = serde_json::from_str(fixture_text).unwrap();
+        assert_eq!(fixture["scope"], "unwired-shell-status-v1");
+        let command = fixture["command"].as_str().unwrap();
+        let response = ipc(
+            "main",
+            "http://tauri.localhost",
+            command,
+            json!({"request": fixture["request"]}),
+        )
+        .unwrap();
+        assert_eq!(response, fixture["response"]);
+        let cases = fixture["rejectedRequests"].as_array().unwrap();
+        assert_eq!(cases.len(), 8);
+        let mut ids = std::collections::HashSet::new();
+        for case in cases {
+            let id = case["id"].as_str().unwrap();
+            assert!(!id.is_empty());
+            assert!(ids.insert(id));
+            assert!(case.get("payload").is_some());
+            assert!(
+                ipc(
+                    "main",
+                    "http://tauri.localhost",
+                    command,
+                    json!({"request": case["payload"]}),
+                )
+                .is_err(),
+                "{id}"
+            );
+        }
+    }
 }

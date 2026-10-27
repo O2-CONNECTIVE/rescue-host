@@ -1,0 +1,30 @@
+{
+  "scope": "unwired-shell-status-v1",
+  "command": "get_shell_status",
+  "request": { "protocolVersion": 1 },
+  "response": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": false, "termination": "unconfirmed" },
+  "rejectedRequests": [
+    { "id": "unsupported-version", "payload": { "protocolVersion": 2 } },
+    { "id": "zero-version", "payload": { "protocolVersion": 0 } },
+    { "id": "missing-version", "payload": {} },
+    { "id": "string-version", "payload": { "protocolVersion": "1" } },
+    { "id": "unknown-field", "payload": { "protocolVersion": 1, "unexpected": true } },
+    { "id": "null-request", "payload": null },
+    { "id": "fractional-version", "payload": { "protocolVersion": 1.5 } },
+    { "id": "negative-version", "payload": { "protocolVersion": -1 } }
+  ],
+  "rejectedResponses": [
+    { "id": "null-response", "payload": null },
+    { "id": "array-response", "payload": [] },
+    { "id": "missing-termination", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": false } },
+    { "id": "unknown-field", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": false, "termination": "unconfirmed", "unexpected": true } },
+    { "id": "unsupported-version", "payload": { "protocolVersion": 2, "integration": "not_connected", "canStart": false, "canStop": false, "termination": "unconfirmed" } },
+    { "id": "string-version", "payload": { "protocolVersion": "1", "integration": "not_connected", "canStart": false, "canStop": false, "termination": "unconfirmed" } },
+    { "id": "connected-response", "payload": { "protocolVersion": 1, "integration": "connected", "canStart": false, "canStop": false, "termination": "unconfirmed" } },
+    { "id": "start-enabled", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": true, "canStop": false, "termination": "unconfirmed" } },
+    { "id": "stop-enabled", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": true, "termination": "unconfirmed" } },
+    { "id": "string-permission", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": "false", "canStop": false, "termination": "unconfirmed" } },
+    { "id": "termination-confirmed", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": false, "termination": "confirmed" } },
+    { "id": "null-termination", "payload": { "protocolVersion": 1, "integration": "not_connected", "canStart": false, "canStop": false, "termination": null } }
+  ]
+}

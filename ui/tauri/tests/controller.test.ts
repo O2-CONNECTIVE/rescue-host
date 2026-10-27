@@ -1,8 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from 'node:fs/promises';
 import { createShellController, type ShellState } from "../src/controller.ts";
 
 const unwired = () => ({ protocolVersion: 1, integration: "not_connected", canStart: false, canStop: false, termination: "unconfirmed" });
+
+void test('共有shell v1 fixtureをUIの公開invoke境界で受理・拒否する', async () => {
+  const fixture: unknown = JSON.parse(await readFile(new URL('../contracts/shell-status-v1.json', import.meta.url), 'utf8'));
+  const record = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value);
+  assert.ok(record(fixture));
+  assert.equal(fixture.scope, 'unwired-shell-status-v1');
+  assert.ok('response' in fixture);
+  const observe = async (payload: unknown) => {
+    const states: ShellState[] = [];
+    const controller = createShellController({ invoke: (command, args) => {
+      assert.equal(command, fixture.command);
+      assert.deepEqual(args, { request: fixture.request });
+      return Promise.resolve(payload);
+    }, onChange: state => states.push(state) });
+    await controller.refresh();
+    controller.dispose();
+    return states;
+  };
+  assert.deepEqual(await observe(fixture.response), [{ kind: 'checking', diagnostic: 'CHECKING' }, { kind: 'not_connected', diagnostic: 'SHELL_UNWIRED' }]);
+  assert.ok(Array.isArray(fixture.rejectedResponses));
+  const responses: unknown[] = fixture.rejectedResponses;
+  assert.equal(responses.length, 12);
+  const ids = new Set<string>();
+  for (const sample of responses) {
+    assert.ok(record(sample) && typeof sample.id === 'string' && sample.id.length > 0 && 'payload' in sample);
+    assert.ok(!ids.has(sample.id)); ids.add(sample.id);
+    assert.deepEqual(await observe(sample.payload), [{ kind: 'checking', diagnostic: 'CHECKING' }, { kind: 'unavailable', diagnostic: 'INVALID_RESPONSE' }], sample.id);
+  }
+});
 
 void test("Rustの未配線応答を受けても開始と停止は不可、終了状態は未確認", async () => {
   const states: ShellState[] = [];
