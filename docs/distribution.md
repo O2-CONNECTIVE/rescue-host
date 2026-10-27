@@ -15,7 +15,7 @@ macOSとLinuxの開発チェック成功をWindowsビルド成功へ読み替え
 この指定でもpipによるビルド依存取得は行われ、完全オフラインビルドにはなりません。
 
 現在の[requirements-build.txt](../requirements-build.txt)はWindows x64専用のwheel lockです。
-PyInstaller本体と推移依存7個をexact版とSHA-256で固定し、[build-python-lock.json](../build-python-lock.json)に公式PyPI metadata、wheel URL、upstream source、Python条件、licenseとnoticeの所在を記録します。
+PyInstaller本体と推移依存6個（計7個）をexact版とSHA-256で固定し、[build-python-lock.json](../build-python-lock.json)に公式PyPI metadata、wheel URL、upstream source、Python条件、licenseとnoticeの所在を記録します。
 Linux/macOS用のPyInstallerやmacOSのmacholibは含みません。
 他OSやWindows ARM64/32bit向けの導入には使えません。
 Python、Tk、pipのbootstrap、OS、Uptermを含むビルド環境全体の固定と再現ビルドは別途必要です。

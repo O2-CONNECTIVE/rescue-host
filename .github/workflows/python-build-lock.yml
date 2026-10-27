@@ -3,10 +3,10 @@ name: Python Windows build lock
 on:
   pull_request:
     branches: [main]
-    paths: ['requirements-build.txt', 'build-python-lock.json', 'build_windows.ps1', 'scripts/check_build_lock.py', 'scripts/tests/test_build_lock.py', '.github/workflows/python-build-lock.yml']
+    paths: ['requirements-build.txt', 'build-python-lock.json', 'build_windows.ps1', 'scripts/check_build_lock.py', 'scripts/tests/test_build_lock.py', 'docs/development.md', 'docs/distribution.md', '.github/workflows/python-build-lock.yml']
   push:
     branches: [main]
-    paths: ['requirements-build.txt', 'build-python-lock.json', 'build_windows.ps1', 'scripts/check_build_lock.py', 'scripts/tests/test_build_lock.py', '.github/workflows/python-build-lock.yml']
+    paths: ['requirements-build.txt', 'build-python-lock.json', 'build_windows.ps1', 'scripts/check_build_lock.py', 'scripts/tests/test_build_lock.py', 'docs/development.md', 'docs/distribution.md', '.github/workflows/python-build-lock.yml']
 
 permissions:
   contents: read
