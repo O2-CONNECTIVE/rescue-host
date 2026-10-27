@@ -16,6 +16,43 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_missing_crate_text_uses_only_its_fixed_upstream_revision(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "NOTICE").write_text("fixture frontend notice", encoding="utf-8")
+            (folder / ".cargo_vcs_info.json").write_text(json.dumps({
+                "git": {"sha1": "0a81fd6928ea3b33c8cd484aa4575d50ffb98012"},
+                "path_in_vcs": "alloc-stdlib",
+            }), encoding="utf-8")
+            metadata = folder / "metadata.json"
+            metadata.write_text(json.dumps({"packages": [{
+                "name": "alloc-stdlib", "version": "0.3.0", "license": "BSD-3-Clause",
+                "source": "registry+https://github.com/rust-lang/crates.io-index",
+                "manifest_path": str(folder / "Cargo.toml"),
+            }]}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/collect_tauri_licenses.py"),
+                 "--metadata", str(metadata), "--frontend-notice", str(folder / "NOTICE"),
+                 "--output", str(folder / "output")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            license_file = folder / "output/rust/alloc-stdlib-0.3.0/UPSTREAM-LICENSE"
+            self.assertEqual(hashlib.sha256(license_file.read_bytes()).hexdigest(),
+                             "c0c56f26d9c051cac4d200c34c84e7ae9aaa853e01a982a1df08b09931e518ae")
+            (folder / ".cargo_vcs_info.json").write_text(json.dumps({
+                "git": {"sha1": "0" * 40}, "path_in_vcs": "alloc-stdlib",
+            }), encoding="utf-8")
+            refused = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/collect_tauri_licenses.py"),
+                 "--metadata", str(metadata), "--frontend-notice", str(folder / "NOTICE"),
+                 "--output", str(folder / "refused")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn("UPSTREAM_LICENSE_IDENTITY_MISMATCH", refused.stderr)
+            self.assertFalse((folder / "refused").exists())
+
     def test_notice_only_crate_cannot_supply_the_required_license(self):
         # 独立レビュー修正の回帰。先行実装後の追加であり TDD とは呼ばない。
         with tempfile.TemporaryDirectory() as temporary:

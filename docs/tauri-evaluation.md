@@ -9,6 +9,10 @@ Node / Rust は既存 CI と同じ固定版、npm と Cargo は既存 lock と�
 frontend notice と Cargo metadata の全 registry package の license 本文を収集します。
 後者は build / dev / 別 OS package も含む保守的な集合で、リンク済み SBOM ではありません。
 license 本文が欠けた場合は失敗とし、名称だけで代用しません。
+公式 crate に本文が未収録の alloc-stdlib 0.3.0 だけは、その crate に記録された
+VCS commit の upstream LICENSE を補います。crate checksum、版、SPDX、VCS commit/path、
+本文 hash を supplement 記録と照合し、異なる revision や未登録 crate への代用を拒否します。
+不足は compile 前に全件検出し、欠落を無視して再試行しません。
 ZIP には EXE、license、両 lock、source SHA と個別 hash の manifest、日本語手順を含めます。
 署名のない EXE だけを対象とし、credential や installer を作りません。
 

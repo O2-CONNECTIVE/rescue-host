@@ -5,6 +5,35 @@ import hashlib
 import json
 from pathlib import Path
 import re
+import tomllib
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def supplement(package, root):
+    """crate の版・checksum・記録された VCS と一致する既確認本文だけを補う。"""
+    folder = ROOT / "ui/tauri/third-party"
+    entries = json.loads((folder / "rust-license-supplements.json").read_text(encoding="utf-8"))
+    lock = tomllib.loads((ROOT / "ui/tauri/src-tauri/Cargo.lock").read_text(encoding="utf-8"))
+    for entry in entries:
+        if (entry["name"], entry["version"]) != (package["name"], package["version"]):
+            continue
+        vcs = json.loads((root / ".cargo_vcs_info.json").read_text(encoding="utf-8"))
+        matches = [item for item in lock["package"] if (item["name"], item["version"]) ==
+                   (package["name"], package["version"])]
+        if (len(matches) != 1 or matches[0].get("checksum") != entry["crateChecksum"]
+                or package["license"] != entry["license"] or vcs["git"]["sha1"] != entry["vcsCommit"]
+                or vcs.get("path_in_vcs") != entry["pathInVcs"]):
+            raise ValueError("UPSTREAM_LICENSE_IDENTITY_MISMATCH")
+        file = folder / entry["file"]
+        if file.is_symlink() or file.parent != folder:
+            raise ValueError("UPSTREAM_LICENSE_PATH_INVALID")
+        data = file.read_bytes()
+        if hashlib.sha256(data).hexdigest() != entry["sha256"]:
+            raise ValueError("UPSTREAM_LICENSE_HASH_MISMATCH")
+        return data, entry
+    return None
 
 
 def main():
@@ -16,6 +45,7 @@ def main():
     metadata = json.loads(args.metadata.read_text(encoding="utf-8-sig"))
     collected = {}
     packages = []
+    missing = []
     for package in metadata["packages"]:
         if package["source"] is None:
             continue
@@ -47,9 +77,20 @@ def main():
                             package.get("license_file") and candidate == root / package["license_file"]):
                         has_license = True
         if not has_license:
-            raise ValueError("CRATE_LICENSE_MISSING:" + name)
+            extra = supplement(package, root)
+            if extra is None:
+                missing.append(name)
+            else:
+                data, provenance = extra
+                texts["UPSTREAM-LICENSE"] = hashlib.sha256(data).hexdigest()
+                collected["rust/" + name + "/UPSTREAM-LICENSE"] = data
+        else:
+            extra = None
         packages.append({"name": package["name"], "version": package["version"],
-                         "source": package["source"], "license": package["license"], "texts": texts})
+                         "source": package["source"], "license": package["license"], "texts": texts,
+                         "supplement": extra[1] if extra else None})
+    if missing:
+        raise ValueError("CRATE_LICENSE_MISSING:" + ",".join(missing))
     if not packages:
         raise ValueError("crate 0 件を成功にしません")
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
