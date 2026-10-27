@@ -13,21 +13,54 @@ concurrency:
   cancel-in-progress: true
 jobs:
   native-smoke:
-    name: Native prerequisites inventory (smoke not implemented yet)
+    name: Windows WebView2 launch, IPC and normal close
     runs-on: windows-2022
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - name: Test ownership and close rejection contract
+        run: ./ui/tauri/native-smoke/process-contract.test.ps1
       - name: Read existing WebView2 and driver versions
         shell: pwsh
         run: ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$env:RUNNER_TEMP/native-inventory.json"
-      - name: Save sanitized environment inventory
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Build locked frontend
+        working-directory: ui/tauri
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          exit $LASTEXITCODE
+      - name: Select existing approved CI Rust version
+        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ui/tauri/src-tauri/target
+          key: tauri-windows-rust-1.99.1-${{ hashFiles('ui/tauri/src-tauri/Cargo.lock', 'ui/tauri/src-tauri/Cargo.toml') }}
+          restore-keys: tauri-windows-rust-1.99.1-
+      - name: Build unchanged native shell
+        working-directory: ui/tauri
+        run: cargo +1.99.1 build --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Prepare hash-pinned test tools in runner temp
+        timeout-minutes: 6
+        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -InventoryPath "$env:RUNNER_TEMP/native-inventory.json"
+      - name: One native smoke with bounded owned-process cleanup
+        timeout-minutes: 3
+        run: ./ui/tauri/native-smoke/supervise.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -OutputDirectory "$env:RUNNER_TEMP/native-evidence"
+      - name: Save sanitized native evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: native-inventory
-          path: ${{ runner.temp }}/native-inventory.json
+          name: windows-native-evidence
+          path: |
+            ${{ runner.temp }}/native-inventory.json
+            ${{ runner.temp }}/native-evidence/*.json
+            ${{ runner.temp }}/native-evidence/*.png
           if-no-files-found: error
           retention-days: 7

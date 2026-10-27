@@ -18,7 +18,8 @@
       "vite/client"
     ],
     "allowJs": true,
-    "checkJs": false
+    "checkJs": false,
+    "erasableSyntaxOnly": true
   },
   "include": [
     "src",
@@ -26,6 +27,7 @@
     "scripts",
     "vite.config.ts",
     "eslint.config.mjs",
-    "knip.config.ts"
+    "knip.config.ts",
+    "native-smoke"
   ]
 }
