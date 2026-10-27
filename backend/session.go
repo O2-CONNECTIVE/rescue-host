@@ -57,6 +57,7 @@ type owned struct {
 	transport                              bool               // 生の受理済SSH接続。転送先は含めない。
 	reservation                            *lease.Reservation // 両停止経路を確認するまで容量を保持する。
 	channelPending                         bool               // SSH channel の終了待ちも同じ容量で所有する。
+	servePending                           bool               // Serve と認証後の SSH 終了確認まで transport を所有する。
 	onFailure                              func()
 }
 
@@ -235,7 +236,7 @@ func (s *Session) closeOneLocked(h *owned) {
 			s.releaseClosedLocked(h)
 		}()
 	}
-	if h.closing {
+	if h.closing || h.adapterClosed {
 		return
 	}
 	h.closing = true
@@ -253,7 +254,7 @@ func (s *Session) closeOneLocked(h *owned) {
 }
 
 func (s *Session) releaseClosedLocked(h *owned) {
-	if h.adapterClosed && (h.cutoff == nil || h.cut) && !h.channelPending {
+	if h.adapterClosed && (h.cutoff == nil || h.cut) && !h.channelPending && !h.servePending {
 		if _, ok := s.owners[h]; ok {
 			delete(s.owners, h)
 			if h.transport {
@@ -267,6 +268,12 @@ func (s *Session) releaseClosedLocked(h *owned) {
 }
 
 func (s *Session) closeOne(h *owned) { s.mu.Lock(); defer s.mu.Unlock(); s.closeOneLocked(h) }
+func (s *Session) finishServe(h *owned) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	h.servePending = false
+	s.releaseClosedLocked(h)
+}
 func (s *Session) finishChannel(h *owned) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -309,11 +316,13 @@ func (s *Session) serve(conn net.Conn, cutoff func() error) error {
 	h := s.ownLocked(conn)
 	h.cutoff = cutoff
 	h.transport = true
+	h.servePending = true
 	s.transports++
 	s.handshakes++
 	s.workers.Add(1)
 	s.mu.Unlock()
 	defer s.workers.Done()
+	defer s.finishServe(h)
 	defer s.closeOne(h)
 	handshakeCounted := true
 	defer func() {
@@ -330,6 +339,23 @@ func (s *Session) serve(conn net.Conn, cutoff func() error) error {
 	if e != nil {
 		return e
 	}
+	requestsDone := make(chan struct{})
+	s.workers.Add(1)
+	go func() {
+		defer s.workers.Done()
+		defer close(requestsDone)
+		ssh.DiscardRequests(requests)
+	}()
+	defer func() {
+		// raw の停止を先に開始し、以後の全 return で両 queue と SSH の終了を確認する。
+		// 正常経路の channels 消費が終わってから、残りは公開せず拒否する。
+		s.closeOne(h)
+		for channel := range channels {
+			channel.Reject(ssh.Prohibited, "接続を終了しています")
+		}
+		_ = transport.Wait()
+		<-requestsDone
+	}()
 	s.mu.Lock()
 	s.handshakes--
 	handshakeCounted = false
@@ -341,8 +367,6 @@ func (s *Session) serve(conn net.Conn, cutoff func() error) error {
 	if e = conn.SetDeadline(time.Time{}); e != nil {
 		return e
 	}
-	s.workers.Add(1)
-	go func() { defer s.workers.Done(); ssh.DiscardRequests(requests) }()
 	for channel := range channels {
 		if !s.policy.Permit(channel.ChannelType(), channel.ExtraData()) {
 			channel.Reject(ssh.Prohibited, "要求を拒否しました")
@@ -356,8 +380,6 @@ func (s *Session) serve(conn net.Conn, cutoff func() error) error {
 		s.workers.Add(1)
 		go s.forward(channel, reservation)
 	}
-	// transport 自体の close は所有する raw 接続の close と同じ資源を使う。
-	_ = transport
 	return nil
 }
 
