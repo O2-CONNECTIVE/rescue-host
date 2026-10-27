@@ -1,4 +1,4 @@
-use super::decoder;
+use super::{decoder, Mode};
 use std::io::Write;
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc;
@@ -110,10 +110,10 @@ impl Drop for Owned {
     }
 }
 
-pub fn run() -> Result<(), &'static str> {
+pub fn run(mode: Mode) -> Result<(), &'static str> {
     let executable = std::env::current_exe().map_err(|_| "FIXTURE_LAUNCH_FAILED")?;
     let child = Command::new(executable)
-        .arg("--owned-fixture-v1=graceful")
+        .arg(mode.argument())
         .env_clear()
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
