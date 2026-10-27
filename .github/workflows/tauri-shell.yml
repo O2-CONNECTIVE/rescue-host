@@ -1,0 +1,66 @@
+name: Tauri unwired shell
+
+on:
+  pull_request:
+    branches: [main]
+    paths: ['ui/tauri/**', '.github/workflows/tauri-shell.yml']
+  push:
+    branches: [main]
+    paths: ['ui/tauri/**', '.github/workflows/tauri-shell.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-shell:
+    runs-on: windows-2022
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ui/tauri
+    steps:
+      - name: Check out source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Install locked test-only dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test GUI boundary and build bundled assets
+        run: |
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run test:browser
+          exit $LASTEXITCODE
+      - name: Select official Rust on disposable runner
+        run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --no-self-update
+      - name: Cache Rust compilation
+        id: rust-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ui/tauri/src-tauri/target
+          key: tauri-windows-rust-1.99.1-${{ hashFiles('ui/tauri/src-tauri/Cargo.lock', 'ui/tauri/src-tauri/Cargo.toml') }}
+          restore-keys: tauri-windows-rust-1.99.1-
+      - name: Test Rust public IPC boundary
+        run: cargo +1.99.1 test --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Build native unwired shell without installer
+        run: cargo +1.99.1 build --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Save compilation cache
+        if: always() && steps.rust-cache.outputs.cache-primary-key != '' && steps.rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ui/tauri/src-tauri/target
+          key: ${{ steps.rust-cache.outputs.cache-primary-key }}

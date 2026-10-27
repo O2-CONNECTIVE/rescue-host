@@ -11,3 +11,8 @@ third_party/
 
 # リポジトリ内の一時作業補助
 /.work/
+
+# Tauri shell dependencies and generated assets
+/ui/tauri/node_modules/
+/ui/tauri/src-tauri/target/
+/ui/tauri/src-tauri/gen/
