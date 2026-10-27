@@ -9,6 +9,29 @@ Python 3.11以上とTkinterを想定し、実行時の追加Python依存はあ�
 
 ## オフライン試験
 
+共通入口は追加pip依存のない`scripts/dev.py`です。
+開発時の下限はPython 3.11、既存CIの固定参照版はPython 3.13.17 x64です。
+参照版は[CI workflow](../.github/workflows/python-offline.yml)と揃え、更新時は両方を照合します。
+別のpatch版で実行した場合は版の差を表示し、3.11未満は失敗します。
+Pythonの導入やOS設定変更はコマンドに含みません。
+
+| 環境 | 既存テストと構文の共通チェック | 実行条件 |
+| --- | --- | --- |
+| Linux / macOS | `python3 scripts/dev.py check` | `python3`が3.11以上を選ぶこと。CIと揃える場合は3.13.17を明示的に選ぶ |
+| Windows PowerShell | `py -3.13 scripts/dev.py check` | Pythonランチャーと3.13系が導入済みであること。実際のpatch版は出力で確認する |
+
+リポジトリのルートから実行します。
+別のカレントディレクトリからは`scripts/dev.py`の場所を指定でき、内部の対象解決は呼出元に依存しません。
+`test`は既存unittestだけ、`syntax`は`src/`、`tests/`、`scripts/`のPython構文だけを確認します。
+構文チェックは組み込みの`compile()`を使い、import、GUI起動、bytecodeの保存を行いません。
+`check`はテスト成功後に構文チェックを実行し、いずれかの失敗で非0終了します。
+テストにはTkinterのimportが必要で、GUIの実画面は開きません。
+対象不存在、空の対象、テスト0件、全件skipは成功扱いしません。
+テストの総数、実行数、合格数、skip数、失敗数、エラー数を区別し、skip理由は詳細ログに表示します。
+
+以下の既存コマンドも維持します。
+環境変数の指定とテスト対象の確認は呼出側で行います。
+
 ```bash
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 python3 -m compileall -q src tests
@@ -42,6 +65,8 @@ EXEは未生成で、ARM64も未検証です。
 ダウンロードと同じ経路のチェックサムだけでは配布元侵害を防げません。
 Pythonビルド依存の完全なハッシュ固定と再現ビルドは未実装です。
 ビルドしても新規接続は有効になりません。
+未署名の配布候補に必要なmanifest、ハッシュ、license、依存一覧、sourceとの対応は[配布候補の準備条件](distribution.md)を参照してください。
+開発コマンドはGUIやビルドを自動実行しません。
 
 ## 詳細と履歴
 
