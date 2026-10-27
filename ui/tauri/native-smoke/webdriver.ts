@@ -1,3 +1,4 @@
+import type { UiKey } from './keyboard.ts';
 interface Envelope { value?: unknown }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 export class Driver {
@@ -33,6 +34,12 @@ export class Driver {
     const key = 'element-6066-11e4-a52e-4f735466cecf';
     if (!record(value) || typeof value[key] !== 'string') throw new Error('NATIVE_DRIVER_ELEMENT_MISSING');
     await this.request('POST', `/session/${this.session}/element/${encodeURIComponent(value[key])}/click`, {});
+  }
+  async press(key: UiKey): Promise<void> {
+    const value = key === 'Shift+Tab' ? '\uE004' : { Tab: '\uE004', Enter: '\uE007', Space: '\uE00D' }[key];
+    const actions = [{ type: 'keyDown', value }, { type: 'keyUp', value }];
+    if (key === 'Shift+Tab') { actions.unshift({ type: 'keyDown', value: '\uE008' }); actions.push({ type: 'keyUp', value: '\uE008' }); }
+    await this.request('POST', `/session/${this.session}/actions`, { actions: [{ type: 'key', id: 'ui-keyboard', actions }] });
   }
   async screenshot(): Promise<Buffer> {
     const value = await this.request('GET', `/session/${this.session}/screenshot`);
