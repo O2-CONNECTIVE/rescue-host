@@ -35,6 +35,15 @@ Windowsでは同じ引数を`py -3.13`に渡します。
 これは開発ツールの検証であり、製品の既存82件や新しい製品境界のTDDへ加算しません。
 既存の3 OS CIも共通の`check`とこの開発ツール試験を呼びます。
 
+公開済みデザイントークンの静的検証は`python3 scripts/dev.py tokens`で実行します。
+Windowsでは`py -3.13 scripts/dev.py tokens`を使います。
+このコマンドはTkinterをimportせず、既存checkerを同じPythonの隔離モードで起動します。
+checkerが使用するassertを`PYTHONOPTIMIZE`環境変数で無効にしないため、[Pythonの隔離モード`-I`](https://docs.python.org/3.13/using/cmdline.html#cmdoption-I)を指定しています。
+CIも独立stepでこの入口を使い、非0終了を失敗として扱います。
+開発ツール試験には、トークンの正常例、不正参照、白文字と白背景のコントラスト低下の3件を追加し、従来の7件と合わせて10件を実行します。
+不正例は一時コピーにだけ作成し、公開tokenを変更しません。
+検証範囲は既存checkerの参照規則と指定されたライトテーマのコントラストで、生成物の一致、ブラウザー描画、Tauri実機、製品UIのTDDではありません。
+
 以下の既存コマンドも維持します。
 環境変数の指定とテスト対象の確認は呼出側で行います。
 

@@ -38,5 +38,30 @@ jobs:
         run: python -c "import sys, tkinter; print(sys.version); print('Tk', tkinter.TkVersion)"
       - name: Run existing offline tests and syntax through development entry
         run: python scripts/dev.py check
-      - name: Verify development-tool failure handling
+      - name: Validate published design tokens
+        run: python scripts/dev.py tokens
+      - name: Verify development-tool and token-checker fixtures
         run: python -m unittest discover -s scripts/tests -v
+      - name: Temporary expected token-failure propagation probe
+        if: matrix.os == 'ubuntu-24.04'
+        shell: python
+        run: |
+          from pathlib import Path
+          import shutil
+          import subprocess
+          import sys
+          import tempfile
+
+          with tempfile.TemporaryDirectory(prefix='rescue-ci-token-probe-') as temporary:
+              root = Path(temporary)
+              (root / 'scripts').mkdir()
+              shutil.copy2('scripts/dev.py', root / 'scripts/dev.py')
+              design = root / 'ui/tauri/design'
+              design.mkdir(parents=True)
+              for name in ('check_tokens.py', 'tokens.css', 'components.css', 'preview.css'):
+                  shutil.copy2(Path('ui/tauri/design') / name, design / name)
+              with (design / 'components.css').open('a', encoding='utf-8') as css:
+                  css.write('\n.probe { color: var(--sys-probe-missing); }\n')
+              result = subprocess.run([sys.executable, str(root / 'scripts/dev.py'), 'tokens'])
+              print(f'Expected invalid-token probe exit: {result.returncode}', flush=True)
+              sys.exit(result.returncode)
