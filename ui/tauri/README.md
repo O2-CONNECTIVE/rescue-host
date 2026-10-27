@@ -35,6 +35,7 @@ Vite はローカル依存を `dist/` に bundle し、外部 CDN を必要と�
 `design/tokens.css` が正本で、shadcn の既定 palette を取り込みません。
 build は npm runtime の license と notice 全文、所有 shadcn の MIT notice を `dist/THIRD_PARTY_NOTICES.txt` に同梱します。
 生成物はコミットしません。
+CI の controller/build/browser は同一 step 内で順に実行し、各非0終了を伝播します。build と browser の別 step 化は後続の設計です。
 ブラウザー試験は自己所有 loopback サーバーと既存 Chrome を使い、終了後に破棄します。
 `SHELL_SCREENSHOT_DIR` の指定時だけ実描画を保存します。
 IPC fixture は表示と操作の検証であり、Rust や実通信の成功証拠ではありません。

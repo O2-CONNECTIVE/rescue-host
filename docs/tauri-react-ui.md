@@ -70,5 +70,6 @@ UI-02/03/09 は成功風応答・失敗・timeout の拒否、UI-04/05/06 は可
 
 品質ゲートの負例は、一時コピーへ型不一致、禁止 native import、未観測 Promise、孤立ファイル、未使用直接依存を個別に入れ、期待する診断と非ゼロ終了を確認しました。
 元ソースへ probe は残していません。
-通常と production の Knip はいずれも必須で、CI は frontend gate、browser、Rust fmt/clippy、公開 IPC 試験、Windows build を別 step で表示します。
+通常と production の Knip はいずれも必須で、CI は frontend gate、GUI controller/build/browser、Rust fmt/clippy、公開 IPC 試験、Windows build を段階ごとに表示します。
+controller/build/browser は同一 step 内で順に実行し、非0終了を伝播します。build と browser の別 step 化は後続の設計です。
 native 起動・close、実 WebView2、支援技術、OS 設定、新 PC、SSH fixture、GUI と実 sidecar、配布 EXE は未検証です。
