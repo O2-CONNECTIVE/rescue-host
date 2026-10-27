@@ -74,3 +74,20 @@ artifact の `normalCloseVerified`、`closeObservedBeforeCleanup`、`driverStabl
 主画面と、診断を開いて内容へ scroll した画面を分け、他アプリや desktop を含めません。
 これはこの runner/Runtime の debug executable の結果で、新 PC、配布 EXE/installer、全 Windows/WebView2 版、native keyboard/支援技術/OS 設定の合格ではありません。
 既存44条件や Go/SSH/sidecar の終了条件は完了にしません。
+
+
+## 失敗段階の観測
+
+main `68ed17f2686e0ac4ae3c8976e944e047c7e7d389` の [run 40590119432](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40590119432) は、Node の一般エラーで native 成功0件になりました。
+listener の loopback と所有一致、cleanup 済みは確認できましたが、主画面 PNG と WebView 結果 JSON がありません。
+これは最初の撮影完了前に失敗した証拠であり、keyboard や refresh で失敗したと断定する材料ではありません。
+旧 artifact には内側の例外や段階がなく、原因は未確定です。
+
+以後の `native-observation.json` は、session 作成、origin、readiness、撮影、未配線契約、keyboard、結果保存を固定 phase で区別します。
+request 種別、開始/正常/timeout/transport/HTTP/driver 拒否、経過時間、許可した driver error 区分だけを残します。
+例外文、stack/cause、実行 path、session ID、URL、request/response body、資格情報、生ログは保存しません。
+request は最大256件、phase 履歴は最大32件に制限し、上限後も最後の request と省略数を保持します。
+
+request 15秒、全体60秒、readiness 10秒、worker1件と再実行なしの条件は変更しません。
+観測追加を原因修正や実 SSH の成功へ読み替えません。
+`webview-passed-awaiting-close` は UI/IPC 検査の段階結果であり、通常 close は従来どおり別の `native-result.json` で確認します。
