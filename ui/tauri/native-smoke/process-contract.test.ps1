@@ -49,3 +49,23 @@ Reject { Assert-ListenerSnapshot @($loop4, $unowned) 10 11 } 'NATIVE_LISTENER_OW
 Reject { Assert-ListenerSnapshot @($loop4) 10 11 } 'NATIVE_LISTENER_OWNERSHIP_MISMATCH'
 if ($checks -ne 12) { throw 'PROCESS_CONTRACT_ZERO_OR_INCOMPLETE_TESTS' }
 Write-Output "PROCESS_CONTRACT_PASS checks=$checks (fixtures only; not native evidence)"
+
+# 終了の合否を変えず、OS観測の不一致を保持する公開harness境界。
+. "$PSScriptRoot/close-observation.ps1"
+$handle = [pscustomobject]@{ Slot = 1; Identity = 'verified'; Process = [pscustomobject]@{ HasExited = $false } }
+$facts = Get-ChildCloseFacts @($webview) $app $valid @($handle)
+if ($facts.observed -ne 1 -or $facts.remainingSnapshot -ne 1 -or $facts.rows[0].snapshotState -ne 'same-identity' -or $facts.rows[0].handleState -ne 'live') { throw 'CLOSE_FACTS_LIVE_NOT_RECORDED' }
+$handle.Process.HasExited = $true
+$facts = Get-ChildCloseFacts @($webview) $app $valid @($handle)
+if ($facts.rows[0].snapshotState -ne 'same-identity' -or $facts.rows[0].handleState -ne 'exited') { throw 'CLOSE_FACTS_DISAGREEMENT_LOST' }
+if ($facts.PSObject.Properties.Name -contains 'normalCloseVerified') { throw 'CLOSE_FACTS_FALSE_VERDICT' }
+$handle.Identity = 'unavailable'
+$facts = Get-ChildCloseFacts @($webview) $app $valid @($handle)
+if ($facts.rows[0].handleState -ne 'unavailable' -or $facts.remainingSnapshot -ne 1) { throw 'CLOSE_FACTS_UNAVAILABLE_WAS_SUCCESS' }
+$old = Entry 15 12 'PRIVATE_CHILD_PATH.exe' 'other.exe'
+$old.CreationDate = $app.CreationDate.AddSeconds(-1)
+$facts = Get-ChildCloseFacts @($old) $app @($old) @()
+if ($facts.observed -ne 1 -or $facts.remainingSnapshot -ne 1 -or $facts.rows[0].parentOrder -ne 'child-older' -or $facts.rows[0].role -ne 'other') { throw 'CLOSE_FACTS_CHILD_WAS_FILTERED' }
+$json = $facts | ConvertTo-Json -Depth 5
+if ($json.Contains('PRIVATE_CHILD_PATH') -or $json.Contains('2026-10-27') -or $json.Contains('ProcessId')) { throw 'CLOSE_FACTS_PRIVATE_METADATA_LEAK' }
+Write-Output 'CLOSE_OBSERVATION_CONTRACT_PASS checks=5 (fixtures only; not native evidence)'
