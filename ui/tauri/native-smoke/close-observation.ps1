@@ -64,13 +64,13 @@ function Get-ChildCloseFacts($Children, $App, $Snapshot, $Handles, $WaitStartedU
         $webviewType = 'unavailable'
         if ($ExpectedProfile -and $known -and $App.CreationDate -is [DateTime] -and $child.CreationDate -ge $App.CreationDate -and $child.Name -eq 'msedgewebview2.exe' -and $handlesForSlot.Count -eq 1 -and $handlesForSlot[0].Identity -eq 'verified') {
             try {
-                $types = [Regex]::Matches($child.CommandLine, '(?:^|\s)--type=(?:"([^"]*)"|(\S+))')
+                $types = [Regex]::Matches($child.CommandLine, '(?:^|\s)--type=(?:"([^"]*)"|(\S+))(?=\s|$)')
                 if ($types.Count -eq 0) { $webviewType = 'no-type-flag' }
                 elseif ($types.Count -eq 1) {
                     $type = if ($types[0].Groups[1].Success) { $types[0].Groups[1].Value } else { $types[0].Groups[2].Value }
                     $webviewType = if ($type -in @('renderer', 'gpu-process', 'utility', 'crashpad-handler')) { $type } else { 'other' }
                 }
-                $profileArguments = [Regex]::Matches($child.CommandLine, '(?:^|\s)--user-data-dir=(?:"([^"]*)"|(\S+))')
+                $profileArguments = [Regex]::Matches($child.CommandLine, '(?:^|\s)--user-data-dir=(?:"([^"]*)"|(\S+))(?=\s|$)')
                 if ($profileArguments.Count -eq 1) {
                     $value = if ($profileArguments[0].Groups[1].Success) { $profileArguments[0].Groups[1].Value } else { $profileArguments[0].Groups[2].Value }
                     $profileMatch = [String]::Equals($value.Replace('/', '\').TrimEnd('\'), $ExpectedProfile.Replace('/', '\').TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
