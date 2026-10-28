@@ -55,4 +55,5 @@ remote非admin guestと保護主体を分離し、host operator/admin侵害やad
 
 試験は公開RFC 8032の公開鍵と合成byte sliceだけです。
 独立literalのdecode、literalと一致するencode、launch grammarは公開境界で検証します。
-初期のliteral受理/末尾byte拒否とlaunch parse/formatはRed→Green、追加の拒否行列は既存実装への回帰です。
+初期のliteral受理/末尾byte拒否とlaunch formatは同一入力のRed→Greenです。
+launch parseと追加の拒否行列は回帰として扱い、TDD証拠の件数へ加えません。
