@@ -7,6 +7,7 @@ use model::{Message, Snapshot};
 use object::Object;
 use scalar::{Code, GoState, Protocol};
 use serde::Deserialize;
+use std::io::{self, Write};
 
 pub(crate) const MAX_FRAME_BYTES: usize = 16_384;
 pub(crate) const MAX_DEPTH: usize = 8;
@@ -84,6 +85,45 @@ pub(crate) fn decode_frame(frame: &[u8]) -> Result<Message, Code> {
     Ok(message)
 }
 
-pub(crate) fn encode_frame(_message: &Message) -> Result<Vec<u8>, Code> {
-    Err(Code::InvalidMessage)
+// Reserve one byte for the terminal LF; never extend beyond the wire budget.
+struct FrameWriter(Vec<u8>);
+
+impl Write for FrameWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let length = self.0.len().checked_add(bytes.len());
+        if length.is_none_or(|length| length >= MAX_FRAME_BYTES) {
+            return Err(io::Error::other("frame limit exceeded"));
+        }
+        self.0.extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(crate) fn encode_frame(message: &Message) -> Result<Vec<u8>, Code> {
+    let mut writer = FrameWriter(Vec::with_capacity(MAX_FRAME_BYTES));
+    serde_json::to_writer(&mut writer, message).map_err(|_| Code::InvalidMessage)?;
+    writer.0.push(b'\n');
+    // Internal callers can construct cross-field-invalid snapshots. Apply the
+    // same shape constraint before handing bytes to any future transport.
+    decode_frame(&writer.0)?;
+    Ok(writer.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn frame_writer_reserves_lf_and_rejects_before_extension() {
+        let mut writer = FrameWriter(Vec::with_capacity(MAX_FRAME_BYTES));
+        writer.write_all(&vec![b'x'; MAX_FRAME_BYTES - 1]).unwrap();
+        assert!(writer.write_all(b"x").is_err());
+        assert_eq!(writer.0.len(), MAX_FRAME_BYTES - 1);
+        writer.0.push(b'\n');
+        assert_eq!(writer.0.len(), MAX_FRAME_BYTES);
+    }
 }

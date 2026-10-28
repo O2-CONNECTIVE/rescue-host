@@ -110,3 +110,31 @@ fn encoder_preserves_the_shared_positive_literal_objects() {
     assert_eq!(checked, 12);
     println!("control-encoder: shared positive literals=12");
 }
+
+#[test]
+fn encoder_rejects_an_internal_close_claim_without_terminated_state() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/control-v1/vectors.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for case in fixture["wireCases"].as_array().unwrap() {
+        if !case["frameAccepted"].as_bool().unwrap() {
+            continue;
+        }
+        let mut message = control_codec::decode_frame(&expand(case)).unwrap();
+        let snapshot = match &mut message {
+            control_codec::model::Message::SnapshotResult(value) => &mut value.payload.0,
+            control_codec::model::Message::StateChanged(value) => &mut value.payload.0,
+            _ => continue,
+        };
+        snapshot.go_state = control_codec::scalar::GoState::Active;
+        snapshot.go_close_confirmed = true;
+        assert_eq!(
+            control_codec::encode_frame(&message),
+            Err(control_codec::scalar::Code::InvalidMessage)
+        );
+        checked += 1;
+    }
+    assert_eq!(checked, 2);
+}
