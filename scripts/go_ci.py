@@ -22,6 +22,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/forward': {'policy.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/lease': {'authority.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio': {'loop.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor': {'authority.go'},
 }
 
 
@@ -113,7 +114,7 @@ def build():
         raise ValueError('Production file/package boundary changed')
     require_success(command(['vet', '-mod=readonly', './...']))
     require_success(command(['build', '-mod=readonly', '-trimpath', './...']))
-    print('Vet/build: 7 packages; 8 production Go files; no fixture files or tags', flush=True)
+    print('Vet/build: 8 packages; 9 production Go files; no fixture files or tags', flush=True)
 
 
 def test_inventory():
