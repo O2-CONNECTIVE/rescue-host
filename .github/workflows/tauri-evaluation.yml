@@ -2,10 +2,10 @@ name: Tauri unwired evaluation package
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_package.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
+    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_package.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
+    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
 permissions:
   contents: read
 concurrency:
@@ -30,7 +30,7 @@ jobs:
           if ($sha -notmatch '^[0-9a-f]{40}$') { throw 'SOURCE_SHA_INVALID' }
           "EVALUATION_SOURCE_SHA=$sha" >> $env:GITHUB_ENV
           "CARGO_TARGET_DIR=$env:RUNNER_TEMP/tauri-evaluation-target" >> $env:GITHUB_ENV
-          python -B -m unittest discover -s scripts/tests -p test_tauri_evaluation_package.py -v
+          python -B -m unittest discover -s scripts/tests -p 'test_tauri_evaluation_*.py' -v
           exit $LASTEXITCODE
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
@@ -70,6 +70,10 @@ jobs:
       - name: Extract the exact distribution ZIP and check every file hash
         run: |
           $zip = "$env:RUNNER_TEMP/evaluation-package/RescueHostTauriUnwiredEvaluation-x64.zip"
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exeHash = (Get-FileHash "$env:CARGO_TARGET_DIR/release/rescue-host-shell.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          python -B scripts/verify_tauri_evaluation.py --archive $zip --source $env:EVALUATION_SOURCE_SHA --archive-sha256 $zipHash --exe-sha256 $exeHash > "$env:RUNNER_TEMP/evaluation-package/verification.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Expand-Archive $zip -DestinationPath "$env:RUNNER_TEMP/evaluation-unpacked"
           $root = "$env:RUNNER_TEMP/evaluation-unpacked/RescueHostTauriUnwiredEvaluation"
           $manifest = Get-Content "$root/MANIFEST.json" -Raw | ConvertFrom-Json
