@@ -64,6 +64,7 @@ func finite(ctx context.Context) bool {
 // Readは将来のnative factoryだけが作る単回消費権で、wireやSID文字列からは作れない。
 type Read struct {
 	owner    *Collector
+	request  context.Context
 	frame    []byte
 	deadline time.Time
 	used     bool

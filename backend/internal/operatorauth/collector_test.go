@@ -76,3 +76,17 @@ func TestCancelledCloseRevokesBeforeCheckingCleanupBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCollectedReadRetainsOriginalCancellation(t *testing.T) {
+	f := &collectorFixture{eof: true}
+	c := f.collector()
+	ctx, cancel := context.WithCancel(requestContext(t))
+	r, err := c.Collect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if b, err := r.Consume(requestContext(t)); b != nil || !errors.Is(err, ErrDenied) {
+		t.Fatal("cancelled original request accepted", err)
+	}
+}

@@ -10,8 +10,9 @@ import (
 )
 
 type testServerPeer struct {
-	events *[]string
-	err    error
+	events  *[]string
+	err     error
+	onClose func()
 }
 
 func (p *testServerPeer) Recheck(context.Context) error {
@@ -20,7 +21,25 @@ func (p *testServerPeer) Recheck(context.Context) error {
 }
 func (p *testServerPeer) Close(context.Context) error {
 	*p.events = append(*p.events, "server-close")
+	if p.onClose != nil {
+		p.onClose()
+	}
 	return nil
+}
+
+func TestControllerCleanupCancellationCannotReturnSuccess(t *testing.T) {
+	ctx, cancel := context.WithCancel(requestContext(t))
+	defer cancel()
+	events := []string{}
+	p := &testServerPeer{events: &events, onClose: cancel}
+	c := &Controller{cleanup: time.Second, ops: controllerOps{
+		connect: func(context.Context) (serverPeer, error) { return p, nil },
+		write:   func(context.Context, []byte) error { return nil },
+		read:    func(context.Context) ([]byte, error) { return helloResponse(), nil },
+	}}
+	if b, err := c.Exchange(ctx, requestFrame()); b != nil || err == nil {
+		t.Fatal("cleanup cancelled request accepted", err)
+	}
 }
 func helloResponse() []byte {
 	return []byte(`{"protocol":"rescue-host-service/1","type":"hello","sequence":"0","requestId":"11111111111111111111111111111111","clientNonce":"` + strings.Repeat("2", 64) + `","bootEpoch":"` + strings.Repeat("a", 64) + `","channelNonce":"` + strings.Repeat("b", 64) + `","requestLimit":"1"}` + "\n")

@@ -73,7 +73,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		return nil, ErrDenied
 	}
 	deadline, _ := ctx.Deadline()
-	proof = &Read{owner: c, frame: frame, deadline: deadline}
+	proof = &Read{owner: c, request: ctx, frame: frame, deadline: deadline}
 	c.proof = proof
 	return proof, nil
 }
@@ -101,7 +101,7 @@ func (r *Read) Consume(ctx context.Context) ([]byte, error) {
 		return nil, ErrDenied
 	}
 	r.used = true // 取消・期限失敗でもburnを戻さない。
-	if c.failed || c.closed || !finite(ctx) || !time.Now().Before(r.deadline) {
+	if c.failed || c.closed || !finite(ctx) || !finite(r.request) || !time.Now().Before(r.deadline) {
 		return nil, ErrDenied
 	}
 	return append([]byte(nil), r.frame...), nil

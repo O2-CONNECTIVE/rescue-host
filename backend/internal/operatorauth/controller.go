@@ -56,6 +56,9 @@ func (c *Controller) Exchange(ctx context.Context, frame []byte) (response []byt
 		if c.Close(cleanup) != nil {
 			response = nil
 			err = ErrUnconfirmed
+		} else if !finite(ctx) {
+			response = nil
+			err = ErrDenied
 		}
 	}()
 	frame = append([]byte(nil), frame...)
