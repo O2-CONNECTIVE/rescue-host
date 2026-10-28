@@ -51,6 +51,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run test:browser
           exit $LASTEXITCODE
+      - name: Test operator mock state and history
+        run: node --test tests/operator-controller.test.ts tests/operator-history.test.ts
+      - name: Build separate operator mock assets
+        run: node operator/build.mjs
+      - name: Test operator mock browser interactions
+        run: node --test tests/operator-browser.test.ts
       - name: Select official Rust on disposable runner
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
       - name: Cache Rust compilation
