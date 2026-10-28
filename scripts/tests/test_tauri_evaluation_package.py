@@ -22,9 +22,8 @@ class EvaluationPackageTests(unittest.TestCase):
             (folder / "LICENSE").write_text("crate fixture license", encoding="utf-8")
             docs = folder / "rust-docs"
             docs.mkdir()
-            for name in ["COPYRIGHT", "LICENSE-APACHE", "LICENSE-MIT"]:
+            for name in ["COPYRIGHT.html", "COPYRIGHT-library.html"]:
                 (docs / name).write_text("Rust fixture " + name, encoding="utf-8")
-            (docs / "COPYRIGHT").rename(docs / "COPYRIGHT.html")
             metadata = folder / "metadata.json"
             metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]},
                                            "packages": [{"id": "fixture", "name": "fixture", "version": "1.0.0",
@@ -37,8 +36,8 @@ class EvaluationPackageTests(unittest.TestCase):
                 capture_output=True, text=True, timeout=15,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual((folder / "output/rust-toolchain/LICENSE-MIT").read_text(),
-                             "Rust fixture LICENSE-MIT")
+            self.assertEqual((folder / "output/rust-toolchain/COPYRIGHT-library.html").read_text(),
+                             "Rust fixture COPYRIGHT-library.html")
 
     def test_package_license_scope_follows_the_filtered_windows_graph(self):
         with tempfile.TemporaryDirectory() as temporary:

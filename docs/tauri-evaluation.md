@@ -11,7 +11,7 @@ frontend notice と Windows x64 / custom-protocol の Cargo resolve graph にあ
 後者は build / dev も含む保守的な集合で、リンク済み SBOM ではありません。
 metadata は Cargo の正式な filter-platform を使い、未使用の別 OS package は収集対象にしません。
 Windows graph 内の不足を除外や skip で成功へ変えません。
-固定 Rust toolchain に付属する COPYRIGHT（または同梱形の COPYRIGHT.html）/ LICENSE-APACHE / LICENSE-MIT も同梱し、本文の hash を記録します。
+固定 Rust 1.99.1 の実配布に付属する COPYRIGHT.html / COPYRIGHT-library.html を丸ごと同梱し、各本文の hash を記録します。
 これは compiler と runtime の保守的な notice 集合で、最終 native import の検査も別に行います。
 license 本文が欠けた場合は失敗とし、名称だけで代用しません。
 公式 crate に本文が未収録の固定5件は、crate に記録された VCS commit の upstream LICENSE、

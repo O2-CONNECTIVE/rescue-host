@@ -117,8 +117,8 @@ def main():
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
     rust_notices = {}
     if args.rust_docs:
-        copyright_name = "COPYRIGHT" if (args.rust_docs / "COPYRIGHT").exists() else "COPYRIGHT.html"
-        for name in [copyright_name, "LICENSE-APACHE", "LICENSE-MIT"]:
+        # 固定1.99.1の実配布形式。compiler/libraryの全文書を改変せず保持する。
+        for name in ["COPYRIGHT.html", "COPYRIGHT-library.html"]:
             file = args.rust_docs / name
             if file.is_symlink() or not file.is_file() or not file.read_bytes().strip():
                 raise ValueError("RUST_RUNTIME_NOTICE_MISSING:" + name)
