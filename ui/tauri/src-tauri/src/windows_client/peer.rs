@@ -76,9 +76,7 @@ pub(super) fn bind<A: PeerCalls>(
     expected: ExpectedServer,
 ) -> Result<BoundPeer<A>, Fault> {
     expected.validate()?;
-    if pipe.is_null()
-        || pipe == INVALID_HANDLE_VALUE
-        || api.pipe_server_pid(pipe)? != expected.pid
+    if pipe.is_null() || pipe == INVALID_HANDLE_VALUE || api.pipe_server_pid(pipe)? != expected.pid
     {
         return Err(Fault::Failed);
     }

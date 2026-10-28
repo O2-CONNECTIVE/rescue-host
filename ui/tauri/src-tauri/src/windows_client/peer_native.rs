@@ -144,7 +144,9 @@ impl PeerCalls for Native {
         let mut exited = FILETIME::default();
         let mut kernel = FILETIME::default();
         let mut user = FILETIME::default();
-        if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) } == 0 {
+        if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) }
+            == 0
+        {
             return Err(Fault::Failed);
         }
         Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
