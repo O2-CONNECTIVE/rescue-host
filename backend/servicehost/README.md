@@ -170,3 +170,24 @@ cutoff/配送budgetの実値と供給源、現在の認証・candidateの照合�
 所有intent/予約がある間は、未実装の承認ID/binding/phaseをstatusへ合成せず、SERVICE_NOT_READYを返す。
 実Hostの部分起動失敗/Job/IO回収をこのackへ結ぶ際は、Service.Closeから自身の終了を待つ循環を作らず、同ownerの実joinを別途検証する必要がある。
 このlocal変更は実worker・OS保護・実SSHの成立を保証しない。
+
+## 既存legacy経路の実Host配送とworker join
+
+`delivery.go`は、既存のtrusted typed `ProtectedProvisioning`から一度得たpolicyを`lifetimePolicyValue`へ固定し、同じService/issuer/Launcher/BudgetsのHostを登録してからworkerを公開する。
+controlled modeはこのlegacy helperを拒否し、wire prepare/confirmからのfallbackを作らない。
+所有intent/予約ticketをoperator認証や正規承認へ昇格させる経路でもない。
+controlled側の真正な承認policyと予約の対応付け・配送は、別のproducer契約として未接続である。
+
+停止は同issuerの失効後にdelivery contextを取り消す。
+登録後に遅れて開始したworkerも実Host.Runを一度だけ終了させ、取消後に新しいgrantを発行しない。
+Host.Runの最終結果をServiceの停止原因へ保存し、健康なworkerだけがOS threadをUnlockした後でjoinを公開する。
+最終cleanupで発生したfatalもstickyに保持する。
+
+Serviceの回収は、登録した実workerのjoinを待ち、Serviceに保持した同じHostへfresh cleanup contextでCloseを要求する。
+Host.Runのreturn/joinだけではprocess/Job/stdioの回収成功としない。
+Host.Closeが未確認ならHost/process参照とStopPendingを保持し、plane.Closeやinner cleanup proofへ先に進まない。
+fatalなworkerのjoin後は、別threadでnative回収を再開せず、同じ参照と回収未確認を保持する。
+これはprocess全体のRevertToSelf失敗処置や実OS保護を採用・実証したものではない。
+
+既定のprovisioning/native providerと製品gateは未設定・閉鎖のままである。
+このsource接続を、実HostのWindows起動・SSH・実workerからの制御面receipt・受理transportの成立へ読み替えない。
