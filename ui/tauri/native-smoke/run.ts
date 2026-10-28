@@ -23,9 +23,7 @@ try {
   observation.phase('session-create');
   const browserVersion = await driver.create(application, profile);
   observation.phase('origin-check');
-  const origin = await driver.execute('return location.origin;');
-  observation.origin(origin);
-  if (origin !== 'http://tauri.localhost') throw new Error('NATIVE_ORIGIN_MISMATCH');
+  await driver.waitForBundledDocument((origin, state) => { observation?.origin(origin); observation?.documentState(state); });
   observation.phase('readiness');
   const until = Date.now() + 10000;
   let title: unknown;
