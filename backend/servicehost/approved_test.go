@@ -177,10 +177,12 @@ func TestHostHardDeadlineCancelsWaitAndRevokesBeforeProcessCleanup(t *testing.T)
 	p.HardDeadline = time.Now().Add(500 * time.Millisecond)
 	p.BackendLeaseCeiling = 20 * time.Millisecond
 	closes := 0
+	var cleanupSnapshot supervisor.Snapshot
 	h, err := servicehost.WithRuntime(approvedPolicyFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) { return p, nil }), launcherFunc(func(_ context.Context, a *supervisor.Authority) (servicehost.Process, error) {
 		return &processAPI{wait: func(ctx context.Context) error { <-ctx.Done(); return ctx.Err() }, close: func(ctx context.Context) error {
 			closes++
-			if a.Snapshot(time.Now()).State != supervisor.Revoked {
+			cleanupSnapshot = a.Snapshot(time.Now())
+			if cleanupSnapshot.State != supervisor.Revoked {
 				t.Error("deadline cleanup preceded revoke")
 			}
 			if ctx.Err() != nil {
@@ -192,11 +194,15 @@ func TestHostHardDeadlineCancelsWaitAndRevokesBeforeProcessCleanup(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := h.Run(context.Background()); err == nil {
+	runErr := h.Run(context.Background())
+	if runErr == nil {
 		t.Fatal("deadline became normal runtime exit")
 	}
-	if time.Now().Before(p.HardDeadline) || closes != 1 {
-		t.Fatalf("deadline/ownership mismatch: closes=%d", closes)
+	observed := time.Now()
+	if observed.Before(p.HardDeadline) || closes != 1 {
+		t.Fatalf("deadline/ownership mismatch: closes=%d revoke_reason=%s execution_deadline=%t execution_canceled=%t monotonic_remaining_ns=%d wall_remaining_ns=%d",
+			closes, cleanupSnapshot.Reason, errors.Is(runErr, context.DeadlineExceeded), errors.Is(runErr, context.Canceled),
+			p.HardDeadline.Sub(observed).Nanoseconds(), p.HardDeadline.Round(0).Sub(observed.Round(0)).Nanoseconds())
 	}
 	if s, ok := h.Snapshot(); !ok || s.State != supervisor.Revoked || !s.Grant.HardDeadline.Equal(p.HardDeadline.Round(0)) {
 		t.Fatal("hard deadline changed or grant retained")
