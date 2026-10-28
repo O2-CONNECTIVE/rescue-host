@@ -2,8 +2,11 @@ package servicehost
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 )
 
@@ -81,8 +84,22 @@ func (h *Host) closeOwned(ctx context.Context) error {
 	h.mu.Unlock()
 	if p != nil {
 		if err := p.Close(ctx); err != nil || ctx.Err() != nil {
-			return ErrRuntimeUnconfirmed
+			return runtimeFailure(err)
 		}
 	}
 	return nil
+}
+
+// 内部の詳細は公開せず、同じ goroutine を再利用できない分類だけを残す。
+func runtimeFailure(causes ...error) error {
+	result := ErrRuntimeUnconfirmed
+	for _, fatal := range []error{bootstrapauth.ErrFatal, protectedkey.ErrFatal} {
+		for _, cause := range causes {
+			if errors.Is(cause, fatal) {
+				result = errors.Join(result, fatal)
+				break
+			}
+		}
+	}
+	return result
 }

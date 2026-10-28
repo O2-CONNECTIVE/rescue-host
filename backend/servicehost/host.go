@@ -56,6 +56,8 @@ func New(provisioning ProtectedProvisioning) *Host {
 	return &Host{provisioning: provisioning, done: make(chan struct{}), cleanupGate: gate}
 }
 
+// Run が bootstrapauth.ErrFatal / protectedkey.ErrFatal を返す場合、呼出し元は
+// 同じ goroutine で作業を続けず終了し、疑わしい OS thread を退役させる。
 func (h *Host) Run(ctx context.Context) (result error) {
 	h.mu.Lock()
 	if h.done == nil || h.cleanupGate == nil {
@@ -103,6 +105,7 @@ func (h *Host) Run(ctx context.Context) (result error) {
 	if err != nil {
 		return ErrProvisioningRejected
 	}
+	issued := IssuedLaunch{instance: issuer.Snapshot().InstanceEpoch, binding: challenge.Binding()}
 	runCtx, cancel := context.WithDeadline(ctx, policy.HardDeadline)
 	defer cancel()
 	var owned Process
@@ -114,7 +117,7 @@ func (h *Host) Run(ctx context.Context) (result error) {
 			cleanup, end := context.WithTimeout(context.Background(), h.budgets.Cleanup)
 			defer end()
 			if err := h.closeOwned(cleanup); err != nil || cleanup.Err() != nil {
-				result = ErrRuntimeUnconfirmed
+				result = runtimeFailure(result, err)
 			}
 		}
 	}()
@@ -133,12 +136,16 @@ func (h *Host) Run(ctx context.Context) (result error) {
 		}
 		startup, end := context.WithTimeout(runCtx, h.budgets.Startup)
 		defer end()
-		owned, launchErr = h.launcher.Start(startup, authority)
+		if target, ok := h.launcher.(IssuedLauncher); ok {
+			owned, launchErr = target.StartIssued(startup, authority, issued)
+		} else {
+			owned, launchErr = h.launcher.Start(startup, authority)
+		}
 		h.mu.Lock()
 		h.process = owned
 		h.mu.Unlock()
 		if startup.Err() != nil || owned == nil {
-			launchErr = ErrRuntimeUnconfirmed
+			launchErr = runtimeFailure(launchErr)
 		}
 		return launchErr
 	})
@@ -152,7 +159,7 @@ func (h *Host) Run(ctx context.Context) (result error) {
 		if a == nil && !hasAuthority {
 			return ErrProvisioningRejected
 		}
-		return ErrRuntimeUnconfirmed
+		return runtimeFailure(launchErr)
 	}
 	// Go側のleaseとは別に、serviceが元のhard deadlineとclock regressionを観測する。
 	watchDone := make(chan struct{})
