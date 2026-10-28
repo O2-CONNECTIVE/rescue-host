@@ -44,6 +44,7 @@ type Service struct {
 	approvalThread                            serviceThreadOperations
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
+	dispatch                                  *serviceDispatcher
 	host                                      *Host
 	plane                                     servicePlane
 	cancel                                    context.CancelFunc
@@ -368,14 +369,23 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	sourceDone := make(chan struct{})
 	approvalDone = sourceDone
 	thread := s.approvalThread
-	go func() {
-		policy, err := runServiceApproval(root, cfg.Provisioning, thread)
-		if fatalServiceThread(err) {
-			s.stopFor(err)
-		}
-		approvals <- approved{policy, err}
+	s.mu.Lock()
+	controlled := s.dispatch != nil
+	s.mu.Unlock()
+	if controlled {
+		// controlled経路は許可0のstatus/quiesce専用。legacy承認をfallbackしない。
+		approvals = nil
 		close(sourceDone)
-	}()
+	} else {
+		go func() {
+			policy, err := runServiceApproval(root, cfg.Provisioning, thread)
+			if fatalServiceThread(err) {
+				s.stopFor(err)
+			}
+			approvals <- approved{policy, err}
+			close(sourceDone)
+		}()
+	}
 	observe := time.NewTicker(cfg.Budgets.Observe)
 	defer observe.Stop()
 	var hostDone <-chan error
