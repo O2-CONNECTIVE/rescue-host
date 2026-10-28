@@ -5,7 +5,7 @@
 ## 対象と現在できること
 
 本書はセットアップ、限定検証、撤去を準備する手順で、実行済みの報告ではありません。
-基点はmain `2af1bd7` です。
+基点はmain `2af1bd7a5860e07fe55ae8f05f3ced73352d578a` です。
 実SSHは未有効で、Tauriの開始と停止も無効です。
 固定provisioning、保護されたstdioとstderrの回収、許可0でのSCM制御面ready、正規operatorの承認入口、受理transportは未完成です。
 Windows clientの準備コードや未統合のnative bootstrap候補を、実pipe認証や実SSHの検証済みと扱いません。
