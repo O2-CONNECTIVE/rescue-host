@@ -12,6 +12,7 @@ export function createOperatorController({ adapter, onChange }: {
     if (typeof value !== 'object' || value === null || !('flow' in value) || value.flow !== flow || !('event' in value)) return;
     if (value.event === 'approved' && state.phase === 'waiting') publish({ phase: 'connecting', diagnostic: 'DEMO_APPROVED' });
     if (value.event === 'connected' && state.phase === 'connecting') publish({ phase: 'connected', diagnostic: 'DEMO_CONNECTED' });
+    if (value.event === 'stop_confirmed' && state.phase === 'stopping') publish({ phase: 'stopped', termination: 'confirmed', diagnostic: 'DEMO_STOP_CONFIRMED' });
   });
   return {
     acceptSample(sample: SampleId) {
@@ -24,7 +25,11 @@ export function createOperatorController({ adapter, onChange }: {
       publish({ phase: 'waiting', termination: 'unconfirmed', diagnostic: 'DEMO_APPROVAL_REQUESTED' });
       await adapter.requestApproval(flow);
     },
-    requestStop() { return Promise.resolve(); },
+    async requestStop() {
+      if (state.phase !== 'connected') return;
+      publish({ phase: 'stopping', termination: 'unconfirmed', diagnostic: 'DEMO_STOP_REQUESTED' });
+      await adapter.requestStop(flow);
+    },
     snapshot() { return state; }
   };
 }
