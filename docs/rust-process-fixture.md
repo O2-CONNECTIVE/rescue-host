@@ -31,6 +31,16 @@ reader は1件の boot 通知だけを非 blocking の有限 channel に送り�
 子は他の子を生成せず、ネットワークを使わない既知の有限実行体です。
 この制約を未知・任意の実行体に対する製品 supervisor の保証へ拡張しません。
 
+## GoとRustの共有fixture
+
+[試験専用v1の正本](../contracts/process-fixture-v1.json)に、型とfield、byte上限、順序、固定停止要求、完了条件、26件の固定transcriptをまとめます。
+`schemas`はこのfixture独自の記述で、製品用JSON Schemaやwire版の採用ではありません。
+Goのin-memory stdio入口とRustの固定artifact所有境界は、この同じ正本を参照してから実装します。両端の結合はまだ未実装です。
+`stdoutHex`は実byte列で、正例3件・拒否23件です。各担当は件数、scope/version、安定IDの重複・欠落を確認し、受理可否だけを比較します。
+固定例の`expectedPid: 7`は純粋decoder試験の入力です。実子の検証では所有したChildの実PIDを使い、PID一致を認証にはしません。
+JSONのfield順序や末尾CRLFは許容し、field名の大文字小文字を同一視しません。LF・上限・未知/重複field・整数型・実EOFは既存v1の条件を維持します。
+in-memoryの停止成功は実Sessionや通信遮断の成功ではありません。DEC-01/02、P2専用runtime未実証、製品gate閉鎖を維持し、start・renew・接続情報・権限を追加しません。
+
 ## 最初の縦断
 
 自己生成の無害な有限子が起動し、停止要求を受け、最終応答と正常終了を確認する1件から赤→緑を進めました。

@@ -1,0 +1,277 @@
+{
+  "scope": "non-ssh-owned-process-fixture-v1",
+  "fixtureVersion": 1,
+  "productProtocol": false,
+  "schemas": {
+    "boot": {
+      "fields": {
+        "fixtureVersion": {
+          "type": "uint8",
+          "const": 1
+        },
+        "event": {
+          "type": "string",
+          "const": "boot"
+        },
+        "pid": {
+          "type": "uint32",
+          "equals": "ownedChildPid"
+        }
+      },
+      "additionalFields": false,
+      "requiredFields": [
+        "fixtureVersion",
+        "event",
+        "pid"
+      ]
+    },
+    "final": {
+      "fields": {
+        "fixtureVersion": {
+          "type": "uint8",
+          "const": 1
+        },
+        "event": {
+          "type": "string",
+          "const": "final"
+        },
+        "stopped": {
+          "type": "boolean",
+          "const": true
+        }
+      },
+      "additionalFields": false,
+      "requiredFields": [
+        "fixtureVersion",
+        "event",
+        "stopped"
+      ]
+    }
+  },
+  "framing": {
+    "encoding": "UTF-8",
+    "lineTerminatorHex": "0a",
+    "lineLimitBytes": 128,
+    "totalLimitBytes": 192,
+    "requiredOrder": [
+      "boot",
+      "final"
+    ],
+    "requireActualStdoutEof": true,
+    "rejectDuplicateFields": true,
+    "compareFieldNamesExactly": true
+  },
+  "stop": {
+    "exactStdinHex": "7b226669787475726553746f70223a317d0a",
+    "readLimitBytes": 64,
+    "overLimitProbeBytes": 65,
+    "requireActualStdinEof": true,
+    "requestsPerChild": 1
+  },
+  "testBudgetsMs": {
+    "observation": 2000,
+    "cleanup": 1000,
+    "childSelfLimit": 5000
+  },
+  "normalCompletion": [
+    "acceptedTranscript",
+    "actualStdoutEof",
+    "readerCompleted",
+    "childExit0",
+    "ownedChildReaped",
+    "noForcedCleanup"
+  ],
+  "nonGoals": [
+    "productWireVersion",
+    "peerAuthentication",
+    "sessionAuthorization",
+    "SSH",
+    "networkListeners",
+    "parentDeathGuarantee",
+    "WindowsJobOrDescendants"
+  ],
+  "transcriptCases": [
+    {
+      "id": "PF-001",
+      "name": "normal",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": true
+    },
+    {
+      "id": "PF-002",
+      "name": "key_order_and_CRLF",
+      "expectedPid": 7,
+      "stdoutHex": "7b22706964223a372c226576656e74223a22626f6f74222c226669787475726556657273696f6e223a317d0d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": true
+    },
+    {
+      "id": "PF-003",
+      "name": "exact_192_bytes",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d2020202020202020202020200a",
+      "accepted": true
+    },
+    {
+      "id": "PF-004",
+      "name": "unsupported_version",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a322c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-005",
+      "name": "pid_mismatch",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a387d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-006",
+      "name": "final_before_boot",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-007",
+      "name": "missing_final",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-008",
+      "name": "duplicate_boot_field",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-009",
+      "name": "unknown_boot_field",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a372c226578747261223a307d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-010",
+      "name": "string_version",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a2231222c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-011",
+      "name": "stopped_false",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a66616c73657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-012",
+      "name": "extra_frame",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a7b7d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-013",
+      "name": "missing_final_LF",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d",
+      "accepted": false
+    },
+    {
+      "id": "PF-014",
+      "name": "invalid_UTF8",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626fff74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-015",
+      "name": "line_129_bytes",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-016",
+      "name": "total_193_bytes",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d2020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020202020200a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d202020202020202020202020200a",
+      "accepted": false
+    },
+    {
+      "id": "PF-017",
+      "name": "duplicate_final_field",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275652c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-018",
+      "name": "missing_pid",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74227d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-019",
+      "name": "trailing_JSON",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d7b7d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-020",
+      "name": "fractional_version",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312e302c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-021",
+      "name": "unknown_final_field",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275652c226578747261223a307d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-022",
+      "name": "duplicate_event",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-023",
+      "name": "array_root",
+      "expectedPid": 7,
+      "stdoutHex": "5b5d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-024",
+      "name": "empty_transcript",
+      "expectedPid": 7,
+      "stdoutHex": "",
+      "accepted": false
+    },
+    {
+      "id": "PF-025",
+      "name": "wrong_field_case",
+      "expectedPid": 7,
+      "stdoutHex": "7b224669787475726556657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    },
+    {
+      "id": "PF-026",
+      "name": "escaped_duplicate_field",
+      "expectedPid": 7,
+      "stdoutHex": "7b226669787475726556657273696f6e223a312c22666978747572655c7530303536657273696f6e223a312c226576656e74223a22626f6f74222c22706964223a377d0a7b226669787475726556657273696f6e223a312c226576656e74223a2266696e616c222c2273746f70706564223a747275657d0a",
+      "accepted": false
+    }
+  ]
+}

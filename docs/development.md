@@ -33,11 +33,11 @@ Pythonの導入やOS設定変更はコマンドに含みません。
 テストの総数、実行数、合格数、skip数、失敗数、エラー数を区別し、skip理由は詳細ログに表示します。
 
 開発ツール自身の異常条件は`python3 -m unittest discover -s scripts/tests -v`で別に検証します。
-この全件試験はsource-sizeの29件を含むためPython 3.13以上が必要です（CI固定版は3.13.17）。既存の`check`の下限Python 3.11とは区別します。
+この全件試験はsource-sizeの検証を含むためPython 3.13以上が必要です（CI固定版は3.13.17）。既存の`check`の下限Python 3.11とは区別します。
 build-lockの有限fixtureは同じPythonのpipも使い、ネットワークなしでhash不一致を拒否することを確認します。
 Windowsでは同じ引数を`py -3.13`に渡します。
-対象欠落、空対象、テスト0件、全件skip、テスト失敗、構文不正の7条件で、実際のコマンドが非0終了することを確認します。
-これは開発ツールの検証であり、製品の既存82件や新しい製品境界のTDDへ加算しません。
+対象欠落、空対象、テスト0件、全件skip、テスト失敗、構文不正などで、実際のコマンドが非0終了することを確認します。
+これは開発ツールの検証であり、製品試験や新しい製品境界のTDDへ加算しません。
 既存の3 OS CIも共通の`check`とこの開発ツール試験を呼びます。
 
 公開済みデザイントークンの静的検証は`python3 scripts/dev.py tokens`で実行します。
@@ -45,8 +45,9 @@ Windowsでは`py -3.13 scripts/dev.py tokens`を使います。
 このコマンドはTkinterをimportせず、既存checkerを同じPythonの隔離モードで起動します。
 checkerが使用するassertを`PYTHONOPTIMIZE`環境変数で無効にしないため、[Pythonの隔離モード`-I`](https://docs.python.org/3.13/using/cmdline.html#cmdoption-I)を指定しています。
 CIも独立stepでこの入口を使い、非0終了を失敗として扱います。
-トークン関係の開発ツール試験は正常例、不正参照、白文字と白背景のコントラスト低下の3件で、従来の共通入口7件と合わせて10件です。
-全件試験は共通入口7件・トークン3件・source-size29件・build-lock10件・commit-message23件の合計72件を実行します。
+トークン関係の開発ツール試験は正常例、不正参照、白文字と白背景のコントラスト低下を確認します。
+開発ツールの全件試験は共通入口、トークン、source-size、build-lock、commit-message、Go CIのJSONイベントと資源記録の検証を含みます。
+実行件数、skip、失敗は、対象SHAの[PythonオフラインCI](../.github/workflows/python-offline.yml)のログで確認します。
 不正例は一時コピーにだけ作成し、公開tokenを変更しません。
 検証範囲は既存checkerの参照規則と指定されたライトテーマのコントラストで、生成物の一致、ブラウザー描画、Tauri実機、製品UIのTDDではありません。
 
@@ -71,6 +72,11 @@ py -3 -m unittest discover -s tests -v
 モデルだけの試験は[既存の実行手順](../OFFLINE_BACKEND_MODEL.md#実行)を参照してください。
 
 既存テストの3 OS自動実行、skipの読み方、未検証範囲は[PythonオフラインCI](ci.md)を参照してください。
+
+公開`backend/`の検証は[Go基盤のCI](go-ci.md)と[専用workflow](../.github/workflows/go-offline.yml)を正本とし、依存取得、vet、build境界、通常試験とrace試験を照合します。
+Pythonで行うGo CI helperのJSON検証は、Go試験そのものの実行とは別です。
+Go基盤はmainへ統合済みですが、GUIからの起動、製品IPC、製品の実通信は未配線です。
+P2のruntime未実証、既存44条件の未達・未検証と製品接続gate閉鎖を維持し、コード統合やCI成功を実通信の合格へ読み替えません。
 
 Tauri移行は[デザイントークン案と状態見本](tauri-design-tokens.md)から進めます。
 ライトテーマの状態見本と、[Tauriの最小未配線shell](tauri-native-shell.md)を分けて確認します。
