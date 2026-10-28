@@ -77,7 +77,7 @@ func (h *owned) Close() error {
 	return err
 }
 
-// Session は listener を作らない。渡された受理済み接続と転送先だけを所有する。
+// Session はlistenerを作らない。渡された受理済み接続・sourceと転送先を所有する。
 type Session struct {
 	mu                        sync.Mutex
 	workers                   *activity
@@ -87,6 +87,9 @@ type Session struct {
 	dial                      targetDial
 	owners                    map[*owned]struct{}
 	closing                   bool
+	accepted                  *acceptedTransportOwner
+	activated                 chan struct{}
+	acceptedAttached          chan struct{}
 	handshakes, maxHandshakes int
 	transports, maxTransports int
 	forwarding                int
@@ -170,17 +173,25 @@ func newSessionWithCutoff(c Config, dial targetDial) (*Session, error) {
 		<-a.Done()
 		return nil, e
 	}
-	s := &Session{authority: a, policy: p, config: server, dial: dial, owners: make(map[*owned]struct{}), workers: newActivity(), maxHandshakes: c.MaxHandshakes, maxTransports: c.MaxTransports}
+	s := &Session{authority: a, policy: p, config: server, dial: dial, owners: make(map[*owned]struct{}), workers: newActivity(), activated: make(chan struct{}), acceptedAttached: make(chan struct{}), maxHandshakes: c.MaxHandshakes, maxTransports: c.MaxTransports}
 	s.workers.Add(1)
-	go func() { defer s.workers.Done(); <-a.Context().Done(); s.closeOwned() }()
+	go s.watchAcceptedAndAuthority()
 	return s, nil
 }
 
 func (s *Session) Ready(id Identity) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.authority.Transition(id, lease.Prepared, lease.Ready)
 }
 func (s *Session) Activate(id Identity) error {
-	return s.authority.Transition(id, lease.Ready, lease.Active)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.authority.Transition(id, lease.Ready, lease.Active); err != nil {
+		return err
+	}
+	close(s.activated)
+	return nil
 }
 func (s *Session) Renew(id Identity, sequence uint64) error { return s.authority.Renew(id, sequence) }
 func (s *Session) Revoke(id Identity) error                 { return s.authority.Revoke(id) }
@@ -258,6 +269,9 @@ func (s *Session) releaseClosedLocked(h *owned) {
 			delete(s.owners, h)
 			if h.transport {
 				s.transports--
+				if s.accepted != nil {
+					s.accepted.notifyLocked()
+				}
 			}
 			if h.reservation != nil {
 				h.reservation.Release()
@@ -277,6 +291,9 @@ func (s *Session) closeOwned() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.closing = true
+	if s.accepted != nil {
+		s.accepted.stopLocked(s)
+	}
 	for h := range s.owners {
 		s.closeOneLocked(h)
 	}
@@ -298,21 +315,59 @@ func (s *Session) Serve(conn net.Conn) error {
 // 任意adapterの独立停止経路は公開設定から注入できない。
 // 実TCPでない公開入力は通常Closeだけであり、物理強制停止を保証しない。
 func (s *Session) serve(conn net.Conn, cutoff func() error) error {
+	return s.serveBound(conn, cutoff, nil, nil)
+}
+func (s *Session) serveAccepted(owner *acceptedTransportOwner, entry *acceptedTransport) error {
+	conn := entry.conn
+	if raw, ok := conn.(*net.TCPConn); ok {
+		if raw == nil {
+			return ErrNotAccepted
+		}
+		return s.serveBound(&tcpStream{raw}, tcpCutoff(raw), owner, entry)
+	}
+	return s.serveBound(conn, nil, owner, entry)
+}
+func (s *Session) serveBound(conn net.Conn, cutoff func() error, sourceOwner *acceptedTransportOwner, entry *acceptedTransport) (result error) {
 	if conn == nil {
 		return ErrNotAccepted
 	}
 	s.mu.Lock()
-	if s.closing || !s.authority.IsActive() || s.handshakes >= s.maxHandshakes || s.transports >= s.maxTransports {
+	if sourceOwner != nil {
+		_, pending := sourceOwner.pending[entry]
+		if s.accepted != sourceOwner || entry == nil || !pending || !entry.dispatching {
+			s.mu.Unlock()
+			return ErrNotAccepted
+		}
+	}
+	pending := 0
+	if s.accepted != nil {
+		pending = len(s.accepted.pending)
+	}
+	if sourceOwner != nil {
+		pending--
+	} // このentryが既に持つ予約を二重計上しない。
+	if s.closing || !s.authority.IsActive() || s.handshakes >= s.maxHandshakes || s.transports+pending >= s.maxTransports {
 		s.mu.Unlock()
 		return ErrNotAccepted
 	}
 	h := s.ownLocked(conn)
+	if sourceOwner != nil {
+		entry.transferred = true
+		delete(sourceOwner.pending, entry)
+		sourceOwner.notifyLocked()
+	}
 	h.cutoff = cutoff
 	h.transport = true
 	s.transports++
 	s.handshakes++
 	s.workers.Add(1)
 	s.mu.Unlock()
+	// 所有移転後にadapter等が同じsentinelを返しても、callerへ所有を戻さない。
+	defer func() {
+		if errors.Is(result, ErrNotAccepted) {
+			result = ErrUnconfirmed
+		}
+	}()
 	// 接続の close 確認と Serve の終了を分離し、SSH 後処理まで worker で追跡する。
 	defer s.workers.Done()
 	defer s.closeOne(h)
@@ -488,24 +543,41 @@ func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
 func (s *Session) Close(ctx context.Context) error {
 	s.authority.Revoke(s.authority.Identity())
 	s.closeOwned()
+	if ctx == nil {
+		return ErrUnconfirmed
+	}
+	ctxDone := ctx.Done()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	for {
 		done := s.workers.Signal()
 		select {
-		case <-ctx.Done():
+		case <-ctxDone:
 			return ctx.Err()
 		case <-done:
 		}
 		select {
-		case <-ctx.Done():
+		case <-ctxDone:
 			return ctx.Err()
 		case <-s.authority.Done():
 		}
 		s.mu.Lock()
+		select {
+		case <-ctxDone:
+			s.mu.Unlock()
+			return ctx.Err()
+		default:
+		}
 		if s.workers.Count() != 0 {
 			s.mu.Unlock()
 			continue
 		}
 		if len(s.owners) != 0 {
+			s.mu.Unlock()
+			return ErrUnconfirmed
+		}
+		if s.accepted != nil && (!s.accepted.closed || len(s.accepted.pending) != 0) {
 			s.mu.Unlock()
 			return ErrUnconfirmed
 		}
