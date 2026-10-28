@@ -5,6 +5,10 @@ mod control_codec;
 #[path = "../src/control_coordinator/mod.rs"]
 mod control_coordinator;
 
+#[allow(dead_code, reason = "candidate runtime is not activated")]
+#[path = "../src/owned_process/mod.rs"]
+mod owned_process;
+
 use control_codec::{model::Bootstrap, scalar::Code};
 use control_coordinator::{Conversation, Request};
 use serde_json::{json, Value};
@@ -105,4 +109,43 @@ fn reserved_stop_and_current_responses_are_correlated_without_replay() {
         conversation.peer_snapshot_claim().unwrap().go_state,
         control_codec::scalar::GoState::Ready
     );
+}
+
+#[test]
+fn shared_close_conditions_remain_unconfirmed_without_protected_authority() {
+    use control_codec::scalar::GoState;
+    use control_coordinator::observations::{CloseAssessment, CloseObservations};
+    use owned_process::owner::KillAttempt;
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/control-v1/vectors.json"
+    ))
+    .unwrap();
+    let cases = fixture["terminationCases"].as_array().unwrap();
+    assert_eq!(cases.len(), 5);
+    for case in cases {
+        // The fixture's Go Close premise is only a claim at this unwired IPC.
+        let observations = CloseObservations {
+            peer_close_claim: case["goCloseSuccess"].as_bool().unwrap(),
+            peer_state: Some(if case["terminatedState"].as_bool().unwrap() {
+                GoState::Terminated
+            } else {
+                GoState::Ready
+            }),
+            stop_receipt: false,
+            context_matched: case["sameIdentity"].as_bool().unwrap(),
+            channel_failed: false,
+            reader_eof_completed_reported: case["actualEof"].as_bool().unwrap()
+                && case["readerCompleted"].as_bool().unwrap(),
+            direct_child_reaped: case["ownedExit0AndReaped"].as_bool().unwrap(),
+            direct_child_exit0: case["ownedExit0AndReaped"].as_bool().unwrap(),
+            cleanup_attempted: case["forcedCleanup"].as_bool().unwrap(),
+            kill: KillAttempt::None,
+        };
+        let expected = if case["normalTermination"].as_bool().unwrap() {
+            CloseAssessment::AuthorityNotEstablished
+        } else {
+            CloseAssessment::EvidenceIncomplete
+        };
+        assert_eq!(observations.assess(), expected, "{}", case["id"]);
+    }
 }
