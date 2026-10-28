@@ -21,6 +21,7 @@ import (
 type ChildPlan struct {
 	Spec              childjob.Spec
 	Control           *OwnedControl
+	Stdio             *OwnedStdio
 	Bootstrap         func(context.Context, supervisor.Binding) error
 	PreparedBootstrap PreparedBootstrap
 }
@@ -100,8 +101,11 @@ func (r *JobRuntime) start(ctx context.Context, authority *supervisor.Authority,
 		plan, err = r.source.PrepareChild(ctx, snapshot.Grant)
 	}
 	var owned *jobProcess
-	if plan.Control != nil || plan.PreparedBootstrap != nil {
-		owned = &jobProcess{control: plan.Control, bootstrap: plan.PreparedBootstrap, authority: authority, binding: snapshot.Grant.Binding}
+	if plan.Control != nil || plan.PreparedBootstrap != nil || plan.Stdio != nil {
+		owned = &jobProcess{control: plan.Control, stdio: plan.Stdio, bootstrap: plan.PreparedBootstrap, authority: authority, binding: snapshot.Grant.Binding}
+		if plan.Stdio != nil {
+			plan.Stdio.attach(authority, snapshot.Grant.Binding)
+		}
 	}
 	reject := func() (Process, error) {
 		if owned != nil {
@@ -175,6 +179,7 @@ type jobProcess struct {
 	child     Process
 	control   *OwnedControl
 	bootstrap PreparedBootstrap
+	stdio     *OwnedStdio
 	authority *supervisor.Authority
 	binding   supervisor.Binding
 }
@@ -198,7 +203,7 @@ func (p *jobProcess) Wait(ctx context.Context) error {
 	return p.child.Wait(ctx)
 }
 
-func (p *jobProcess) Close(ctx context.Context) error {
+func (p *jobProcess) Close(ctx context.Context) (result error) {
 	if p == nil {
 		return ErrRuntimeUnconfirmed
 	}
@@ -208,37 +213,47 @@ func (p *jobProcess) Close(ctx context.Context) error {
 	if !controlBudget(ctx) {
 		return ErrRuntimeUnconfirmed
 	}
-	if p.child == nil {
+	// stderrやGo停止の失敗でも、独立して所有するbootstrap/stdio回収を飛ばさない。
+	defer func() {
 		var err error
-		if p.control != nil {
-			err = errors.Join(err, p.control.Abort(ctx))
-		}
 		if p.bootstrap != nil {
-			err = errors.Join(err, p.bootstrap.Close(ctx))
+			err = p.bootstrap.Close(ctx)
 		}
-		return err
+		if p.stdio != nil {
+			err = errors.Join(err, p.stdio.Close(ctx))
+		}
+		if err != nil {
+			result = runtimeFailure(result, err)
+		}
+	}()
+	if p.child == nil {
+		if p.control != nil {
+			return p.control.Abort(ctx)
+		}
+		return nil
 	}
 	if p.control == nil {
-		cleanupErr := p.child.Close(ctx)
-		if p.bootstrap != nil {
-			cleanupErr = errors.Join(cleanupErr, p.bootstrap.Close(ctx))
-		}
-		return runtimeFailure(cleanupErr)
+		return runtimeFailure(p.child.Close(ctx))
 	}
 	deadline, _ := ctx.Deadline()
-	// Goの応答待ちだけで全予算を消費せず、同じ期限内にJob回収の予算を残す。
+	// Go停止とstdout実EOFには残りの半分だけを使い、Job回収を塞がない。
 	goBudget, cancel := context.WithTimeout(ctx, time.Until(deadline)/2)
 	goErr := p.control.Stop(goBudget)
 	cancel()
 	if goErr == nil {
-		// Go Closeと実EOFの後も、exit0/Job空を観測するまで正常成功にしない。
-		// その待機にも残り予算の半分を使い、失敗時の強制回収を残す。
+		// exit0/Job空を別に確認し、さらにstderr実EOFとdrain joinを待つ。
 		graceful, end := context.WithTimeout(ctx, time.Until(deadline)/2)
 		waitErr := p.child.Wait(graceful)
 		end()
 		if waitErr == nil && ctx.Err() == nil {
-			if p.bootstrap != nil {
-				return p.bootstrap.Close(ctx)
+			if p.stdio != nil {
+				// stderrがEOFを返さなくても、取消/資源回収の残り時間を確保する。
+				stderrBudget, finish := context.WithTimeout(ctx, time.Until(deadline)/2)
+				stderrErr := p.stdio.Wait(stderrBudget)
+				finish()
+				if stderrErr != nil {
+					return ErrRuntimeUnconfirmed
+				}
 			}
 			return nil
 		}
@@ -248,9 +263,6 @@ func (p *jobProcess) Close(ctx context.Context) error {
 		cleanupErr = p.control.Abort(ctx)
 	}
 	cleanupErr = errors.Join(cleanupErr, p.child.Close(ctx))
-	if p.bootstrap != nil {
-		cleanupErr = errors.Join(cleanupErr, p.bootstrap.Close(ctx))
-	}
 	// 強制回収が成功しても正常exit0/Go Closeの証拠へ変換しない。
 	return runtimeFailure(goErr, cleanupErr)
 }

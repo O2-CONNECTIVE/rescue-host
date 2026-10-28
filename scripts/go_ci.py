@@ -26,7 +26,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral': {'issuer.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
-        'issued.go', 'nativebootstrap.go'},
+        'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
@@ -34,6 +34,7 @@ PRODUCT_FILES = {
         'acl.go', 'format.go', 'loader.go', 'profile.go', 'scope.go', 'source.go', 'validation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap': {
         'codec.go', 'launch.go', 'native_receiver.go', 'strict.go', 'types.go', 'validate.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childstdio': {'operation.go', 'pipes.go', 'streams.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapio': {'io.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth': {
         'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go'},
@@ -72,18 +73,21 @@ NATIVE_BOOTSTRAP_FILES = {
     'linux': {
         'internal/bootstrap': {'native_receiver_other.go'},
         'internal/bootstrapio': {'native_other.go'},
+        'internal/childstdio': {'native_other.go'},
         'internal/bootstrapauth': {'native_other.go'},
         'servicehost': {'nativebootstrap_other.go'},
     },
     'darwin': {
         'internal/bootstrap': {'native_receiver_other.go'},
         'internal/bootstrapio': {'native_other.go'},
+        'internal/childstdio': {'native_other.go'},
         'internal/bootstrapauth': {'native_other.go'},
         'servicehost': {'nativebootstrap_other.go'},
     },
     'windows': {
         'internal/bootstrap': {'native_receiver_windows.go'},
         'internal/bootstrapio': {'native_windows.go'},
+        'internal/childstdio': {'native_windows.go'},
         'internal/bootstrapauth': {'native_windows.go', 'image_windows.go'},
         'servicehost': {'nativebootstrap_windows.go'},
     },
