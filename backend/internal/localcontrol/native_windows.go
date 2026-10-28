@@ -3,7 +3,6 @@
 package localcontrol
 
 import (
-	"context"
 	"os"
 	"runtime"
 	"unsafe"
@@ -16,15 +15,12 @@ var impersonatePipe = windows.NewLazySystemDLL("advapi32.dll").NewProc("Imperson
 
 type nativeAPI struct{}
 
-// accept/overlapped readとshared codecの結合は別の未実装境界。
-func (nativeAPI) read(context.Context, uintptr) (Command, error) { return Command{}, ErrClosed }
-
 // NewNativeはAPIを構成するだけでpipeを作らない。Openの製品gateは閉鎖中。
-func NewNative(config Config, coordinator *control.Coordinator) (*Boundary, error) {
+func NewNative(config Config, wire control.WireContext, coordinator *control.Coordinator) (*Boundary, error) {
 	if coordinator == nil {
 		return nil, ErrConfig
 	}
-	return newBoundary(config, nativeAPI{}, coordinator)
+	return wireBoundary(config, wire, nativeAPI{}, coordinator)
 }
 
 func (nativeAPI) create(plan PipePlan) (uintptr, error) {

@@ -2,16 +2,9 @@ package localcontrol
 
 import (
 	"context"
-
-	"github.com/O2-CONNECTIVE/rescue-host/backend"
-	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/control"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio"
+	"time"
 )
-
-type Command struct {
-	Generation uint64
-	Identity   backend.Identity
-	Operation  control.Operation
-}
 
 // peerToken はkernel adapterだけが取得する。wireのSID文字列は受け付けない。
 type peerToken struct {
@@ -22,7 +15,9 @@ type kernel interface {
 	create(PipePlan) (uintptr, error)
 	close(uintptr) error
 	inspect(uintptr) error
-	read(context.Context, uintptr) (Command, error)
+	connect(context.Context, uintptr) error
+	read(context.Context, uintptr) ([]byte, error)
+	write(context.Context, uintptr, []byte) error
 	serverSID() (string, error)
 	pin()
 	unpin()
@@ -32,35 +27,36 @@ type kernel interface {
 	revert() error
 	fatal()
 }
-type dispatcher interface {
-	Dispatch(context.Context, control.Operation, backend.Identity) (backend.Snapshot, error)
-}
 
 type Boundary struct {
-	policy     *Policy
-	api        kernel
-	dispatcher dispatcher
-	used       bool
-	openGate   chan struct{}
+	policy   *Policy
+	api      kernel
+	handler  stdio.Service
+	used     bool
+	openGate chan struct{}
 }
 type Endpoint struct {
 	boundary         *Boundary
 	handle           uintptr
 	gate             chan struct{}
 	closed, poisoned bool
+	connected        bool
+	lifetime         context.Context
+	cancel           context.CancelFunc
+	cleanupErr       error
 }
 
-func newBoundary(config Config, api kernel, dispatch dispatcher) (*Boundary, error) {
+func newBoundary(config Config, api kernel, handler stdio.Service) (*Boundary, error) {
 	policy, err := NewPolicy(config)
 	if err != nil {
 		return nil, err
 	}
-	if api == nil || dispatch == nil {
+	if api == nil || handler == nil {
 		return nil, ErrConfig
 	}
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
-	return &Boundary{policy: policy, api: api, dispatcher: dispatch, openGate: gate}, nil
+	return &Boundary{policy: policy, api: api, handler: handler, openGate: gate}, nil
 }
 
 // Open は製品のruntime接続前には常に拒否する。config/envの解除flagはない。
@@ -98,7 +94,8 @@ func (b *Boundary) open(ctx context.Context) (*Endpoint, error) {
 	}
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
-	return &Endpoint{boundary: b, handle: handle, gate: gate}, nil
+	lifetime, cancel := context.WithCancel(context.Background())
+	return &Endpoint{boundary: b, handle: handle, gate: gate, lifetime: lifetime, cancel: cancel}, nil
 }
 
 func (e *Endpoint) acquire(ctx context.Context) error {
@@ -127,40 +124,16 @@ func take(ctx context.Context, gate chan struct{}) error {
 	return nil
 }
 
-// Nextは所有handleのreadから認証/revert/dispatchまでをCloseと直列化する。
-// native read/acceptは未配線なので、現在のruntimeではErrClosedにする。
-func (e *Endpoint) Next(ctx context.Context) (backend.Snapshot, error) {
-	if err := e.acquire(ctx); err != nil {
-		return backend.Snapshot{}, err
-	}
-	defer func() { e.gate <- struct{}{} }()
-	if e.poisoned {
-		return backend.Snapshot{}, ErrFatal
-	}
-	if e.closed {
-		return backend.Snapshot{}, ErrClosed
-	}
-	command, err := e.boundary.api.read(ctx, e.handle)
-	if err != nil {
-		if err == ErrClosed {
-			return backend.Snapshot{}, ErrClosed
-		}
-		return backend.Snapshot{}, ErrDenied
-	}
-	return e.dispatchLocked(ctx, command)
-}
-
-func (e *Endpoint) dispatchLocked(ctx context.Context, command Command) (backend.Snapshot, error) {
-	if command.Generation != e.boundary.policy.config.Generation || command.Identity != e.boundary.policy.config.Identity || (command.Operation != control.ReadSnapshot && command.Operation != control.Stop) {
-		return backend.Snapshot{}, ErrDenied
-	}
+// authenticateLocked は最後にreadしたmessageのkernel tokenだけを認可する。
+// 呼出側はreadからresponse完了まで同じgateを保持する。
+func (e *Endpoint) authenticateLocked(ctx context.Context) error {
 	api, config := e.boundary.api, e.boundary.policy.config
 	if err := api.inspect(e.handle); err != nil {
-		return backend.Snapshot{}, ErrDenied
+		return ErrDenied
 	}
 	sid, err := api.serverSID()
 	if err != nil || sid != config.ServiceSID {
-		return backend.Snapshot{}, ErrDenied
+		return ErrDenied
 	}
 	api.pin()
 	// Process TokenUserの一致だけでthreadがcleanとは推定しない。
@@ -168,35 +141,35 @@ func (e *Endpoint) dispatchLocked(ctx context.Context, command Command) (backend
 	if err != nil || exists {
 		e.poisoned = true
 		api.fatal()
-		return backend.Snapshot{}, ErrFatal
+		return ErrFatal
 	}
 	if err := api.impersonate(e.handle); err != nil {
 		api.unpin()
-		return backend.Snapshot{}, ErrDenied
+		return ErrDenied
 	}
 	peer, tokenErr := api.clientToken()
 	if err := api.revert(); err != nil {
 		e.poisoned = true
 		api.fatal()
-		return backend.Snapshot{}, ErrFatal
+		return ErrFatal
 	}
 	api.unpin()
 	if tokenErr == ErrFatal {
 		e.poisoned = true
 		api.fatal()
-		return backend.Snapshot{}, ErrFatal
+		return ErrFatal
 	}
 	if tokenErr != nil || peer.tokenType != 2 || peer.level < 1 || peer.level > 3 || peer.sid == config.GuestSID || (peer.sid != config.OperatorSID && peer.sid != config.ServiceSID) || ctx.Err() != nil {
-		return backend.Snapshot{}, ErrDenied
+		return ErrDenied
 	}
-	snapshot, err := e.boundary.dispatcher.Dispatch(ctx, command.Operation, command.Identity)
-	if err != nil {
-		return backend.Snapshot{}, ErrUnconfirmed
-	}
-	return snapshot, nil
+	return nil
 }
 
 func (e *Endpoint) Close(ctx context.Context) error {
+	if e == nil {
+		return ErrDenied
+	}
+	e.cancel() // pending accept/read/writeを取消し、token scopeへcloseを割り込ませない。
 	if err := e.acquire(ctx); err != nil {
 		return err
 	}
@@ -205,13 +178,26 @@ func (e *Endpoint) Close(ctx context.Context) error {
 		return ErrFatal
 	}
 	if e.closed {
-		return nil
+		return e.cleanupErr
 	}
+	return e.closeLocked()
+}
+
+func (e *Endpoint) closeLocked() error {
+	if e.closed {
+		return e.cleanupErr
+	}
+	e.cancel()
 	if err := e.boundary.api.close(e.handle); err != nil {
 		e.poisoned = true
 		e.boundary.api.fatal()
 		return ErrFatal
 	}
 	e.closed = true
-	return nil
+	cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := e.boundary.handler.Close(cleanup); err != nil || cleanup.Err() != nil {
+		e.cleanupErr = ErrUnconfirmed
+	}
+	return e.cleanupErr
 }

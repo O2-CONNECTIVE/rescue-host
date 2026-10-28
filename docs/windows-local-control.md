@@ -4,7 +4,8 @@
 
 `backend/internal/localcontrol` は設定検査・kernel token照合・既存dispatcherへの権限境界です。
 public Openは常に拒否し、configや環境変数の解除flagはありません。
-native accept/read/共通codecの結合は未実装でErrClosedです。
+private側にはoverlapped accept/read/write・取消・共通codec/stateの接続を実装しています。
+public gateからは呼ばれず、実native pipe/APIによる動作は未検証です。
 pipe/service/account/password/ACLを実際に作成する実行、実SSH、OS設定変更は行っていません。
 
 ## 2026-10-28版の脅威範囲
@@ -41,7 +42,10 @@ native create adapterはmessage/read-message/local-only、first-instance、overl
 
 Endpointはfactoryが所有したhandleだけを保持し、外部のhandleをattachする入口はありません。
 readから認証・Revert・dispatchまでと、closeは同じgateで直列化します。
-現native readは未実装のため、read-token相関がWindows runtimeで成立したとは扱いません。
+message-modeの1 messageを1個のJSONL frameとして固定16KiB bufferへreadし、そのread完了後に認証します。
+分割messageを結合せず、超過（ERROR_MORE_DATA）・複数frame・LF欠落・不正UTF-8は拒否します。
+clientは1 frameを1回のWriteFileで送る必要があります。
+read/token/codec/writeの間に別readや接続交換を挟まない構造ですが、read-token相関が実Windowsで成立したという実証ではありません。
 GetNamedPipeInfoはserver/messageの防御検査だけで、作成時ACL・remote拒否・instance同一性の証明には使いません。
 
 process TokenUserが明示ServiceSIDと一致することを確認します。これをclient tokenのfallbackには使いません。
@@ -57,19 +61,63 @@ token handleを閉じ、Revert成功を確認してからthread固定を解除�
 Revert失敗のthreadをpoolへ戻さず、mockでfatalがreturnしても後続要求を拒否します。[RevertToSelf](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-reverttoself)
 
 操作は同じgeneration/Identityのsnapshotとstopだけで、start/renew/任意PID/path/commandは提供しません。
-CommandはGo内部の型でありwireを追加するものではなく、将来のreceive側は共通rescue-host-control/1のcodec/stateを通す必要があります。
+旧Command/Next経路を除き、Endpoint.Exchangeを共通rescue-host-control/1のDecodeとAdapterへ接続します。
+NewNativeには保護ownerが事前保持するWireContextを渡し、Configとのgeneration/Identity/nonce一致を検査します。
+helloと、その後の同じgeneration/Identityのsnapshot/stopだけを許可します。
+共通Adapterがhello binding、sequence、request IDと応答相関を検査します。
+channel hash/nonceをSID認証の代わりにはしません。
 認可拒否と、認可済み要求の完了未確認を固定errorで区別し、nativeの生errorやSIDを公開診断へ返しません。
-Endpoint.Closeはpipeだけを閉じ、Sessionの停止やprocess回収の成功とは扱いません。
+Endpoint.CloseはpipeのI/O完了後に所有Adapter.Closeも呼び、同じSessionの失効・Go側終了確認へ進みます。
+失敗はErrUnconfirmedとして保持し、後続Closeで成功へ変換しません。所有process回収の成功とは扱いません。
 
 ## 証跡と残る境界
 
 TDDは明示設定のplan、kernel由来operatorの限定stop、認可済みstop失敗の完了未確認をRED→GREENで確認します。
 factoryの既存thread tokenも負例で拒否前のFAILを観測し、作成前検査でGREENを確認します。
 その後のSID/世代/操作範囲、API失敗、復元順序、close競合はin-memory回帰です。
-Windows専用試験もSDK定数の照合だけで、native APIを呼びません。
+Windows専用試験はSDK定数とfake APIでのoverlapped制御を検査し、native APIを呼びません。
 Windows amd64 crosscompileはABI型のコンパイル確認であり、native実動作や実guestの拒否を証明しません。
 
-accept/read/cancel/writeと共通codecの結合、実ACL/peer確認、SCM/guest分離設定、独立失効、hard deadline執行、process回収は未接続です。
+accept/read/cancel/writeと共通codecのsource接続は追加済みですが、実ACL/peer確認、SCM/guest分離設定、独立失効、hard deadline執行、process回収は未接続・未実証です。
 APIの非returnやOS停止に対する時間保証も未実証です。
 一時runner pipeを使う実API試験が必要なら、接続数・寿命・cleanup・対象APIを先に別報告します。新guest/password作成や既存OS security設定変更は行いません。
 P2専用runtime未実証と拒否された専用/代替再現の停止、double-close NOT_MET、Windows背圧UNVERIFIED、製品gate閉鎖、44条件と配布/本番の別判定を維持します。
+
+## OVERLAPPED所有と有限終了
+
+connect/read/writeはそれぞれmanual-reset・非継承eventと固有OVERLAPPEDを使います。
+Windows APIが保持するOVERLAPPEDとbufferをruntime.Pinnerで固定し、I/Oの完了を確認してから解放します。
+ERROR_PIPE_CONNECTEDはaccept開始前の接続競合として扱い、架空の完了通知を待ちません。
+保留中は短いevent waitでcontextを確認し、取消時には対象OVERLAPPEDだけへCancelIoExを呼びます。
+CancelIoEx成功やERROR_NOT_FOUNDは完了証拠ではないため、event通知とGetOverlappedResultを確認します。
+取消要求後に通常完了した競合も、取消済み要求の成功にはしません。
+[公式overlapped仕様](https://learn.microsoft.com/en-us/windows/win32/ipc/synchronous-and-overlapped-input-and-output)、[CancelIoEx](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex)、[ConnectNamedPipe](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-connectnamedpipe)
+
+取消完了待ちは固定1秒を上限とし、完了不明・wait失敗・event終了不明ならnative fatalでprocessを終了します。
+これは処理性能の合否閾値や、OS API自体の非returnを強制中断する保証ではありません。
+Closeは先にoperation contextを取消し、read/auth/revert/dispatch/writeのgateを取得してからpipeを閉じます。
+Closeの呼出しは不可逆であり、短いClose contextが満了しても要求や接続を再開しません。
+既存token-scope競合試験も「closeがtoken scopeへ割り込まない」に加えて、取消後にはdispatchしないという期待へ強化しました。
+
+同時接続数は1、factoryの作成も1回だけで、disconnect/reconnectのloopはありません。
+read、認証、codec/state、writeのどこかが失敗・取消したら所有handleを閉じ、nonresumeとします。
+応答writeは全byte数を確認し、short writeを成功にしません。
+pipe終了後はfreshな固定1秒contextでAdapter.Closeを1回実行します。
+これはGo内の終了確認だけで、process回収は別ownerの責務です。
+このcontextを無視してreturnしない任意handlerを強制中断する仕組みではありません。
+
+## この変更の試験境界
+
+最初の所有Endpointのread/token/codec/response試験は、Exchange未実装によるcompile REDを観測してからGREENにしました。
+不正frame・guest・generation/start拒否・共通Stateのhello/sequence・read中close・Windows取消完了競合は追加の回帰検査です。
+Windows専用試験はAPI関数を全てfake化して同じoverlapped制御処理を呼び、event/pipe/ACLの実作成を行いません。
+共通Stateとの接続試験も純粋handlerを使い、鍵・listener・実SSH Sessionを生成しません。
+実Coordinatorとのstate/dispatch適合は既存control package試験、NewNativeの実Adapter結合はsource/crosscompileの確認と区別します。
+実named-pipe試験は今回実行していません。実行時には実ServiceSID、実効権限、正規clientの個別access mask、寿命・cleanupの確認が別途必要です。
+既存OS設定・アカウント・ACL・鍵を変更せず、製品の起動gateを開く前に統合ownerの認証/manifest決定と実Windows受入が必要です。
+
+ReadFile/WriteFileはasync時の転送countをNULLで渡し、GetOverlappedResultからだけcountを取得します。
+このためcountを呼出直後に参照するx/sysのconvenience wrapperは使わず、SystemDLLの固定APIを呼びます。
+[ReadFile](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile)、[WriteFile](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)、[GetOverlappedResult](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getoverlappedresult)
+
+所有Adapter cleanupの欠落は独立レビューで発見し、read失敗時にfresh deadline付きCloseが必要な試験の実行RED→最小修正→GREENを確認しました。

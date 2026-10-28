@@ -1,4 +1,4 @@
-// Package localcontrol は未配線のWindows制御IPCの認可境界である。
+// Package localcontrol は製品gate閉鎖中のWindows制御IPCの認可境界である。
 // 実pipeの受付・service導入・OS保護の成立は提供しない。
 package localcontrol
 
