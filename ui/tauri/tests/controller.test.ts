@@ -116,3 +116,18 @@ void test('readerの固定faultだけを診断へ渡し、終了確認不能と�
     controller.dispose();
   }
 });
+
+void test('reader fault風の未知文字列やobjectを診断へ転送しない', async () => {
+  for (const payload of ['unknown-detail', '<img src=x>', { code: 'INVALID_MESSAGE' }, new Error('INVALID_MESSAGE')]) {
+    const states: ShellState[] = [];
+    const controller = createShellController({
+      // Exercise untrusted native rejection values; only exact fixed strings are allowed.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      invoke: () => Promise.reject(payload),
+      onChange: state => states.push(state)
+    });
+    await controller.refresh();
+    assert.deepEqual(states.at(-1), { kind: 'unavailable', diagnostic: 'IPC_ERROR' });
+    controller.dispose();
+  }
+});

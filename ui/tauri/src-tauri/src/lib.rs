@@ -142,6 +142,74 @@ mod tests {
         .map(|response| response.deserialize::<serde_json::Value>().unwrap())
     }
 
+    fn expected_control_context() -> control_codec::model::Bootstrap {
+        serde_json::from_value(json!({
+            "protocol": "rescue-host-control/1", "generation": "1",
+            "identity": {"launchId": "launch-001", "epoch": "1", "policyDigest": "a".repeat(64)},
+            "binding": {"artifactSha256": "b".repeat(64), "channelNonce": "c".repeat(64)}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn active_peer_claim_and_reader_eof_do_not_enable_gui_operations() {
+        use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+        use control_coordinator::reader::{ReaderEnd, ReaderTask};
+        use control_coordinator::Conversation;
+        use std::io::Cursor;
+        use std::thread;
+        use std::time::{Duration, Instant};
+        let expected = expected_control_context();
+        let mut ack = serde_json::to_value(&expected).unwrap();
+        ack["kind"] = json!("hello_ack");
+        let active = json!({
+            "protocol": "rescue-host-control/1", "kind": "state_changed", "generation": "1",
+            "identity": ack["identity"], "sequence": "1",
+            "payload": {"goState": "active", "pending": "0", "active": "1", "owned": "1", "goCloseConfirmed": false}
+        });
+        // Finite memory claims are not an authenticated service or Go activation.
+        let mut bytes = serde_json::to_vec(&ack).unwrap();
+        bytes.push(b'\n');
+        bytes.extend(serde_json::to_vec(&active).unwrap());
+        bytes.push(b'\n');
+        let reader = ReaderTask::start(Cursor::new(bytes)).unwrap();
+        let mut connection = ReaderConnection::new(Conversation::new(expected), reader);
+        connection.hello().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            assert!(Instant::now() < deadline, "finite peer claim deadline");
+            match connection.poll() {
+                ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+                ReaderProgress::Frame => {}
+                ReaderProgress::Joined { end, fault } => {
+                    assert_eq!(end, ReaderEnd::Eof);
+                    assert_eq!(fault, None);
+                    break;
+                }
+                event => panic!("unexpected claim event: {event:?}"),
+            }
+        }
+        assert_eq!(
+            connection.target().peer_snapshot_claim().unwrap().go_state,
+            control_codec::scalar::GoState::Active
+        );
+        let response = ipc_with_runtime(
+            ShellRuntime::monitoring(connection),
+            "main",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}}),
+        )
+        .unwrap();
+        assert_eq!(
+            response,
+            json!({
+                "protocolVersion": 1, "integration": "not_connected",
+                "canStart": false, "canStop": false, "termination": "unconfirmed"
+            })
+        );
+    }
+
     #[test]
     fn public_ipc_preserves_a_joined_reader_fault_instead_of_hiding_it() {
         use control_coordinator::connection::{ReaderConnection, ReaderProgress};
@@ -150,12 +218,7 @@ mod tests {
         use std::io::Cursor;
         use std::thread;
         use std::time::{Duration, Instant};
-        let expected = serde_json::from_value(json!({
-            "protocol": "rescue-host-control/1", "generation": "1",
-            "identity": {"launchId": "launch-001", "epoch": "1", "policyDigest": "a".repeat(64)},
-            "binding": {"artifactSha256": "b".repeat(64), "channelNonce": "c".repeat(64)}
-        }))
-        .unwrap();
+        let expected = expected_control_context();
         let reader = ReaderTask::start(Cursor::new(b"not-json\n")).unwrap();
         let mut connection = ReaderConnection::new(Conversation::new(expected), reader);
         connection.hello().unwrap();

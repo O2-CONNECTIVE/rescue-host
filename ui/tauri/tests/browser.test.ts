@@ -217,5 +217,10 @@ void test('readerの終了未確認コードは狭い拡大表示でも診断内
     await page.screenshot({ path: path.join(process.env.SHELL_SCREENSHOT_DIR, 'reader-fault-narrow200.png'), fullPage: true });
   }
   assert.equal(await page.locator('#diagnostic').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  if (process.env.SHELL_SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await page.evaluate(() => { document.documentElement.style.fontSize = '100%'; });
+    await page.screenshot({ path: path.join(process.env.SHELL_SCREENSHOT_DIR, 'reader-fault-wide.png'), fullPage: true });
+  }
   await page.close();
 });

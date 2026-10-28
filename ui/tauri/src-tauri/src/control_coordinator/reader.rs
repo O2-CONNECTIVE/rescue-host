@@ -136,8 +136,9 @@ impl ReaderTask {
         }
     }
 
-    /// Waits for one frame/join event within a caller budget. Pending retains
-    /// the handle; the deadline does not cancel Read or certify reader completion.
+    /// Applies a caller budget to polling sleeps. Pending retains the handle.
+    /// This is not a hard bound on OS scheduling, blocking Read or final join,
+    /// and reaching the deadline never certifies reader completion.
     pub fn poll_until(&mut self, deadline: Instant) -> ReaderEvent {
         loop {
             let event = self.poll();

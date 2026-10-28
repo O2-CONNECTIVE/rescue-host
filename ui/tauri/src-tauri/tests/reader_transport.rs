@@ -85,3 +85,137 @@ fn rejected_frame_seals_control_and_later_eof_cannot_clear_the_fault() {
     assert_eq!(connection.observation().fault, Some(Code::InvalidMessage));
     assert!(connection.target().peer_snapshot_claim().is_none());
 }
+
+fn wire(value: serde_json::Value) -> Vec<u8> {
+    let mut bytes = serde_json::to_vec(&value).unwrap();
+    bytes.push(b'\n');
+    bytes
+}
+
+fn next_frame(
+    connection: &mut control_coordinator::connection::ReaderConnection<control_coordinator::Conversation>,
+) {
+    use control_coordinator::connection::ReaderProgress;
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite typed frame deadline");
+        match connection.poll() {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            event => {
+                assert_eq!(event, ReaderProgress::Frame);
+                break;
+            }
+        }
+    }
+}
+
+#[test]
+fn worker_drives_snapshot_stop_claims_and_eof_without_authorizing_termination() {
+    use control_codec::scalar::{Code, GoState};
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::{Conversation, Request};
+    use serde_json::json;
+    let bootstrap = serde_json::to_value(expected_context()).unwrap();
+    let mut ack = bootstrap.clone();
+    ack["kind"] = json!("hello_ack");
+    let mut bytes = wire(ack);
+    bytes.extend(wire(json!({
+        "protocol": "rescue-host-control/1", "kind": "snapshot_result", "generation": "1",
+        "identity": bootstrap["identity"], "sequence": "1", "requestId": "1",
+        "payload": {"goState": "ready", "pending": "0", "active": "0", "owned": "0", "goCloseConfirmed": false}
+    })));
+    bytes.extend(wire(json!({
+        "protocol": "rescue-host-control/1", "kind": "receipt", "generation": "1",
+        "identity": bootstrap["identity"], "sequence": "2", "requestId": "2",
+        "payload": {"operation": "stop", "accepted": true}
+    })));
+    bytes.extend(wire(json!({
+        "protocol": "rescue-host-control/1", "kind": "state_changed", "generation": "1",
+        "identity": bootstrap["identity"], "sequence": "3",
+        "payload": {"goState": "terminated", "pending": "0", "active": "0", "owned": "0", "goCloseConfirmed": true}
+    })));
+    let reader = ReaderTask::start(Cursor::new(bytes)).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    next_frame(&mut connection);
+    let snapshot = connection.request(Request::Snapshot).unwrap();
+    let stop = connection.request(Request::Stop).unwrap();
+    let snapshot: serde_json::Value = serde_json::from_slice(&snapshot).unwrap();
+    let stop: serde_json::Value = serde_json::from_slice(&stop).unwrap();
+    assert_eq!(snapshot["requestId"], "1");
+    assert_eq!(stop["kind"], "stop");
+    assert_eq!(stop["sequence"], "2");
+    assert_eq!(stop["requestId"], "2");
+    next_frame(&mut connection);
+    assert_eq!(
+        connection.target().peer_snapshot_claim().unwrap().go_state,
+        GoState::Ready
+    );
+    assert!(!connection.target().peer_stop_receipt());
+    next_frame(&mut connection);
+    assert!(connection.target().peer_stop_receipt());
+    assert_eq!(
+        connection.target().peer_snapshot_claim().unwrap().go_state,
+        GoState::Ready
+    );
+    next_frame(&mut connection);
+    assert_eq!(
+        connection.target().peer_snapshot_claim().unwrap().go_state,
+        GoState::Terminated
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite typed EOF deadline");
+        match connection.poll() {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            event => {
+                assert_eq!(
+                    event,
+                    ReaderProgress::Joined {
+                        end: ReaderEnd::Eof,
+                        fault: None
+                    }
+                );
+                break;
+            }
+        }
+    }
+    assert!(connection.target().is_closed());
+    assert_eq!(
+        connection.request(Request::Snapshot),
+        Err(Code::TerminationUnconfirmed)
+    );
+    let (target, mut reader, observation) = connection.into_parts();
+    assert!(target.peer_snapshot_claim().unwrap().go_close_confirmed);
+    assert_eq!(observation.reader_join, Some(ReaderEnd::Eof));
+    assert_eq!(observation.fault, None);
+    assert_eq!(reader.poll(), ReaderEvent::Closed);
+}
+
+#[test]
+fn an_actual_reader_rejects_a_different_generation_ack() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::Conversation;
+    let mut ack = serde_json::to_value(expected_context()).unwrap();
+    ack["kind"] = serde_json::json!("hello_ack");
+    ack["generation"] = serde_json::json!("2");
+    let reader = ReaderTask::start(Cursor::new(wire(ack))).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite context rejection deadline");
+        match connection.poll() {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            ReaderProgress::Fault(Code::ContextMismatch) => {}
+            ReaderProgress::Joined { fault, .. } => {
+                assert_eq!(fault, Some(Code::ContextMismatch));
+                break;
+            }
+            event => panic!("unexpected generation event: {event:?}"),
+        }
+    }
+    assert!(!connection.target().context_matched());
+    assert!(connection.target().is_closed());
+}
