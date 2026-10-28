@@ -123,3 +123,22 @@ $startup = Get-StartupFacts $driver $edge 'PRIVATE_APP.exe' @($driver, $reused, 
 $serialized = $startup | ConvertTo-Json -Depth 6
 if ($startup.driverIdentity -ne 'ambiguous' -or $serialized.Contains('PRIVATE_') -or $serialized.Contains('ProcessId') -or $serialized.Contains('2026-10-27')) { throw 'STARTUP_IDENTITY_OR_PRIVATE_DATA_LOST' }
 Write-Output 'STARTUP_OBSERVATION_CONTRACT_PASS checks=3 (fixtures only; not native evidence)'
+
+$startupFolder = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $startupFolder -ErrorAction Stop | Out-Null
+try {
+    $notDirectory = Join-Path $startupFolder 'PRIVATE_OUTPUT'
+    Set-Content -LiteralPath $notDirectory -Value 'fixture'
+    $failedReport = [ordered]@{ nativeTestsPassed = 0; normalCloseVerified = $false; cleanupFailures = 0 }
+    $saveCode = 'none'
+    try { Save-NativeReport $failedReport $notDirectory }
+    catch { $saveCode = if ($_.Exception.Message -eq 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED') { $_.Exception.Message } else { 'unclassified' } }
+    $unknownAddress = [pscustomobject]@{ LocalPort = 4444; LocalAddress = 'PRIVATE_INVALID_ADDRESS'; OwningProcess = 10 }
+    $facts = Get-StartupFacts $driver $edge 'app.exe' $valid @($unknownAddress)
+    $failures = 0
+    if ($saveCode -ne 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED') { Write-Output 'STARTUP_SAVE_FAILURE_UNCLASSIFIED'; $failures += 1 }
+    if ($null -ne $facts.listeners[0].loopback) { Write-Output 'STARTUP_UNKNOWN_ADDRESS_FALSE_FACT'; $failures += 1 }
+    if ($failedReport.nativeTestsPassed -ne 0 -or $failedReport.normalCloseVerified -or $failedReport.cleanupFailures -ne 0) { throw 'STARTUP_SAVE_CHANGED_ORIGINAL_VERDICT' }
+    if ($failures -ne 0) { throw 'STARTUP_DIAGNOSTIC_FAILURE_CONTRACT' }
+} finally { Remove-Item -LiteralPath $startupFolder -Recurse -Force }
+Write-Output 'STARTUP_DIAGNOSTIC_FAILURE_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'
