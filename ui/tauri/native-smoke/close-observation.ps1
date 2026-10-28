@@ -1,4 +1,8 @@
 # 診断専用。合否や所有子の集合を決めず、元の観測を匿名化して並記する。
+function Save-NativeReport($Report, [string]$OutputDirectory) {
+    try { $Report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutputDirectory 'native-result.json') -Encoding utf8 }
+    catch { throw 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED' }
+}
 function Open-ChildObservationHandles($Children) {
     $slot = 0
     foreach ($child in $Children) {
@@ -109,8 +113,7 @@ function Complete-NativeCleanup($Node, $Driver, $Children, $App, $Handles, $Repo
             $Report.cleanupFailures += $Report.childHandleDisposeFailures
         } catch { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'handle-dispose-failed' }
         finally {
-            try { $Report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutputDirectory 'native-result.json') -Encoding utf8 }
-            catch { throw 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED' }
+            Save-NativeReport $Report $OutputDirectory
         }
     }
 }

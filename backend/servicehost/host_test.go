@@ -10,21 +10,18 @@ import (
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
-type provisioningFunc func(context.Context) (supervisor.ProvisionedGrant, error)
+type provisioningFunc func(context.Context) (ephemeral.ApprovedPolicy, error)
 
-func (f provisioningFunc) ReadApproved(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+func (f provisioningFunc) ReadApproved(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 	return f(ctx)
 }
 
-func provisionedGrant() supervisor.ProvisionedGrant {
-	return supervisor.ProvisionedGrant{
-		Binding: supervisor.Binding{
-			Generation: 1,
-			Identity: supervisor.Identity{LaunchID: "approved-launch", Epoch: "1",
-				PolicyDigest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
-		},
+func provisionedPolicy() ephemeral.ApprovedPolicy {
+	return ephemeral.ApprovedPolicy{
+		PolicyDigest: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		KeySetDigest: [32]byte{1}, GuestBoundary: supervisor.SeparatedNonAdminGuest,
 		HardDeadline: time.Now().Round(0).Add(time.Minute), BackendLeaseCeiling: 3 * time.Second,
 	}
@@ -38,21 +35,21 @@ func TestUnconfiguredHostFailsClosed(t *testing.T) {
 }
 
 func TestApprovedReadStillCannotActivateAndRetainsImmutableGrant(t *testing.T) {
-	input := provisionedGrant()
+	input := provisionedPolicy()
 	original := input
 	reads := 0
-	host := servicehost.New(provisioningFunc(func(context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
 		reads++
 		return input, nil
 	}))
 	if err := host.Run(context.Background()); !errors.Is(err, servicehost.ErrActivationUnconfigured) {
 		t.Fatalf("unconfigured activation was not refused: %v", err)
 	}
-	input.Binding.Generation = 2
+	input.KeySetDigest[0] = 2
 	input.HardDeadline = input.HardDeadline.Add(time.Hour)
 	for i := 0; i < 2; i++ {
 		snapshot, ok := host.Snapshot()
-		if !ok || snapshot.State != supervisor.Revoked || snapshot.Grant != original {
+		if !ok || snapshot.State != supervisor.Revoked || snapshot.Grant.KeySetDigest != original.KeySetDigest || snapshot.Grant.HardDeadline != original.HardDeadline || snapshot.Grant.BackendLeaseCeiling != original.BackendLeaseCeiling || snapshot.Grant.Binding.Identity.PolicyDigest != original.PolicyDigest || snapshot.Grant.Binding.Generation != 1 {
 			t.Fatalf("grant changed or remained authorized after failed startup: %+v, present=%v", snapshot, ok)
 		}
 		snapshot.Grant.KeySetDigest[0] = 2
@@ -64,9 +61,9 @@ func TestApprovedReadStillCannotActivateAndRetainsImmutableGrant(t *testing.T) {
 
 func TestHostDoesNotReloadOrRestartAfterRejectedActivation(t *testing.T) {
 	reads := 0
-	host := servicehost.New(provisioningFunc(func(context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
 		reads++
-		return provisionedGrant(), nil
+		return provisionedPolicy(), nil
 	}))
 	if err := host.Run(context.Background()); !errors.Is(err, servicehost.ErrActivationUnconfigured) {
 		t.Fatal(err)
@@ -83,9 +80,9 @@ func TestHostDoesNotReloadOrRestartAfterRejectedActivation(t *testing.T) {
 
 func TestCancellationBeforeReadNeverLoadsPolicy(t *testing.T) {
 	reads := 0
-	host := servicehost.New(provisioningFunc(func(context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
 		reads++
-		return provisionedGrant(), nil
+		return provisionedPolicy(), nil
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -99,10 +96,10 @@ func TestCancellationBeforeReadNeverLoadsPolicy(t *testing.T) {
 
 func TestLatePolicyAfterCancellationIsNotAccepted(t *testing.T) {
 	entered := make(chan struct{})
-	host := servicehost.New(provisioningFunc(func(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 		close(entered)
 		<-ctx.Done()
-		return provisionedGrant(), nil
+		return provisionedPolicy(), nil
 	}))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -130,13 +127,13 @@ func TestLatePolicyAfterCancellationIsNotAccepted(t *testing.T) {
 func TestProvisioningFailuresAreSanitizedAndDoNotRetainAGrant(t *testing.T) {
 	for _, name := range []string{"error", "empty", "admin-unsupported", "expired"} {
 		t.Run(name, func(t *testing.T) {
-			host := servicehost.New(provisioningFunc(func(context.Context) (supervisor.ProvisionedGrant, error) {
-				g := provisionedGrant()
+			host := servicehost.New(provisioningFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
+				g := provisionedPolicy()
 				switch name {
 				case "error":
 					return g, errors.New("do-not-forward")
 				case "empty":
-					return supervisor.ProvisionedGrant{}, nil
+					return ephemeral.ApprovedPolicy{}, nil
 				case "admin-unsupported":
 					g.GuestBoundary = 2
 				case "expired":
@@ -156,9 +153,9 @@ func TestProvisioningFailuresAreSanitizedAndDoNotRetainAGrant(t *testing.T) {
 
 func TestConcurrentRunAndSnapshotReadPolicyOnlyOnce(t *testing.T) {
 	var reads atomic.Int32
-	host := servicehost.New(provisioningFunc(func(context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
 		reads.Add(1)
-		return provisionedGrant(), nil
+		return provisionedPolicy(), nil
 	}))
 	var workers sync.WaitGroup
 	results := make(chan error, 16)

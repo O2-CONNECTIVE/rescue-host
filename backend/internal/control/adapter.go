@@ -87,7 +87,9 @@ func (a *Adapter) Handle(ctx context.Context, frame []byte) ([]byte, error) {
 		var payload struct{ PolicyRef string }
 		_ = json.Unmarshal(message.Payload, &payload)
 		if payload.PolicyRef == a.state.config.PolicyRef {
-			_ = a.coordinator.Start(ctx, id)
+			if err := a.coordinator.Start(ctx, id); err == nil {
+				return a.reply(message, "receipt", map[string]any{"operation": "start", "accepted": true})
+			}
 		}
 		return a.reply(message, "error", map[string]any{"code": RequestRejected, "retryable": false, "goCloseConfirmed": a.closeConfirmed})
 	case "snapshot":
