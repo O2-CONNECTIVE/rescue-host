@@ -38,11 +38,11 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される22package、Linux/macOSでは96実装、Windowsでは104実装ファイルを照合します。
+通常buildに選択される22package、Linux/macOSでは97実装、Windowsでは105実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
-servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
+servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
 SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
@@ -102,3 +102,5 @@ checksumの一致をlicense審査や脆弱性検査の代替にはしません�
 公式根拠：[Go testとbuild制約](https://pkg.go.dev/cmd/go)、[race要件](https://go.dev/doc/articles/race_detector)、[module検証](https://go.dev/ref/mod)、[toolchain選択](https://go.dev/doc/toolchain)。
 
 許可0のservice dispatchは同じService/issuerへのprivate登録とstatus・失効受付だけを追加します。native認証provider、承認発行、workload回収receipt、実transportは未接続です。CIのmemory試験を実認証・実SSHの証明へ読み替えません。
+
+reservation.goはprivateな所有順序だけを扱います。同じServiceのstopと予約を同じmutexで順序付け、未確認workerの参照を保持します。認証/承認、policy、configDigest、grant、wire成功応答を生成せず、今回のlocal検証は実worker adapterや実機の証明ではありません。
