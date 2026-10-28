@@ -26,5 +26,12 @@ export const preview = {
   deadline: '承認後15分（サンプル・自動延長なし）'
 };
 export function initialState(): OperatorState {
-  return { phase: 'entry', sample: undefined, termination: 'not_started', diagnostic: 'DEMO_READY' };
+  return Object.freeze({ phase: 'entry', sample: undefined, termination: 'not_started', diagnostic: 'DEMO_READY' });
+}
+export function readObservation(value: unknown): { flow: number; event: Observation } | undefined {
+  const names: readonly string[] = ['approved', 'denied', 'connected', 'stop_confirmed', 'expired', 'failed', 'lost'];
+  if (typeof value !== 'object' || value === null || Array.isArray(value) || Object.keys(value).length !== 2
+    || !('flow' in value) || typeof value.flow !== 'number' || !Number.isSafeInteger(value.flow) || value.flow < 1
+    || !('event' in value) || typeof value.event !== 'string' || !names.includes(value.event)) return;
+  return { flow: value.flow, event: value.event as Observation };
 }
