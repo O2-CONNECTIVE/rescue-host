@@ -1,5 +1,6 @@
 import type { UiKey } from './keyboard.ts';
 import { normalizeDriverError, type DriverTrace } from './observation.ts';
+import { setTimeout as delay } from 'node:timers/promises';
 function timedOut(error: unknown): boolean { return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError'); }
 function record(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
 export class Driver {
@@ -13,14 +14,14 @@ export class Driver {
     this.trace = trace;
     if (base !== 'http://127.0.0.1:4444') throw new Error('NATIVE_DRIVER_ORIGIN_REJECTED');
   }
-  async request(method: string, route: string, body?: unknown): Promise<unknown> {
+  async request(method: string, route: string, body?: unknown, timeoutMs = 15000): Promise<unknown> {
     const operation: DriverTrace['operation'] = route === '/session' ? 'create-session' : route.endsWith('/execute/sync') ? 'execute-sync' : route.endsWith('/execute/async') ? 'execute-async' : route.endsWith('/element') ? 'find-element' : route.endsWith('/click') ? 'click-element' : route.endsWith('/actions') ? 'keys' : route.endsWith('/screenshot') ? 'screenshot' : 'other';
     const started = performance.now();
     const emit = (outcome: DriverTrace['outcome'], status?: number, driverError?: string) => this.trace?.({ operation, outcome, elapsedMs: Math.round(performance.now() - started), status, driverError });
     emit('started');
     let response: Response;
     try {
-      response = await this.transport(this.base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+      response = await this.transport(this.base + route, { method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(Math.min(15000, timeoutMs)) });
     } catch (error) {
       const timeout = timedOut(error);
       emit(timeout ? 'timeout' : 'transport');
@@ -49,7 +50,34 @@ export class Driver {
     this.session = encodeURIComponent(value.sessionId);
     return value.capabilities.browserVersion;
   }
-  execute(script: string): Promise<unknown> { return this.request('POST', `/session/${this.session}/execute/sync`, { script, args: [] }); }
+  execute(script: string, timeoutMs = 15000): Promise<unknown> { return this.request('POST', `/session/${this.session}/execute/sync`, { script, args: [] }, timeoutMs); }
+  async waitForBundledDocument(observe?: (origin: unknown, state: 'initial' | 'bundled-loading' | 'bundled-ready' | 'rejected') => void): Promise<void> {
+    const until = performance.now() + 10000;
+    let bundledSeen = false;
+    // 許可された初期document遷移だけを観測する。別originやdriver失敗をretryしない。
+    for (let reads = 0; reads < 100; reads += 1) {
+      const remaining = Math.ceil(until - performance.now());
+      if (remaining <= 0) break;
+      const value = await this.execute('return {origin: location.origin, href: location.href, documentURI: document.documentURI, readyState: document.readyState};', remaining);
+      const local = (url: unknown) => {
+        if (typeof url !== 'string') return false;
+        try { const parsed = new URL(url); return parsed.origin === 'http://tauri.localhost' && !parsed.username && !parsed.password; }
+        catch { return false; }
+      };
+      const initial = record(value) && value.origin === 'null' && value.href === 'about:blank' && value.documentURI === 'about:blank' && !bundledSeen;
+      const bundled = record(value) && value.origin === 'http://tauri.localhost' && local(value.href) && local(value.documentURI);
+      if (!record(value) || typeof value.readyState !== 'string' || !['loading', 'interactive', 'complete'].includes(value.readyState) || (!initial && !bundled)) {
+        observe?.(record(value) ? value.origin : undefined, 'rejected');
+        throw new Error('NATIVE_ORIGIN_MISMATCH');
+      }
+      const state = initial ? 'initial' : value.readyState === 'loading' ? 'bundled-loading' : 'bundled-ready';
+      observe?.(value.origin, state);
+      if (performance.now() >= until) break;
+      if (bundled) { bundledSeen = true; if (state === 'bundled-ready') return; }
+      await delay(Math.min(100, Math.max(1, until - performance.now())));
+    }
+    throw new Error('NATIVE_DOCUMENT_NOT_READY');
+  }
   invoke(): Promise<unknown> {
     return this.request('POST', `/session/${this.session}/execute/async`, { script: `const done = arguments[arguments.length - 1];
       const invoke = window.__TAURI__?.core?.invoke;
