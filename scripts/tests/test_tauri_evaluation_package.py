@@ -24,6 +24,7 @@ class EvaluationPackageTests(unittest.TestCase):
             docs.mkdir()
             for name in ["COPYRIGHT", "LICENSE-APACHE", "LICENSE-MIT"]:
                 (docs / name).write_text("Rust fixture " + name, encoding="utf-8")
+            (docs / "COPYRIGHT").rename(docs / "COPYRIGHT.html")
             metadata = folder / "metadata.json"
             metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]},
                                            "packages": [{"id": "fixture", "name": "fixture", "version": "1.0.0",

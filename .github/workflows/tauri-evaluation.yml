@@ -55,6 +55,7 @@ jobs:
         run: |
           $sysroot = (rustc +1.99.1 --print sysroot).Trim()
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem -LiteralPath "$sysroot/share/doc/rust" -File | Select-Object -ExpandProperty Name
           python -B scripts/collect_tauri_licenses.py --metadata "$env:RUNNER_TEMP/cargo-metadata.json" --frontend-notice ui/tauri/dist/THIRD_PARTY_NOTICES.txt --rust-docs "$sysroot/share/doc/rust" --output "$env:RUNNER_TEMP/evaluation-licenses"
           exit $LASTEXITCODE
       - name: Build locked release executable

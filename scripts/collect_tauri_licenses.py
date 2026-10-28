@@ -117,10 +117,11 @@ def main():
     collected["FRONTEND_THIRD_PARTY_NOTICES.txt"] = args.frontend_notice.read_bytes()
     rust_notices = {}
     if args.rust_docs:
-        for name in ["COPYRIGHT", "LICENSE-APACHE", "LICENSE-MIT"]:
+        copyright_name = "COPYRIGHT" if (args.rust_docs / "COPYRIGHT").exists() else "COPYRIGHT.html"
+        for name in [copyright_name, "LICENSE-APACHE", "LICENSE-MIT"]:
             file = args.rust_docs / name
             if file.is_symlink() or not file.is_file() or not file.read_bytes().strip():
-                raise ValueError("RUST_RUNTIME_NOTICE_MISSING")
+                raise ValueError("RUST_RUNTIME_NOTICE_MISSING:" + name)
             data = file.read_bytes()
             collected["rust-toolchain/" + name] = data
             rust_notices[name] = hashlib.sha256(data).hexdigest()
