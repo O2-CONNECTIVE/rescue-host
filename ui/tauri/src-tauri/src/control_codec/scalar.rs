@@ -54,7 +54,9 @@ impl<'de, const LENGTH: usize> Deserialize<'de> for Hex<LENGTH> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let value = String::deserialize(deserializer)?;
         if value.len() != LENGTH
-            || !value.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+            || !value
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
         {
             return Err(de::Error::custom("lowercase hex"));
         }
@@ -76,7 +78,9 @@ impl<'de> Deserialize<'de> for Token {
         let value = String::deserialize(deserializer)?;
         if value.is_empty()
             || value.len() > 128
-            || !value.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+            || !value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
         {
             return Err(de::Error::custom("ASCII token"));
         }
