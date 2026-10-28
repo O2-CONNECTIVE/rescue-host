@@ -45,7 +45,10 @@ pub fn run() {
     connection.hello().unwrap();
     connection.poll_child().unwrap();
     let observed = connection.target().observations();
-    assert!(observed.direct_child_reaped, "actual reap must reach the adapter");
+    assert!(
+        observed.direct_child_reaped,
+        "actual reap must reach the adapter"
+    );
     assert!(observed.direct_child_exit0);
     assert!(!observed.reader_eof_completed_reported);
     assert_eq!(observed.assess(), CloseAssessment::EvidenceIncomplete);

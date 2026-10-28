@@ -1,7 +1,13 @@
-#[allow(dead_code, reason = "the owned-pipe check only exercises rejection and reap")]
+#[allow(
+    dead_code,
+    reason = "the owned-pipe check only exercises rejection and reap"
+)]
 #[path = "../src/control_codec/mod.rs"]
 mod control_codec;
-#[allow(dead_code, reason = "the owned-pipe check only exercises rejection and reap")]
+#[allow(
+    dead_code,
+    reason = "the owned-pipe check only exercises rejection and reap"
+)]
 #[path = "../src/control_coordinator/mod.rs"]
 mod control_coordinator;
 mod frame_checks;
