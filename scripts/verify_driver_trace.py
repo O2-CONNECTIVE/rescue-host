@@ -4,11 +4,12 @@ from pathlib import Path
 import sys
 from verify_tauri_evaluation import SafeParser
 
-VARIANT = 'tauri-driver-2.1.0-stage-1'
+VARIANT = 'tauri-driver-2.1.0-stage-2'
 STATES = {'idle', 'received', 'forward-pending', 'headers-returned', 'native-error', 'dropped'}
 ERRORS = {'none', 'incomplete', 'canceled', 'closed', 'parse', 'other'}
 STAGES = {'connection-open', 'session-received', 'forward-start', 'native-headers',
-          'native-error', 'request-dropped', 'connection-end'}
+          'native-error', 'request-dropped', 'connection-end',
+          'native-connection-assigned', 'native-connection-unobserved'}
 
 
 def need(condition):
@@ -72,7 +73,7 @@ def inspect(data):
             need(not connections[conn]['ended'] and req > 0 and req not in requests
                  and row['state'] == 'received')
             requests[req] = {'connection': conn, 'state': 'received', 'forward': False,
-                             'end': 'unobserved'}
+                             'end': 'unobserved', 'nativeConnection': 'not-sampled'}
             connections[conn]['last'] = req
         elif stage == 'connection-end':
             need(not connections[conn]['ended'] and req == connections[conn]['last'])
@@ -86,11 +87,18 @@ def inspect(data):
             if stage == 'forward-start':
                 need(current['state'] == 'received' and row['state'] == 'forward-pending')
                 current['forward'] = True
+            elif stage in {'native-connection-assigned', 'native-connection-unobserved'}:
+                need(current['state'] == row['state'] == 'forward-pending'
+                     and current['nativeConnection'] == 'not-sampled')
+                current['nativeConnection'] = ('assigned' if stage == 'native-connection-assigned'
+                                               else 'unobserved')
             elif stage in {'native-headers', 'native-error'}:
                 need(current['state'] == 'forward-pending'
+                     and current['nativeConnection'] != 'not-sampled'
                      and row['state'] == ('headers-returned' if stage == 'native-headers' else 'native-error'))
             elif stage == 'request-dropped':
-                need(current['state'] in {'received', 'forward-pending'} and row['state'] == 'dropped')
+                need(current['state'] in {'received', 'forward-pending'} and row['state'] == 'dropped'
+                     and (not current['forward'] or current['nativeConnection'] != 'not-sampled'))
             current['state'] = row['state']
         if stage != 'connection-end':
             need(row['error'] == 'none')
@@ -101,12 +109,14 @@ def inspect(data):
     result = {'check': 'native-driver-stage', 'diagnostic': 'complete' if complete else 'incomplete',
               'code': 'TRACE_COMPLETE' if complete else 'TRACE_INCOMPLETE',
               'observedStages': sorted(observed), 'requestStage': 'unconfirmed',
-              'connectionEnd': 'unconfirmed', 'events': events, 'summary': summary}
+              'connectionEnd': 'unconfirmed', 'nativeConnection': 'unconfirmed',
+              'events': events, 'summary': summary}
     if complete:
         result['requestStage'] = {'headers-returned': 'native-headers', 'native-error': 'native-error',
                                   'dropped': 'dropped-before-headers' if request['forward']
                                   else 'dropped-before-forward'}[request['state']]
         result['connectionEnd'] = request['end']
+        result['nativeConnection'] = request['nativeConnection']
     return result
 
 
@@ -122,6 +132,7 @@ def main():
         # 診断専用。原例外・filename・入力値は出さず、既存native判定にも接続しない。
         report = {'check': 'native-driver-stage', 'diagnostic': 'incomplete', 'code': 'TRACE_INVALID',
                   'observedStages': [], 'requestStage': 'unconfirmed', 'connectionEnd': 'unconfirmed',
+                  'nativeConnection': 'unconfirmed',
                   'events': [], 'summary': None}
     print(json.dumps(report, sort_keys=True))
     return 0 if report['diagnostic'] == 'complete' else 1

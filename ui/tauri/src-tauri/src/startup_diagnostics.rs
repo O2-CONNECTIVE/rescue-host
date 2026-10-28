@@ -97,6 +97,8 @@ impl Recorder {
                 && seen & (1 << Stage::PageFinished as u8) != 0)
     }
     fn snapshot(&self, requested: bool) -> String {
+        // 無効化前の保守的cutoff。間に記録された後着eventはconsumerで不完全にする。
+        let window_end_us = self.start.elapsed().as_micros();
         self.enabled.store(false, SeqCst);
         // workerだけの有限settlement待ち。UI hookは待たない。
         for _ in 0..100 {
@@ -123,13 +125,14 @@ impl Recorder {
             })
             .collect();
         format!(
-            "{{\"schema\":1,\"variant\":\"host-startup-stage-1\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{}}}",
+            "{{\"schema\":1,\"variant\":\"host-startup-stage-2\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{}}}",
             rows.join(","),
             self.attempted.load(SeqCst),
             events.len(),
             self.dropped.load(SeqCst),
             requested && self.in_flight.load(SeqCst) == 0,
-            self.in_flight.load(SeqCst)
+            self.in_flight.load(SeqCst),
+            window_end_us
         )
     }
 }

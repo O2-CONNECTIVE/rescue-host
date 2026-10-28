@@ -7,7 +7,7 @@ try {
     $tools = Get-Content "$PSScriptRoot/tools.json" -Raw | ConvertFrom-Json
     $before = Get-Content "$ToolsDirectory/driver-provenance.json" -Raw | ConvertFrom-Json
     $binary = Join-Path $ToolsDirectory 'tauri/bin/tauri-driver.exe'
-    if ($before.variant -ne 'tauri-driver-2.1.0-stage-1' -or $before.binarySha256 -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $before.binarySha256) { throw 'STAGE_BINARY_DRIFT' }
+    if ($before.variant -ne 'tauri-driver-2.1.0-stage-2' -or $before.binarySha256 -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $binary -Algorithm SHA256).Hash.ToLowerInvariant() -cne $before.binarySha256) { throw 'STAGE_BINARY_DRIFT' }
     # 原provenanceはコピーせず、固定source/binaryから再検証して安全な項目だけ再生成。
     & python -B "$root/scripts/apply_driver_trace.py" --archive "$ToolsDirectory/tauri-driver.crate" --source "$ToolsDirectory/tauri-driver-$($tools.tauriDriverVersion)" --patch-folder "$root/tools/native-driver-trace" --provenance "$OutputDirectory/driver-provenance.json" --verify-patched --binary $binary
     if ($LASTEXITCODE -ne 0) { throw 'STAGE_SOURCE_DRIFT' }
