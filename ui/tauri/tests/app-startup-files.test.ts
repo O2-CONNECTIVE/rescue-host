@@ -17,6 +17,10 @@ void test('所有trace fileを有限に読み、page-load済みと欠測を匿�
       attempted: 5, recorded: 5, dropped: 0, sealed: true, inFlight: 0
     }));
     assert.equal((await inspectAppStartupFile(directory)).phase, 'first-page-load-finished');
+    // 完成fileが後から現れても、回収期限失敗を成功にしない。
+    assert.equal((await inspectAppStartupFile(directory, {
+      kind: 'windows-webview2-native-smoke', appStartupFileClosed: false
+    })).phase, 'diagnostic-incomplete');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 
