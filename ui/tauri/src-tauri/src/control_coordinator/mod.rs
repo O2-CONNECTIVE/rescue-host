@@ -1,6 +1,7 @@
 //! Internal preparation only; context matching is not peer authentication.
 pub(crate) mod observations;
 pub(crate) mod owned;
+pub(crate) mod reader;
 use crate::control_codec::{
     decode_frame, encode_frame,
     model::{Bootstrap, Control, Empty, Identity, Message, Object, Snapshot},
