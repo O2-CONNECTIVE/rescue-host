@@ -138,7 +138,14 @@ impl Conversation {
                     return self.close(Code::ContextMismatch);
                 }
                 // Even goCloseConfirmed on an error is never a Close proof.
-                self.peer_error = Some(value.payload.0.code);
+                let code = value.payload.0.code;
+                self.peer_error = Some(code);
+                if matches!(
+                    code,
+                    Code::VersionMismatch | Code::InvalidMessage | Code::ContextMismatch
+                ) {
+                    return self.close(code);
+                }
             }
             Message::StateChanged(value) => {
                 self.check_envelope(value.generation, &value.identity.0, value.sequence)?;
