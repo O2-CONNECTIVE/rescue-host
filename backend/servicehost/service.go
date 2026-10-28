@@ -45,7 +45,10 @@ type Service struct {
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
 	dispatch                                  *serviceDispatcher
+	ownerIntent                               *serviceOwnerIntent
+	reservation                               *serviceReservation
 	host                                      *Host
+	delivery                                  *serviceHostDelivery
 	plane                                     servicePlane
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
@@ -139,6 +142,18 @@ func (s *Service) stopFor(cause error) bool {
 	} else if !s.cleanupConfirmed {
 		s.state = StopPending
 	}
+	if s.ownerIntent != nil {
+		s.ownerIntent.burned = true
+	}
+	var reservationCancel context.CancelFunc
+	if r := s.reservation; r != nil && !r.finished {
+		r.canceled = true
+		reservationCancel = r.cancel
+	}
+	var deliveryCancel context.CancelFunc
+	if d := s.delivery; d != nil {
+		deliveryCancel = d.cancel
+	}
 	i, cancel := s.issuer, s.cancel
 	s.mu.Unlock()
 	if unusedDone != nil {
@@ -146,6 +161,13 @@ func (s *Service) stopFor(cause error) bool {
 	}
 	if i != nil {
 		_ = i.Close()
+	}
+	// 同issuerの失効より先にworker取消callbackを走らせない。
+	if reservationCancel != nil {
+		reservationCancel()
+	}
+	if deliveryCancel != nil {
+		deliveryCancel()
 	}
 	if cancel != nil {
 		cancel()
@@ -190,7 +212,14 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	cfg := s.cfg
 	stopping := s.stopping
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); s.serveErr = result; s.mu.Unlock(); s.finish.Do(func() { close(s.done) }) }()
+	defer func() {
+		s.awaitOwnerReservationBeforeReturn()
+		s.awaitHostDeliveryBeforeReturn()
+		s.mu.Lock()
+		s.serveErr = result
+		s.mu.Unlock()
+		s.finish.Do(func() { close(s.done) })
+	}()
 	defer cancel()
 	if stopping {
 		cancel()
@@ -251,7 +280,6 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	}()
 	defer func() { close(watchStop); <-watchDone }()
 	var plane servicePlane
-	var host *Host
 	var approvalDone <-chan struct{}
 	defer func() {
 		s.stopFor(result)
@@ -265,21 +293,29 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(cleanup, min(cfg.Budgets.Observe, cfg.Budgets.Cleanup/8))
 			_ = publish(report, StopPending)
 			finish()
-			var closeErr error
-			if host != nil {
-				closeErr = errors.Join(closeErr, host.Close(cleanup))
+			closeErr := s.waitOwnerReservation(cleanup)
+			if closeErr == nil {
+				closeErr = s.waitHostDelivery(cleanup)
 			}
-			if approvalDone != nil {
-				select {
-				case <-approvalDone:
-				case <-cleanup.Done():
-					closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
+			if closeErr == nil {
+				s.mu.Lock()
+				host := s.host
+				s.mu.Unlock()
+				if host != nil {
+					closeErr = errors.Join(closeErr, host.Close(cleanup))
 				}
+				if approvalDone != nil {
+					select {
+					case <-approvalDone:
+					case <-cleanup.Done():
+						closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
+					}
+				}
+				if closeErr == nil && plane != nil {
+					closeErr = errors.Join(closeErr, plane.Close(cleanup))
+				}
+				closeErr = errors.Join(closeErr, issuer.Close())
 			}
-			if plane != nil {
-				closeErr = errors.Join(closeErr, plane.Close(cleanup))
-			}
-			closeErr = errors.Join(closeErr, issuer.Close())
 			if cleanup.Err() != nil {
 				closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
 			}
@@ -415,31 +451,13 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			if approval.err != nil {
 				return runtimeFailure(approval.err)
 			}
-			s.mu.Lock()
-			if s.stopping || root.Err() != nil {
-				s.mu.Unlock()
-				return context.Canceled
-			}
-			frozen := approval.policy
-			host, err = WithRuntime(lifetimePolicyValue{frozen}, cfg.Launcher, cfg.Budgets)
+			delivery, err := s.prepareLegacyHostDelivery(root, approval.policy)
 			if err != nil {
-				s.mu.Unlock()
-				return ErrProvisioningRejected
+				return err
 			}
-			host.borrowedIssuer = issuer
-			host.serviceStop = func(cause error) { s.stopFor(cause) }
-			s.host = host
-			s.mu.Unlock()
-			complete := make(chan error, 1)
-			hostDone = complete
-			go func() {
-				runtime.LockOSThread()
-				err := host.Run(root)
-				if !fatalServiceThread(err) {
-					runtime.UnlockOSThread()
-				}
-				complete <- err
-			}()
+			hostDone = delivery.result
+			go s.runHostDelivery(delivery)
+
 		case err := <-hostDone:
 			// 成否にかかわらず既存one-shot runnerの終了でservice起動を終える。自動再承認なし。
 			return runtimeFailure(err)

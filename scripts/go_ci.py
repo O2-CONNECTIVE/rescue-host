@@ -28,7 +28,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go'},
+        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
@@ -47,6 +47,8 @@ PRODUCT_FILES = {
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
         'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {
+        'collector.go', 'controller.go', 'helper.go', 'types.go'},
 }
 
 
@@ -127,13 +129,21 @@ SERVICE_PROVISION_FILES = {
 }
 
 
+OPERATOR_AUTH_FILES = {
+    'linux': {'native_other.go'},
+    'darwin': {'native_other.go'},
+    'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go'},
+}
+
+
 def product_files_for(goos):
     if (goos not in SCM_FILES or goos not in LOCALCONTROL_FILES
             or goos not in CHILDJOB_FILES or goos not in PROTECTEDKEY_FILES
             or goos not in NATIVE_BOOTSTRAP_FILES or goos not in SCM_READY_FILES
-            or goos not in SERVICE_PROVISION_FILES):
+            or goos not in SERVICE_PROVISION_FILES or goos not in OPERATOR_AUTH_FILES):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth'].update(OPERATOR_AUTH_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].update(LOCALCONTROL_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob'].update(CHILDJOB_FILES[goos])

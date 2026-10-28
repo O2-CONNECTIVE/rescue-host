@@ -142,7 +142,7 @@ func (c *Controller) Close(ctx context.Context) (err error) {
 		}
 		c.mu.Unlock()
 	}()
-	if peer.Close(ctx) != nil {
+	if peer.Close(ctx) != nil || !finite(ctx) {
 		return ErrUnconfirmed
 	}
 	return nil

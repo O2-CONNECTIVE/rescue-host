@@ -76,3 +76,52 @@ func TestControllerAuthenticatesRetainedServerBeforePayloadAndRechecksAfterIO(t 
 		t.Fatal("reused exchange", err)
 	}
 }
+
+type cleanupDeadlinePeer struct {
+	*testServerPeer
+	close func(context.Context) error
+}
+
+func (p *cleanupDeadlinePeer) Close(ctx context.Context) error { return p.close(ctx) }
+func TestControllerCleanupDeadlineRetainsPeerWhileRequestIsLive(t *testing.T) {
+	request, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	events := []string{}
+	calls := 0
+	peer := &cleanupDeadlinePeer{testServerPeer: &testServerPeer{events: &events}, close: func(ctx context.Context) error {
+		calls++
+		if calls == 1 {
+			<-ctx.Done()
+		}
+		return nil
+	}}
+	controller := &Controller{cleanup: 5 * time.Millisecond, ops: controllerOps{
+		connect: func(context.Context) (serverPeer, error) { return peer, nil },
+		write:   func(context.Context, []byte) error { return nil },
+		read:    func(context.Context) ([]byte, error) { return helloResponse(), nil },
+	}}
+	response, err := controller.Exchange(request, requestFrame())
+	if request.Err() != nil {
+		t.Fatal("test requires request to remain live while independent cleanup expires")
+	}
+	if response != nil || !errors.Is(err, ErrUnconfirmed) {
+		t.Fatal("expired cleanup returned a successful response", err)
+	}
+	controller.mu.Lock()
+	retained := controller.peer == peer
+	controller.mu.Unlock()
+	if !retained {
+		t.Fatal("expired cleanup discarded the retained server peer")
+	}
+	cleanup, finish := context.WithTimeout(context.Background(), time.Second)
+	defer finish()
+	if err := controller.Close(cleanup); err != nil {
+		t.Fatal(err)
+	}
+	controller.mu.Lock()
+	released := controller.peer == nil
+	controller.mu.Unlock()
+	if !released || calls != 2 {
+		t.Fatal("sameowner fresh cleanup failed to release original peer")
+	}
+}
