@@ -38,6 +38,13 @@ def supplement(package, root):
             if (notice.is_symlink() or notice.parent != root or
                     hashlib.sha256(notice.read_bytes()).hexdigest() != entry["sourceNoticeSha256"]):
                 raise ValueError("CRATE_LICENSE_NOTICE_MISMATCH")
+        if entry.get("nativeSdk"):
+            native = entry["nativeSdk"]
+            library = root / native["libraryFile"]
+            if (library.is_symlink() or not library.is_file() or
+                    not library.resolve().is_relative_to(root.resolve()) or
+                    hashlib.sha256(library.read_bytes()).hexdigest() != native["librarySha256"]):
+                raise ValueError("NATIVE_LIBRARY_IDENTITY_MISMATCH")
         return data, entry
     return None
 
@@ -95,16 +102,23 @@ def main():
                     if re.match(r"(?i)^(licen[cs]e|copying)", candidate.name) or (
                             package.get("license_file") and candidate == root / package["license_file"]):
                         has_license = True
-        if not has_license:
-            extra = supplement(package, root)
-            if extra is None:
-                missing.append(name)
-            else:
-                data, provenance = extra
-                texts["UPSTREAM-LICENSE"] = hashlib.sha256(data).hexdigest()
-                collected["rust/" + name + "/UPSTREAM-LICENSE"] = data
-        else:
-            extra = None
+        extra = supplement(package, root)
+        if not has_license and extra is None:
+            missing.append(name)
+        if extra:
+            data, provenance = extra
+            texts["UPSTREAM-LICENSE"] = hashlib.sha256(data).hexdigest()
+            collected["rust/" + name + "/UPSTREAM-LICENSE"] = data
+            for notice in provenance.get("nativeSdk", {}).get("notices", []):
+                file = ROOT / "ui/tauri/third-party" / notice["file"]
+                if file.is_symlink() or file.parent != ROOT / "ui/tauri/third-party":
+                    raise ValueError("NATIVE_NOTICE_PATH_INVALID")
+                data = file.read_bytes()
+                if hashlib.sha256(data).hexdigest() != notice["sha256"]:
+                    raise ValueError("NATIVE_NOTICE_HASH_MISMATCH")
+                key = "native/" + notice["output"]
+                texts[key] = notice["sha256"]
+                collected["rust/" + name + "/" + key] = data
         packages.append({"name": package["name"], "version": package["version"],
                          "source": package["source"], "license": package["license"], "texts": texts,
                          "sourceArchive": "https://static.crates.io/crates/" + package["name"] + "/" + name + ".crate",

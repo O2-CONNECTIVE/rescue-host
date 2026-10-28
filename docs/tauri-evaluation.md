@@ -19,6 +19,11 @@ license 本文が欠けた場合は失敗とし、名称だけで代用しませ
 crate checksum、版、SPDX、VCS commit/path、本文 hash を照合し、異なる revision や未登録 crate は拒否します。
 selectors は参照元 lib.rs の全 bytes hash も照合します。全 crate の未改変 source 取得 URL と checksum を同梱します。
 確認済み本文3件は `.gitattributes` で改行変換せず、Windows checkout でも元の bytes を保持します。
+Microsoft native Loader は wrapper MIT と区別します。公式 NuGet SDK 1.0.3800.47 の x64 static library が
+crate 内の library と bytes/hash 一致することを取得時に確認し、CI でも crate 内 library hash を照合します。
+同SDKの LICENSE / NOTICE / nuspec を無改変で同梱し、package URL/hash と各本文 hash を記録します。
+[公式の該当版license](https://www.nuget.org/packages/Microsoft.Web.WebView2/1.0.3800.47/License)の著作権・条件・免責を保持し、Microsoftの推奨・署名を示す表記はしません。
+これら3原本も改行変換せず保持します。SDK のインストールや Runtime の再配布・更新は行いません。
 不足は compile 前に全件検出し、欠落を無視して再試行しません。
 ZIP には EXE、license、両 lock、source SHA と個別 hash の manifest、日本語手順を含めます。
 署名のない EXE だけを対象とし、credential や installer を作りません。

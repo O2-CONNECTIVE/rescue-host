@@ -54,6 +54,31 @@
     "pathInVcs": "crates/bindings",
     "url": "https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE",
     "file": "LICENSE.webview2-rs",
-    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+    "sha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73",
+    "nativeSdk": {
+      "package": "Microsoft.Web.WebView2",
+      "version": "1.0.3800.47",
+      "url": "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/1.0.3800.47/microsoft.web.webview2.1.0.3800.47.nupkg",
+      "packageSha256": "56c9f26bdd07916a2d1949fb58a5c7e434dfa1173577dca879206050c4e718db",
+      "libraryFile": "x64/WebView2LoaderStatic.lib",
+      "librarySha256": "89c6b872783b8f6c3cedbff618adb42082d455c615453ae10cfc753f1e8f25d8",
+      "notices": [
+        {
+          "file": "LICENSE.microsoft-webview2",
+          "output": "LICENSE.txt",
+          "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55"
+        },
+        {
+          "file": "NOTICE.microsoft-webview2",
+          "output": "NOTICE.txt",
+          "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
+        },
+        {
+          "file": "Microsoft.Web.WebView2.nuspec",
+          "output": "Microsoft.Web.WebView2.nuspec",
+          "sha256": "31e49576d10d4a5abf4318850e6d3fde457800e6228610a5854a4251af56b5ff"
+        }
+      ]
+    }
   }
 ]

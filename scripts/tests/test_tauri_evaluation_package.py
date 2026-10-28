@@ -16,6 +16,30 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_unverified_native_microsoft_loader_is_not_distributed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            (folder / "NOTICE").write_text("frontend fixture", encoding="utf-8")
+            (folder / "x64").mkdir()
+            (folder / "x64/WebView2LoaderStatic.lib").write_bytes(b"unverified native fixture")
+            (folder / ".cargo_vcs_info.json").write_text(json.dumps({
+                "git": {"sha1": "edc2caf886175ccaebe86078c9cfe1ae2a187328"},
+                "path_in_vcs": "crates/bindings",
+            }), encoding="utf-8")
+            metadata = folder / "metadata.json"
+            metadata.write_text(json.dumps({"resolve": {"root": "fixture", "nodes": [{"id": "fixture"}]},
+                                           "packages": [{"id": "fixture", "name": "webview2-com-sys", "version": "0.39.1",
+                                                         "license": "MIT", "source": "registry+https://github.com/rust-lang/crates.io-index",
+                                                         "manifest_path": str(folder / "Cargo.toml")}]}), encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(ROOT / "scripts/collect_tauri_licenses.py"),
+                 "--metadata", str(metadata), "--frontend-notice", str(folder / "NOTICE"),
+                 "--output", str(folder / "output")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((folder / "output").exists())
+
     def test_rust_standard_runtime_notices_are_in_the_collected_distribution(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
