@@ -82,7 +82,12 @@ fn reserved_stop_and_current_responses_are_correlated_without_replay() {
         control_codec::scalar::GoState::Ready
     );
     assert!(!conversation.peer_stop_receipt());
-    let receipt = reply("receipt", "2", "2", json!({"operation": "stop", "accepted": true}));
+    let receipt = reply(
+        "receipt",
+        "2",
+        "2",
+        json!({"operation": "stop", "accepted": true}),
+    );
     conversation.receive(&receipt).unwrap();
     assert!(conversation.peer_stop_receipt());
     assert_eq!(
