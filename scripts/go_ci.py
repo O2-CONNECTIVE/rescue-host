@@ -25,7 +25,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor': {'authority.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral': {'issuer.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {'control.go', 'host.go'},
-    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
 }
 
 
@@ -37,9 +37,9 @@ SCM_FILES = {
 
 
 LOCALCONTROL_FILES = {
-    'linux': 'native_other.go',
-    'darwin': 'native_other.go',
-    'windows': 'native_windows.go',
+    'linux': {'native_other.go'},
+    'darwin': {'native_other.go'},
+    'windows': {'native_windows.go', 'io_windows.go'},
 }
 
 
@@ -48,7 +48,7 @@ def product_files_for(goos):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
-    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].add(LOCALCONTROL_FILES[goos])
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].update(LOCALCONTROL_FILES[goos])
     return expected
 
 
@@ -144,7 +144,7 @@ def build():
         raise ValueError('Production file/package boundary changed')
     require_success(command(['vet', '-mod=readonly', './...']))
     require_success(command(['build', '-mod=readonly', '-trimpath', './...']))
-    print(f'Vet/build: 11 packages; 18 production Go files; GOOS={goos}; no fixture files or tags', flush=True)
+    print(f'Vet/build: {len(expected)} packages; {sum(map(len, expected.values()))} production Go files; GOOS={goos}; no fixture files or tags', flush=True)
 
 
 def test_inventory():
