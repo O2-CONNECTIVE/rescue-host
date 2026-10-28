@@ -18,12 +18,38 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/auth': {'keys.go'},
-    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/control': {'coordinator.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/control': {'coordinator.go', 'codec.go', 'adapter.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/forward': {'policy.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/lease': {'authority.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio': {'loop.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor': {'authority.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral': {'issuer.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {'control.go', 'host.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go'},
 }
+
+
+SCM_FILES = {
+    'linux': 'scm_other.go',
+    'darwin': 'scm_other.go',
+    'windows': 'scm_windows.go',
+}
+
+
+LOCALCONTROL_FILES = {
+    'linux': 'native_other.go',
+    'darwin': 'native_other.go',
+    'windows': 'native_windows.go',
+}
+
+
+def product_files_for(goos):
+    if goos not in SCM_FILES or goos not in LOCALCONTROL_FILES:
+        raise ValueError('Unsupported Go target for production inventory')
+    expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].add(LOCALCONTROL_FILES[goos])
+    return expected
 
 
 def environment(download=False):
@@ -104,17 +130,21 @@ def prepare():
 
 
 def build():
+    target = command(['env', 'GOOS'])
+    require_success(target)
+    goos = target.stdout.strip()
+    expected = product_files_for(goos)
     packages = command(['list', '-mod=readonly', '-json', './...'])
     require_success(packages)
     actual = {}
     for package in json_objects(packages.stdout):
         files = set(package.get('GoFiles', [])) | set(package.get('CgoFiles', []))
         actual[package['ImportPath']] = files
-    if actual != PRODUCT_FILES:
+    if actual != expected:
         raise ValueError('Production file/package boundary changed')
     require_success(command(['vet', '-mod=readonly', './...']))
     require_success(command(['build', '-mod=readonly', '-trimpath', './...']))
-    print('Vet/build: 8 packages; 9 production Go files; no fixture files or tags', flush=True)
+    print(f'Vet/build: 11 packages; 18 production Go files; GOOS={goos}; no fixture files or tags', flush=True)
 
 
 def test_inventory():

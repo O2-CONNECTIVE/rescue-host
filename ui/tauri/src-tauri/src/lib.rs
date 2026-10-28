@@ -1,5 +1,23 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(
+    dead_code,
+    reason = "control codec is not wired while runtime activation is closed"
+)]
+mod control_codec;
+
+#[allow(
+    dead_code,
+    reason = "internal process boundary is not wired while the product gate is closed"
+)]
+mod owned_process;
+
+#[allow(
+    dead_code,
+    reason = "coordinator is not wired while runtime activation is closed"
+)]
+mod control_coordinator;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusRequest {
