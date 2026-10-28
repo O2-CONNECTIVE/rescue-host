@@ -39,7 +39,7 @@ recordには固定profile、service/process保護方針、固定artifactのpath/
 取得途中の失敗でも返した`Prepared`が同じ所有参照を保持し、同じthreadの`Close`で回収する。
 fatalならthreadを再利用せず、未確認の回収を成功へ変換しない。
 保持中の`Prepared.ComposeService`は同じrecordを再照合後に既存Serviceの構成へ渡し、部分準備・Close後・fatalの状態から構成を作らない。
-これは起動用tokenを発行する機能ではなく、その別の保護供給元と単一SCM ownerが必要である。
+このquery-only handleは起動用へ転用しない。別の`LaunchFactory`と`Execution`が、下記の保護検査と全回収までの所有を担当する。
 
 `ComposeService`は、保護供給元が別途所有する既存primary handleと認証済み承認sourceを受け取る純粋constructorである。
 同じ固定recordからnative stdio、native bootstrap、JobRuntime、Serviceを組み合わせる。
@@ -47,16 +47,14 @@ fatalならthreadを再利用せず、未確認の回収を成功へ変換しな
 入力が正規の供給元から来たことやtokenに必要な権限があることをconstructorの成功で証明しない。
 
 `rescue-service-host`の既定入口は、固定Anchorが未設定ならnative APIより前に拒否する。
-固定値を後から配置しただけでも、起動token・承認入口・SCM全体の所有回収が未設定の間はnative rootの読取りにもSCMにも進まない。
+固定Anchorだけを後から配置しても、有限の回収再確認間隔と認証済み承認sourceが未設定ならnative rootの読取りにもSCMにも進まない。
 query-only handleを起動用handleへ転用するfallbackはない。
 新しいserviceの起動は許可0であり、保存recordから旧grantやdeadlineを復元しない。
 UI pollingを承認・renewへ変換しない。
 
 次の配線に必要なのは以下である。
 
-- process/token objectへのguestの危険な操作を拒否する実検査と、必要権限を持つ既存primary handleの取得・保持・回収境界。設定読取用`TOKEN_QUERY`とは分ける。
 - service側とoperator側の双方の認証、有限codec、新しい人の承認を発行する入口。既存localcontrolのhello/snapshot/stopをStartやrenewへ拡張しない。
-- SCMの全回収確認まで上記所有物を保持し、未確認なら参照を捨ててexitしない実行owner。
 - 固定profileの実値と、child側の保護profile供給・承認済みtransportの実供給。仮の成功callbackや秘密値のserializationで補完しない。
 
 ## 検証の境界
@@ -65,3 +63,42 @@ UI pollingを承認・renewへ変換しない。
 実service登録・起動、token/ACL/account/FW変更、鍵作成・実鍵読取り、SSH接続は行わない。
 実WindowsのACL、reparse拒否、元thread、取消completion、独立guest保護の成立は未実証である。
 通常CIをP2専用試験、Job最後handle、物理停止、監督hangやOS sleepの証拠へ読み替えない。
+
+## 強い起動handleとSCMの全回収owner
+
+`NewNativeExecution`は固定Anchor、正の回収再確認間隔、認証済み承認sourceを必須とする純粋constructorである。
+`RunFixed`はこの入口へ接続するが、既定値は全て未設定のため取得前に拒否する。
+環境変数・argv・UIによる上書き、仮のSID/handle/承認sourceによる補完は行わない。
+
+`Execution.Run`は元callerのNoThreadTokenと実service SID所属を拒否検査した後、専用の元OS threadで`PrepareFixed`を行う。
+固定record・digest・imageを保持検査した同じ`Prepared`からquery-only tokenを借り、`PreparePreflight`へ渡す。
+この段階はservice object、現在のprocessのPID/creation/image/DACLをqueryだけで照合し、listenerや許可を作らない。
+
+`LaunchFactory`はまず既存primaryを`READ_CONTROL | TOKEN_QUERY`で開き、token objectのowner/DACLとTokenOwner/TokenDefaultDaclを照合する。
+process保護だけで既存threadの保護を代用せず、現在のservice processに属する全threadを有限snapshotで列挙し、保持handleのPID/TID/creation/alive/owner/DACLを確認する。
+未知主体にtoken変更・duplicate・assign・impersonate、thread終了・suspend・context変更等を許すACL、NULL DACL、未対応ACE/rightsは拒否する。
+未知主体のgeneric権限は、別object種へのgeneric mappingをreadonlyと解釈せず拒否する。
+固定profileのtrusted主体（guestを除くservice/user/operator、SYSTEM、Administrators）には既知generic権限も許す。
+DefaultDaclをobject種ごとの読取り権限の同義語として扱わない。
+thread数はprocess内1024/system内65536に制限し、前後の集合変化やthread消滅でも拒否するため、thread churnは可用性上の拒否原因となる。
+
+これらの検査後だけ、別handleを`TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY`（0xb）で開く。
+actual granted access、非継承、同一token ID/authentication ID/modified ID/user/groups、保持process binding、保護状態を再照合し、`Borrow`時にも再確認する。
+query-only handleの権限変更、token生成、ログオン、LocalSystem fallback、権限調整や失敗後のbaseline更新は行わない。
+[CreateProcessAsUserW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw)にはcaller側primaryの追加権限と、必要privilegeの一時有効化がありうるため、明示handleの0xbだけからOS内部の全権限やprivilege不変を主張しない。
+不足時の起動失敗やmodified ID変化は既存の失効・回収経路へ入り、成功するまで権限を広げない。
+この可用性と実Windowsの具体的挙動は未検証である。
+
+同じ強handleを`Prepared.ComposeService`へ借用し、一つのServiceへ`Execution`のcleanup-only RPCを一度だけbindする。
+SCMの内側はissuerの発行拒否と全失効を先に行い、Host/Job/listener/承認workerを回収する。
+`InnerCleanupProof`は同じServiceの実inner終端だけを表し、zero値・別Service・active borrowerから外側の回収を承認できない。
+`Execution.Finalize`はこのopaque proofを確認して、取得を行った元OS threadへ有限context付きRPCを送る。
+そのthreadで強token/preflight/保持threadを先に閉じ、次に`Prepared`のquery token/file/imageを回収する。
+SCM Executeが戻る前にこの外側ackまで待ち、`svc.Run`のreturn後だけに後始末を置かない。
+STOP_PENDING後の追加Stop配送には依存せず、同じownerが回収だけを再確認する。
+
+部分取得、起動前取消、dispatcher開始失敗でも同じownerを保持し、回収未確認で`Run`をmainのexitへ戻さない。
+Fatalはstickyで、元threadを他の仕事へ再利用せず参照を保持する。新しいthreadで認証し直して回収済みにしない。
+個々のcleanupは有限contextを持つが、未確認や戻らないnative APIがある場合のRun全体の終了期限は保証しない。
+実際のSCM、OS保護、過去に漏出したhandle/書込みmappingの不存在、将来の独自thread SD、監督hang/OS sleep/Job最後handleをsnapshotやpure試験で証明したとは扱わない。
+operator認証のRevertToSelf失敗時policy、process-wide終了、応答/dispatch、configDigest/receiptのproducerはこの差分へ接続しない。

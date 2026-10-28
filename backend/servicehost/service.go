@@ -48,6 +48,11 @@ type Service struct {
 	plane                                     servicePlane
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
+	innerCleanupConfirmed, outerConfirmed     bool
+	outer                                     OuterFinalizer
+	outerTicket                               *innerCleanupTicket
+	outerGate                                 chan struct{}
+	outerErr                                  error
 	state                                     ServiceState
 	done                                      chan struct{}
 	finish                                    sync.Once
@@ -88,7 +93,7 @@ func newService(c ServiceConfig, prepare servicePrepare) (*Service, error) {
 	if c.Provisioning == nil || c.Launcher == nil || c.Budgets.Startup <= 0 || c.Budgets.Cleanup <= 0 || c.Budgets.Observe <= 0 || prepare == nil {
 		return nil, ErrProvisioningUnconfigured
 	}
-	return &Service{cfg: c, prepare: prepare, approvalThread: serviceThreadOperations{runtime.LockOSThread, runtime.UnlockOSThread}, done: make(chan struct{}), retries: make(chan serviceCleanupRequest), repeatStop: make(chan struct{}, 1), state: StartPending}, nil
+	return &Service{cfg: c, prepare: prepare, approvalThread: serviceThreadOperations{runtime.LockOSThread, runtime.UnlockOSThread}, done: make(chan struct{}), retries: make(chan serviceCleanupRequest), repeatStop: make(chan struct{}, 1), outerConfirmed: true, outerGate: make(chan struct{}, 1), state: StartPending}, nil
 }
 func (s *Service) Snapshot() ServiceSnapshot {
 	if s == nil {
@@ -127,8 +132,8 @@ func (s *Service) stopFor(cause error) bool {
 	var unusedDone chan struct{}
 	if !s.started && s.done != nil {
 		s.used = true
-		s.cleanupConfirmed = true
-		s.state = Stopped
+		s.innerCleanupConfirmed = true
+		s.refreshCleanupLocked()
 		unusedDone = s.done
 	} else if !s.cleanupConfirmed {
 		s.state = StopPending
@@ -198,8 +203,8 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	issuer, err := ephemeral.New()
 	if err != nil {
 		s.mu.Lock()
-		s.cleanupConfirmed = true
-		s.state = Stopped
+		s.innerCleanupConfirmed = true
+		s.refreshCleanupLocked()
 		s.mu.Unlock()
 		return ErrProvisioningRejected
 	}
@@ -279,18 +284,18 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			}
 			s.mu.Lock()
 			s.cleanupErr = closeErr
-			s.cleanupConfirmed = closeErr == nil
-			if closeErr == nil {
-				s.state = Stopped
-			} else {
-				s.state = StopPending
-			}
+			s.innerCleanupConfirmed = closeErr == nil
+			s.refreshCleanupLocked()
 			s.mu.Unlock()
 			return closeErr
 		}
+		retryTimer := time.NewTicker(cfg.Budgets.Observe)
+		defer retryTimer.Stop()
 		closeErr := attempt(nil)
 		for closeErr != nil && !fatalServiceThread(closeErr) && !fatalServiceThread(result) {
 			select {
+			case <-retryTimer.C:
+				closeErr = attempt(nil)
 			case retry := <-s.retries:
 				if !controlBudget(retry.ctx) {
 					retry.reply <- ErrRuntimeUnconfirmed
@@ -511,5 +516,5 @@ func (s *Service) Close(ctx context.Context) error {
 	if err != nil {
 		return runtimeFailure(err)
 	}
-	return nil
+	return s.finalizeOuter(ctx)
 }

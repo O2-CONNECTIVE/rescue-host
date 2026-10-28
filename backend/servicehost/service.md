@@ -39,23 +39,37 @@ launchの部分失敗でも、最初のprocess回収より先にservice全体の
 failed issuerやchallengeを再利用できるようにはしない。
 内部失敗を停止要求に偽装せず、最初の停止原因を保持する。
 
-回収が未確認ならStopPendingに留まり、同じownerが明示された有限contextまたは追加SCM Stopで同じ所有物を再回収する。
+回収が未確認ならStopPendingに留まり、同じownerが保護されたObserve間隔と有限cleanup contextで同じ所有物を自律再回収する。
+STOP_PENDING後の追加SCM Stop配送に依存せず、新しい認証・承認・起動を再試行しない。
 新しいgrant/issuer/processを作って失敗を置き換えない。
 `Close(ctx)`はcaller予算内で返り、期限切れを停止確認へ変換しない。
 service ownerは未確認資源を保持しているため、未確認時に`Serve`が完了する保証はない。
+
+`BindOuterFinalizer`はService利用前に一度だけ、元resource ownerへのcleanup-only RPCを結び付ける。
+innerのHost/process/Job/listener/承認workerが完全に終了してdoneを閉じても、outer未確認ならSnapshotはStopPendingを維持する。
+`Close`が同じService・private unique ticket・stopping・inner完全回収・done・Service ownerのFatal不存在を確認し、opaqueな`InnerCleanupProof`をmintする。
+proofの値はwireやself-claimed boolから構築できず、`Confirms`は別Serviceやactive borrowerを確認済みにしない。
+Finalizerはproofを確認した元ownerへRPCするだけで、SCM caller上でnative root/tokenを新たに開いたり再認証したりしない。
+outer acknowledgementの成功後にだけCleanupConfirmedとStoppedを公開し、callback失敗・取消・期限切れでは同じ参照を保持する。
+SCM helperはinner終端後もObserve timerでouter Closeを再試行し、dispatcher start失敗でも同じServiceのouter acknowledgement前にreturnしない。
+checkpointは実進捗がないまま増やさず、StopPendingの既存値2を維持する。
+outerをbindしない既存constructor経路は、inner回収完了を従来どおり終端とする。
 
 fatalなowner threadはUnlockせず終了する。
 承認sourceのfatalと取消が同時でも、policyは破棄し、fatal分類は取消で上書きせずworker退役とservice全体の失効へ繋ぐ。
 内部診断原文は返さず、停止要求と競合してもfatalを通常停止へ変換しない。
 健康なSCM entryは、fatal ownerが回収未確認のまま終了した場合にもStoppedを返さず、資源をServiceへ保持したStopPendingで外部介入を待つ。
 このhold経路は新しい認証query・発行・activationを行わず、回収完了や実停止を自己申告しない。
+SCM元callerのguard Fatalはinner取得前なのでempty-inner proofによる元ownerへのcleanup-only RPCを許すが、Executeの失敗結果とUnlockしない退役は維持する。
+Service inner owner・inner cleanup・outer finalizer由来のFatalはstickyであり、proof発行とStoppedを拒否する。
+これはoperatorのRevertToSelf失敗やprocess-wide abort方針を解決したという意味ではない。
 `Execute`は`svc.Run`が所有する専用goroutineで使う契約とし、手動呼出し後に同じgoroutineでprivileged処理を続けない。
 OS APIの非return、OS sleep、監督hang、最後のJob handle、既取得/継承/漏出したhandleの不存在は、このpure試験で解決したとは扱わない。
 
 ## 供給元と実機の未達
 
-`RunReadySCM`は将来の保護された別service executableからだけ呼ぶsource接続点で、既定入口からは呼ばない。
-実際のprotected provisioning loader、operator用server認証と命令codec、承認source、受理transport、service executable/固定artifactの配布・設定は未接続である。
+`RunReadySCM`は固定provisioningの`Execution`が保持する強tokenと外側回収ownerへsource上で接続する。既定入口は必須値未設定で拒否する。
+固定配置readerは実装済みだが、実値と保護配置の供給、operator用server認証と要求のdispatch/応答、承認source、受理transport、service executable/固定artifactの配布・設定は未接続である。
 具体的なservice identity/SID、登録、ACL、既存token/keyの供給値もこの変更で採用しない。
 SCM service objectとprocessを非管理者guestから保護する前提はnative policyで照合するが、実OS成立は未実証である。
 host operator/admin既侵害とadmin guestは初期保証の範囲外である。

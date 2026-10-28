@@ -3,6 +3,7 @@ package servicehost
 import (
 	"context"
 	"runtime"
+	"time"
 )
 
 // rejectUnusedはnative owner作成前の拒否専用。既存serviceの状態を上書きしない。
@@ -12,8 +13,9 @@ func (s *Service) rejectUnused() {
 		s.mu.Unlock()
 		return
 	}
-	s.used, s.stopping, s.cleanupConfirmed = true, true, true
-	s.state = Stopped
+	s.used, s.stopping, s.innerCleanupConfirmed = true, true, true
+	s.serveErr = ErrProvisioningRejected
+	s.refreshCleanupLocked()
 	done := s.done
 	s.mu.Unlock()
 	if done != nil {
@@ -31,8 +33,11 @@ func serveReadySCM[Request, Status any](service *Service, requests <-chan Reques
 	guard, used, done := service.callerGuard, service.used, service.done
 	budget := service.cfg.Budgets.Startup
 	service.mu.Unlock()
-	if guard == nil || used || done == nil || budget <= 0 {
+	if guard == nil || done == nil || budget <= 0 {
 		return true, 1
+	}
+	if used {
+		return finishReadySCM(service, requests, statuses, decode, encode, ErrAlreadyUsed)
 	}
 	runtime.LockOSThread()
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
@@ -44,20 +49,33 @@ func serveReadySCM[Request, Status any](service *Service, requests <-chan Reques
 	}
 	if err != nil || guardErr != nil {
 		service.rejectUnused()
-		return true, 1
+		return finishReadySCM(service, requests, statuses, decode, encode, ErrProvisioningRejected)
 	}
 	// 元callerを先に拒否したうえで、full native検査を専用owner threadで行う。
 	result := make(chan error, 1)
 	go func() { result <- serveService(context.Background(), service, requests, statuses, decode, encode) }()
+
 	err = <-result
+	return finishReadySCM(service, requests, statuses, decode, encode, err)
+}
+
+// inner終端の後もouter ackまで同じServiceを保持し、追加Stopなしで回収を再試行する。
+func finishReadySCM[Request, Status any](service *Service, requests <-chan Request, statuses chan<- Status, decode func(Request) Control, encode func(ServiceState) Status, result error) (bool, uint32) {
+	ticker := time.NewTicker(service.cfg.Budgets.Observe)
+	defer ticker.Stop()
+	attempt := func() bool {
+		cleanup, cancel := context.WithTimeout(context.Background(), service.cfg.Budgets.Cleanup)
+		err := service.Close(cleanup)
+		cancel()
+		return err == nil && service.Snapshot().CleanupConfirmed
+	}
+	complete := attempt()
 	if service.Snapshot().CleanupConfirmed {
-		if err != nil {
+		if !complete || result != nil {
 			return true, 1
 		}
 		return false, 0
 	}
-	// fatal ownerは退役済み。unknown資源はServiceに保持し、SCMへStoppedを返さない。
-	// このhold loopは新規認証/発行/activationをせず、管理者の外部介入を要する。
 	pending := true
 	for {
 		var output chan<- Status
@@ -67,6 +85,14 @@ func serveReadySCM[Request, Status any](service *Service, requests <-chan Reques
 		select {
 		case output <- encode(StopPending):
 			pending = false
+		case <-ticker.C:
+			complete = attempt()
+			if service.Snapshot().CleanupConfirmed {
+				if !complete || result != nil {
+					return true, 1
+				}
+				return false, 0
+			}
 		case request, open := <-requests:
 			if !open {
 				requests = nil

@@ -28,7 +28,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go'},
+        'scm_ready.go', 'service.go', 'outer.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
@@ -41,10 +41,11 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth': {
         'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready': {
-        'config.go', 'operation.go', 'plane.go', 'security.go'},
+        'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
-        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go'},
+        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
+        'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
 }
 
@@ -119,9 +120,10 @@ SCM_READY_FILES = {
 
 
 SERVICE_PROVISION_FILES = {
-    'linux': {'root_other.go'},
-    'darwin': {'root_other.go'},
-    'windows': {'root_windows.go', 'root_windows_io.go'},
+    'linux': {'root_other.go', 'launch_other.go'},
+    'darwin': {'root_other.go', 'launch_other.go'},
+    'windows': {'root_windows.go', 'root_windows_io.go', 'launch_windows.go',
+                'launch_windows_security.go', 'launch_windows_threads.go'},
 }
 
 

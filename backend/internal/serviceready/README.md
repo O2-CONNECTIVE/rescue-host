@@ -35,6 +35,22 @@ trusted User/Service/Operator/SYSTEM/Administratorsのquery権限と、native照
 STOP、CHANGE_CONFIG、WRITE_DAC/OWNER、DELETE、VM_READ/WRITE/OPERATION、DUP_HANDLE、TERMINATE等を未知主体へ許さず、DENYで危険なALLOWを相殺しない。
 未知ACE、継承flags、未知mask、NULL DACL、非protected policyを拒否する。
 
+`PreparePreflight(ctx)`は、`Prepare`の同じquery-only prefixを共有し、auth scopeとheld service/process refsをopaqueな`Preflight`として保持する。
+元の固定thread、no impersonation、profileの自主体・固定image、service binarypath・type・DACL、current processのalive・PID・creation・DACLを既存と同じ規則で検査する。
+借用primary tokenはquery-onlyでよく、ここで強いtoken handleを開いたり、既存query handleを強いlaunch handleへ昇格させたりしない。
+listenerの作成・connect・RUNNING待機・`ConfirmRunning`は行わない。
+既存query検査が許すstateはSTART_PENDING/RUNNINGだけで、START_PENDINGのSCM PIDを証拠にせず、既にRUNNINGならcurrent PIDの一致条件を維持する。
+Preflightの成功をlistener/SCM readiness、operator/server認証、approvalの証明と呼ばない。
+`Prepare`はこの同じprefixの成功後にだけlistener準備へ進む。
+
+`Preflight.Recheck(ctx)`と`Binding(ctx)`は同じscopeのquery証拠を再照合する。
+`ProcessBinding{PID, Creation}`は保持processの相関値であり、値の構築や複製だけでは認証やtokenの取得元を証明しない。
+取得元の証明はopaque Preflightに残し、strong-token supplierは強handleを開く前後に同じscopeを再検査する必要がある。
+このPreflightはtoken object/default DACLや強handleのdesired access自体を検査しないため、その別検査も省略できない。
+ctx/admission失敗、query不一致、元thread・主体の変化で受理をstickyに失効させ、並行処理も成功したBindingを返さない。
+失敗時のBindingはzero値であり、部分取得のPreflightも同じpointerを保持してCloseする。
+PreflightのCloseはlistenerを持たない同じ有限cleanup経路を使う。
+
 listenerは非継承、DUPLEX、OVERLAPPED、FIRST_INSTANCE、REJECT_REMOTE_CLIENTS、MESSAGE/READMODE_MESSAGE/WAIT、単一instanceで作る。
 ownerはProfileのProcessUserSID、protected DACLはGuest DENY0x1f01ff、Service ALLOW0x1f01ff、Operator ALLOW0x120183の順序とする。
 OperatorにFILE_CREATE_PIPE_INSTANCE0x4やgeneric WRITEを与えない。
@@ -56,6 +72,8 @@ CancelIoEx成功やNOT_FOUND、handle closeをcompletionとせず、実GetOverla
 Planeを初回利用後にコピーせず、同じpointerを保持する。
 op mutexもTryLockで取得し、別のquery/pollのGo mutexを無期限に待たない。
 query refsとauth scopeはconnectの回収とは独立に試み、部分取得や不明状態では同じPlaneを保持する。
+auth scopeのexact `ErrFatal`単独だけは同scopeの全refs回収済み契約に従って参照を解放し、Fatal自体はstickyに保持する。
+`Fatal+Unconfirmed`やunknown errorとのjoinをこの例外へ広げず、同じscopeを保持して再回収する。
 ErrUnconfirmedならfresh finite contextで同じCloseを再試行し、別operationで回収済み扱いにしない。
 Fatalはctx不正、既取消、foreign thread、回収後も通常拒否へ縮小しない。
 Fatal時のOS thread退役は上位entryの責務である。
@@ -64,7 +82,7 @@ inline native API自体の非returnやOS強制終了は解決・実証してい�
 
 試験はprivate kernelのfakeと合成policyだけを使う。
 公開factoryはnative/auth factoryへ固定し、valid profileでPrepareやcaller guardの実OS照会を行う試験はない。
-10組の同入力red/greenに加え、ACL mask、kernel証拠変化、ctx/admission失効、部分取得、独立回収、Fatal保持を回帰確認する。
+従来の10組とPreflight/query-only prefix・確認済みFatal回収の追加2組の同入力red/greenに加え、ACL mask、kernel証拠変化、ctx/admission失効、部分取得、独立回収、Fatal保持を回帰確認する。
 Windows両archのcrosscompileは実DLL、実pipe、SCMの動作試験ではない。
 実service/account/ACL変更、鍵生成、SSH/listener実行、P2再現、製品有効化を行っていない。
 

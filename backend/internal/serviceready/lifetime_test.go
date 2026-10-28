@@ -273,7 +273,7 @@ func TestPartialPrepareReturnsOwnerAndCloseReclaimsEachIndependentReference(t *t
 		})
 	}
 }
-func TestFatalScopeCleanupDoesNotPreventIndependentReferenceCleanup(t *testing.T) {
+func TestUnconfirmedFatalScopeCleanupDoesNotPreventIndependentReferenceCleanup(t *testing.T) {
 	c := config()
 	k := fixture(c)
 	f, _ := NewNative(c)
@@ -282,7 +282,7 @@ func TestFatalScopeCleanupDoesNotPreventIndependentReferenceCleanup(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	k.scope.closeErr = ErrFatal
+	k.scope.closeErr = errors.Join(ErrFatal, ErrUnconfirmed)
 	k.listener.op.done = true
 	if err = p.Close(testContext(t)); !errors.Is(err, ErrFatal) || !errors.Is(err, ErrUnconfirmed) {
 		t.Fatal(err)

@@ -3,7 +3,6 @@
 package servicehost
 
 import (
-	"context"
 	"time"
 
 	"golang.org/x/sys/windows/svc"
@@ -70,19 +69,5 @@ func RunReadySCM(service *Service) error {
 	if service == nil || service.serviceName == "" || service.callerGuard == nil {
 		return ErrProvisioningUnconfigured
 	}
-	if err := svc.Run(service.serviceName, NewSCMReadyHandler(service)); err != nil {
-		cleanup, cancel := context.WithTimeout(context.Background(), service.cfg.Budgets.Cleanup)
-		defer cancel()
-		if closeErr := service.Close(cleanup); closeErr != nil {
-			return runtimeFailure(closeErr)
-		}
-		return ErrSCMUnavailable
-	}
-	service.mu.Lock()
-	confirmed, result := service.cleanupConfirmed, service.serveErr
-	service.mu.Unlock()
-	if !confirmed {
-		return ErrRuntimeUnconfirmed
-	}
-	return result
+	return runReadySCMDispatch(service, func() error { return svc.Run(service.serviceName, NewSCMReadyHandler(service)) })
 }
