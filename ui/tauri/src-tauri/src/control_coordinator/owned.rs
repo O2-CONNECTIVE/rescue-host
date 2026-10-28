@@ -85,7 +85,10 @@ impl OwnedCoordinator {
             direct_child_reaped: status.is_some(),
             direct_child_exit0: status.is_some_and(|value| value.success()),
             cleanup_attempted: self.child.cleanup_was_attempted(),
-            kill: self.exit.as_ref().map_or(KillAttempt::None, |exit| exit.kill),
+            kill: self
+                .exit
+                .as_ref()
+                .map_or(KillAttempt::None, |exit| exit.kill),
         }
     }
 
