@@ -1,18 +1,24 @@
-import { initialState, readObservation, type OperatorAdapter, type OperatorState, type SampleId } from './model.ts';
-import type { createMemoryHistory } from './history.ts';
+import { initialState, preview, readObservation, type OperatorAdapter, type OperatorState, type SampleId } from './model.ts';
+import type { createMemoryHistory, HistoryResult } from './history.ts';
 
 // UI-only mock contract. No native command, raw code, authority or wire protocol.
-export function createOperatorController({ adapter, onChange }: {
+export function createOperatorController({ adapter, onChange, history }: {
   adapter: OperatorAdapter; onChange: (state: OperatorState) => void; history?: ReturnType<typeof createMemoryHistory>;
 }) {
   if (adapter.mode !== 'mock') throw new Error('MOCK_ADAPTER_REQUIRED');
   let state = initialState();
   let flow = 0;
   let disposed = false;
+  let updateHistory: ((result: HistoryResult) => void) | undefined;
   function live() { return ['waiting', 'connecting', 'ready', 'connected', 'stopping'].includes(state.phase); }
   function publish(next: Partial<OperatorState>) {
     const important = next.phase && next.phase !== state.phase && ['connecting', 'ready', 'connected', 'stopped', 'expired', 'failed', 'unconfirmed'].includes(next.phase);
     state = Object.freeze({ ...state, ...next, ...(important ? { notice: next.phase } : {}) });
+    if (history && next.phase && ['stopped', 'unconfirmed', 'expired', 'failed'].includes(next.phase)) {
+      const result: HistoryResult = next.phase === 'stopped' ? 'confirmed' : next.phase === 'expired' ? 'expired' : next.phase === 'failed' ? 'failed' : 'unconfirmed';
+      if (updateHistory) updateHistory(result);
+      else updateHistory = history.record(preview.destination, result);
+    }
     onChange(state);
   }
   const unsubscribe = adapter.subscribe(value => {
@@ -99,6 +105,7 @@ export function createOperatorController({ adapter, onChange }: {
       if (disposed || state.termination === 'unconfirmed') return;
       flow += 1;
       state = initialState();
+      updateHistory = undefined;
       onChange(state);
     },
     dispose() { if (!disposed) { disposed = true; flow += 1; unsubscribe(); } },
