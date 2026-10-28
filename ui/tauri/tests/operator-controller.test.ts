@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createOperatorController } from '../src/operator/controller.ts';
 import type { OperatorAdapter, OperatorState } from '../src/operator/model.ts';
 
-function setup() {
+function setup(overrides: Partial<OperatorAdapter> = {}) {
   let state: OperatorState | undefined;
   let listener: (event: unknown) => void = () => {};
   let flow = 0;
@@ -11,10 +11,11 @@ function setup() {
   const adapter: OperatorAdapter = {
     mode: 'mock', requestApproval: value => { flow = value; requests.push('approval'); return Promise.resolve(); },
     requestStop: () => { requests.push('stop'); return Promise.resolve(); },
-    subscribe: value => { listener = value; return () => { listener = () => {}; }; }
+    subscribe: value => { listener = value; return () => { listener = () => {}; }; }, ...overrides
   };
   const controller = createOperatorController({ adapter, onChange: value => { state = value; } });
-  return { controller, state: () => state, requests, emit: (event: string) => { listener({ flow, event }); } };
+  return { controller, state: () => state, requests, raw: (value: unknown) => { listener(value); },
+    emit: (event: string) => { listener({ flow, event }); } };
 }
 
 void test('サンプルの受取りだけでは依頼や接続を始めず、確認画面を表示する', () => {
@@ -23,6 +24,23 @@ void test('サンプルの受取りだけでは依頼や接続を始めず、確
   assert.equal(state()?.phase, 'review');
   assert.equal(state()?.sample, 'code');
   assert.equal(state()?.termination, 'not_started');
+});
+
+void test('期限切れ・拒否・失敗・停止未確認は終了確認にならず、後から来た成功応答でも消えない', async () => {
+  for (const [advance, event, expected] of [
+    [false, 'expired', 'expired'], [false, 'denied', 'failed'],
+    [false, 'failed', 'failed'], [true, 'lost', 'unconfirmed']
+  ] as const) {
+    const { controller, emit } = setup();
+    controller.acceptSample('code'); await controller.requestApproval(true);
+    if (advance) { emit('approved'); emit('connected'); await controller.requestStop(); }
+    emit(event);
+    assert.equal(controller.snapshot().phase, expected);
+    assert.equal(controller.snapshot().termination, 'unconfirmed');
+    emit('stop_confirmed'); emit('connected');
+    assert.equal(controller.snapshot().phase, expected);
+    assert.equal(controller.snapshot().termination, 'unconfirmed');
+  }
 });
 
 void test('停止要求の受付と繰返し操作だけでは終了確認にせず、別の応答を待つ', async () => {
