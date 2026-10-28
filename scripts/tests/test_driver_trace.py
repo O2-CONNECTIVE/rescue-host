@@ -121,6 +121,21 @@ class DriverTraceTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(json.loads(result.stdout)['requestStage'], expected)
 
+    def test_monotonic_time_must_not_regress_across_connections(self):
+        rows = trace()
+        rows.insert(-1, {'type': 'event', 'seq': 6, 'connection': 2, 'request': 0,
+                         'stage': 'connection-open', 'state': 'idle', 'elapsedUs': 1, 'error': 'none'})
+        rows.insert(-1, {'type': 'event', 'seq': 7, 'connection': 2, 'request': 0,
+                         'stage': 'connection-end', 'state': 'idle', 'elapsedUs': 2, 'error': 'none'})
+        rows[-1].update(lastSequence=7, attempted=7, enqueued=7, written=7)
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'trace.jsonl'
+            file.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
+            result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/verify_driver_trace.py'),
+                                     '--trace', str(file)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(json.loads(result.stdout)['diagnostic'], 'incomplete')
+
 
 if __name__ == '__main__':
     unittest.main()
