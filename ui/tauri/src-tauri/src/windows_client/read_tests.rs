@@ -53,7 +53,10 @@ fn one_message_is_checked_whole_before_exposing_any_frame_to_the_reader() {
     valid.push(b'\n');
     for (frame, expected) in [
         (valid.clone(), Ok(Some(valid.clone()))),
-        ([valid, b"{}\n".to_vec()].concat(), Err(Fault::InvalidMessage)),
+        (
+            [valid, b"{}\n".to_vec()].concat(),
+            Err(Fault::InvalidMessage),
+        ),
     ] {
         let api = MessageRead {
             frame,

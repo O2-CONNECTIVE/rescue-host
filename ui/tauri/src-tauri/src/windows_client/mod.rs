@@ -1,6 +1,8 @@
 mod native;
 mod operation;
 #[cfg(test)]
+mod cancel_tests;
+#[cfg(test)]
 mod read_tests;
 #[cfg(test)]
 mod tests;
