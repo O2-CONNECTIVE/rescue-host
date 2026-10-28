@@ -34,6 +34,8 @@ export function createOperatorController({ adapter, onChange }: {
       publish({ phase: 'stopping', termination: 'unconfirmed', diagnostic: 'DEMO_STOP_REQUESTED' });
       await adapter.requestStop(flow);
     },
+    reset() {},
+    dispose() {},
     snapshot() { return state; }
   };
 }

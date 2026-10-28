@@ -26,6 +26,55 @@ void test('サンプルの受取りだけでは依頼や接続を始めず、確
   assert.equal(state()?.termination, 'not_started');
 });
 
+void test('初期化した体験へ古い観測や遅延した要求失敗を適用しない', async () => {
+  let rejectStop: (reason: Error) => void = () => {};
+  const stop = new Promise<void>((_resolve, reject) => { rejectStop = reject; });
+  const { controller, emit, raw } = setup({ requestStop: () => stop });
+  controller.acceptSample('code'); await controller.requestApproval(true);
+  emit('approved'); emit('connected');
+  const pending = controller.requestStop();
+  controller.reset();
+  assert.equal(controller.snapshot().phase, 'entry');
+  controller.acceptSample('definition');
+  raw({ flow: 1, event: 'stop_confirmed' });
+  rejectStop(new Error('private fixture detail must not be shown'));
+  await pending;
+  assert.equal(controller.snapshot().phase, 'review');
+  assert.equal(controller.snapshot().diagnostic, 'DEMO_REVIEW');
+  controller.dispose();
+  const before = controller.snapshot();
+  raw({ flow: 2, event: 'connected' });
+  controller.reset(); controller.acceptSample('code');
+  assert.equal(controller.snapshot(), before);
+});
+
+void test('未知の観測は生文字列を出さず閉じ、別の体験の応答は無視する', async () => {
+  const { controller, raw } = setup();
+  controller.acceptSample('code'); await controller.requestApproval(true);
+  raw({ flow: 99, event: 'connected' });
+  assert.equal(controller.snapshot().phase, 'waiting');
+  raw({ flow: 1, event: '<img src=x onerror=alert(1)>' });
+  assert.equal(controller.snapshot().phase, 'unconfirmed');
+  assert.equal(controller.snapshot().diagnostic, 'DEMO_INVALID_OBSERVATION');
+  assert.equal(controller.snapshot().termination, 'unconfirmed');
+});
+
+void test('要求の失敗は固定表示にし、接続や終了の成功へ読み替えない', async () => {
+  for (const operation of ['approval', 'stop'] as const) {
+    const { controller, emit } = setup(operation === 'approval'
+      ? { requestApproval: () => Promise.reject(new Error('private approval detail')) }
+      : { requestStop: () => Promise.reject(new Error('private stop detail')) });
+    controller.acceptSample('code');
+    await controller.requestApproval(true);
+    if (operation === 'stop') {
+      emit('approved'); emit('connected'); await controller.requestStop();
+    }
+    assert.equal(controller.snapshot().phase, operation === 'approval' ? 'failed' : 'unconfirmed');
+    assert.equal(controller.snapshot().termination, 'unconfirmed');
+    assert.match(controller.snapshot().diagnostic, /^DEMO_(REQUEST_FAILED|TERMINATION_UNCONFIRMED)$/);
+  }
+});
+
 void test('期限切れ・拒否・失敗・停止未確認は終了確認にならず、後から来た成功応答でも消えない', async () => {
   for (const [advance, event, expected] of [
     [false, 'expired', 'expired'], [false, 'denied', 'failed'],
