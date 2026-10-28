@@ -5,8 +5,8 @@ import hooks from 'eslint-plugin-react-hooks';
 import globals from 'globals';
 
 export default defineConfig(
-  globalIgnores(['dist/**', 'src-tauri/**']),
-  { files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts', 'native-smoke/**/*.ts', '*.ts'],
+  globalIgnores(['dist/**', 'operator/dist/**', 'src-tauri/**']),
+  { files: ['src/**/*.{ts,tsx}', 'tests/**/*.ts', 'native-smoke/**/*.ts', 'operator/*.ts', '*.ts'],
     extends: [js.configs.recommended, tseslint.configs.recommendedTypeChecked],
     languageOptions: { globals: { ...globals.browser, ...globals.node }, parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } } },
   { files: ['src/**/*.tsx'], extends: [hooks.configs.flat.recommended] },

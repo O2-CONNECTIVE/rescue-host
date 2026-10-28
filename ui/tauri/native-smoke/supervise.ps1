@@ -16,10 +16,14 @@ $app = $null
 $childWaitStartedUtc = $null
 $report = [ordered]@{ kind = 'windows-webview2-native-smoke'; nativeTestsRun = 0; nativeTestsPassed = 0; cleanupStarted = $false; normalCloseVerified = $false; failurePhase = $null }
 $phase = 'environment'
+$previousDriverTrace = $env:RESCUE_DRIVER_TRACE
 try {
     $before = Get-Snapshot
     if (@($before | Where-Object ExecutablePath -eq $appPath).Count -ne 0) { throw 'NATIVE_PREEXISTING_APP_REJECTED' }
     if (@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445)).Count -ne 0) { throw 'NATIVE_PORT_ALREADY_IN_USE' }
+    $stageProvenance = Get-Content "$ToolsDirectory/driver-provenance.json" -Raw | ConvertFrom-Json
+    if ($stageProvenance.variant -ne 'tauri-driver-2.1.0-stage-1' -or $stageProvenance.binarySha256 -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $tauriPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $stageProvenance.binarySha256) { throw 'NATIVE_DIAGNOSTIC_BINARY_DRIFT' }
+    $env:RESCUE_DRIVER_TRACE = Join-Path $ToolsDirectory 'driver-stage.jsonl'
     $driverProcess = Start-Process $tauriPath -ArgumentList @('--port', '4444', '--native-port', '4445', '--native-driver', "`"$edgePath`"") -PassThru -RedirectStandardOutput "$ToolsDirectory/driver.stdout.log" -RedirectStandardError "$ToolsDirectory/driver.stderr.log"
     $until = [DateTime]::UtcNow.AddSeconds(15)
     $ready = $false
@@ -126,8 +130,19 @@ try {
         finally { $report.startupFailureQueryMs = $startupQuery.ElapsedMilliseconds }
     }
 } finally {
+    # 合否確定後の診断cutoff。新requestは送らず、自己所有workerを最大1秒だけ待つ。
+    try {
+        [IO.File]::WriteAllText((Join-Path $ToolsDirectory 'driver-stage.finish'), 'finish')
+        $stageWait = [Diagnostics.Stopwatch]::StartNew()
+        do {
+            if (Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')) { break }
+            Start-Sleep -Milliseconds 20
+        } while ($stageWait.ElapsedMilliseconds -lt 1000)
+        $report.driverStageFileObserved = Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')
+    } catch { Write-Output 'NATIVE_STAGE_FINISH_FAILED' }
     # 通常closeの合否確定後にのみcleanupし、元のFAILと記録を保持する。
-    Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE
+    try { Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE }
+    finally { $env:RESCUE_DRIVER_TRACE = $previousDriverTrace }
     if ($phase -eq 'webview-and-ipc' -and $report.nativeTestsPassed -eq 0) {
         try {
             $afterSnapshot = Get-Snapshot
