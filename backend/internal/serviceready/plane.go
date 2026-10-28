@@ -75,6 +75,39 @@ func finite(ctx context.Context) bool {
 }
 func live(ctx context.Context) bool { return finite(ctx) && ctx.Err() == nil }
 func (f *Factory) Prepare(ctx context.Context) (p *Plane, err error) {
+	p, err = f.prepareQuery(ctx)
+	if err != nil {
+		return p, err
+	}
+	defer func() {
+		if err != nil {
+			p.invalidate(err)
+		}
+	}()
+	p.listener, err = p.api.createListener(p.c.Endpoint, listenerSDDL(p.c.Profile))
+	if err != nil || p.listener == nil {
+		return p, errors.Join(ErrDenied, err)
+	}
+	if err = p.inspectListener(); err != nil {
+		return p, err
+	}
+	raw, startErr := p.listener.connect()
+	if raw != nil {
+		p.op = &ownedOperation{raw: raw}
+	}
+	if startErr != nil || raw == nil {
+		return p, errors.Join(ErrDenied, startErr)
+	}
+	if _, err = p.op.tryStep(false); err != nil {
+		return p, err
+	}
+	if _, err = p.verify(ctx, true); err != nil {
+		return p, err
+	}
+	p.prepared = true
+	return p, nil
+}
+func (f *Factory) prepareQuery(ctx context.Context) (p *Plane, err error) {
 	if f == nil || !f.configured {
 		return nil, ErrConfig
 	}
@@ -122,29 +155,9 @@ func (f *Factory) Prepare(ctx context.Context) (p *Plane, err error) {
 	if _, err = p.verify(ctx, false); err != nil {
 		return p, err
 	}
-	p.listener, err = api.createListener(p.c.Endpoint, listenerSDDL(p.c.Profile))
-	if err != nil || p.listener == nil {
-		return p, errors.Join(ErrDenied, err)
-	}
-	if err = p.inspectListener(); err != nil {
-		return p, err
-	}
-	raw, startErr := p.listener.connect()
-	if raw != nil {
-		p.op = &ownedOperation{raw: raw}
-	}
-	if startErr != nil || raw == nil {
-		return p, errors.Join(ErrDenied, startErr)
-	}
-	if _, err = p.op.tryStep(false); err != nil {
-		return p, err
-	}
-	if _, err = p.verify(ctx, true); err != nil {
-		return p, err
-	}
-	p.prepared = true
 	return p, nil
 }
+
 func (p *Plane) invalidate(err error) error {
 	p.revoked.Store(true)
 	if errors.Is(err, ErrFatal) {
@@ -274,13 +287,19 @@ func (p *Plane) Close(ctx context.Context) error {
 		}
 	}
 	if p.scope != nil {
-		if err := p.scope.Close(cleanup); err != nil {
+		err := p.scope.Close(cleanup)
+		// authのexact ErrFatalだけは全refs回収済みの契約。unknown joinへ拡張しない。
+		if err == nil || err == ErrFatal {
+			p.scope = nil
+			if err == ErrFatal {
+				p.poisoned.Store(true)
+				result = errors.Join(result, ErrFatal)
+			}
+		} else {
 			result = errors.Join(result, ErrUnconfirmed, err)
 			if errors.Is(err, ErrFatal) {
 				p.poisoned.Store(true)
 			}
-		} else {
-			p.scope = nil
 		}
 	}
 	for !complete {

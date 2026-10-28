@@ -6,7 +6,7 @@ import (
 )
 
 // ComposeServiceは保護供給元の所有primary handleを借りる構成段階だけを担う。
-// 現在このhandleを発行するnative経路はなく、RunFixedからは呼び出さない。
+// NativeExecutionは保護検査後に別途取得したhandleだけをこの構成へ借用する。
 // 呼出元はserviceの全回収までhandleを所有し、未確認時に閉じてはならない。
 // 成功は純粋構成だけであり、record/handle/承認sourceの信頼証明ではない。
 func ComposeService(r Record, token uintptr, approval servicehost.ProtectedProvisioning) (*servicehost.Service, error) {

@@ -129,17 +129,15 @@ func (p *Prepared) reject(err error) error {
 // 固定entryの配置値は未設定。環境変数や実行pathから補完しない。
 func fixedAnchor() Anchor { return Anchor{} }
 
-// RunFixed は専用executableからだけ使う未設定拒否の入口。
-// 起動handleと承認入口の供給・SCM全体の所有回収が未実装の間は、
-// native root読取りにもSCMにも入らない。部分取得をos.Exitへ落とさない。
+// RunFixedは固定sourceによるnative ownerとSCM全回収を結ぶ専用入口。
+// 既定は全値未設定でnative APIより前に拒否する。実行許可や設定を補完しない。
 func RunFixed(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrApprovalUnconfigured
 	}
-	anchor := fixedAnchor()
-	if _, err := NewNativeRoot(anchor); err != nil {
+	execution, err := NewNativeExecution(ExecutionConfig{Anchor: fixedAnchor()})
+	if err != nil {
 		return err
 	}
-	// QueryTokenをCreateProcessAsUser用の強いhandleと誤認しない。
-	return errors.Join(ErrLaunchTokenUnconfigured, ErrApprovalUnconfigured)
+	return execution.Run(ctx)
 }
