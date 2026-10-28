@@ -86,7 +86,10 @@ impl Owned {
         }
         .map_err(|_| "FIXTURE_CLEANUP_UNCONFIRMED")?;
         self.status = observation.status;
-        if self.status.is_none() || (!force && observation.kill != KillAttempt::None) {
+        if self.status.is_none()
+            || (!force
+                && (observation.kill != KillAttempt::None || self.child.cleanup_was_attempted()))
+        {
             return Err("FIXTURE_CLEANUP_UNCONFIRMED");
         }
         while Instant::now() < deadline {
