@@ -3,9 +3,12 @@ package servicehost_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
@@ -207,5 +210,56 @@ func TestUnconstructedHostCannotResumeOrStart(t *testing.T) {
 	}
 	if _, present := h.Snapshot(); present {
 		t.Fatal("zero host retained authority")
+	}
+}
+
+// OS thread の退役が必要な分類は公開境界を跨いで保持し、内部詳細は隠す。
+func TestHostPreservesFatalRetirementWithoutForwardingDiagnostics(t *testing.T) {
+	for _, fatal := range []error{bootstrapauth.ErrFatal, protectedkey.ErrFatal} {
+		for _, phase := range []string{"start", "start-no-process", "start-canceled", "cleanup"} {
+			t.Run(fatal.Error()+"/"+phase, func(t *testing.T) {
+				private := errors.New("private-runtime-diagnostic")
+				var authority *supervisor.Authority
+				h, err := servicehost.WithRuntime(approvedPolicyFunc(func(context.Context) (ephemeral.ApprovedPolicy, error) {
+					return provisionedPolicy(), nil
+				}), launcherFunc(func(ctx context.Context, a *supervisor.Authority) (servicehost.Process, error) {
+					authority = a
+					p := &processAPI{wait: func(context.Context) error { return nil }, close: func(context.Context) error {
+						if phase == "cleanup" {
+							return errors.Join(fatal, private)
+						}
+						return private
+					}}
+					if phase == "cleanup" {
+						return p, nil
+					}
+					if phase == "start-no-process" {
+						return nil, errors.Join(fatal, private)
+					}
+					if phase == "start-canceled" {
+						<-ctx.Done()
+					}
+					return p, errors.Join(fatal, private)
+				}), servicehost.Budgets{Startup: time.Millisecond, Cleanup: time.Second, Observe: time.Millisecond})
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = h.Run(context.Background())
+				if !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) || !errors.Is(err, fatal) {
+					t.Fatalf("fatal retirement classification lost: %v", err)
+				}
+				if errors.Is(err, private) || strings.Contains(err.Error(), private.Error()) {
+					t.Fatalf("private runtime diagnostic leaked: %v", err)
+				}
+				if authority == nil || authority.Snapshot(time.Now()).State != supervisor.Revoked {
+					t.Fatal("fatal runtime retained a grant")
+				}
+				cleanup, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				if phase == "cleanup" && !errors.Is(h.Close(cleanup), fatal) {
+					t.Fatal("explicit cleanup lost fatal retirement classification")
+				}
+			})
+		}
 	}
 }

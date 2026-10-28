@@ -62,6 +62,19 @@ func EncodeRecord(message Message) ([]byte, error) {
 // Expected は呼出し前から独立に既知の全値を要求する。認可は返さない。
 // native 受信では認証後の package 内経路を別途使い、payload から Expected を作らない。
 func DecodeRecord(record []byte, expected Expected, limits ReceiverLimits) (Message, error) {
+	m, err := decodeShapeAndSemantics(record, limits)
+	if err != nil {
+		return Message{}, err
+	}
+	if !matches(m, expected) {
+		return Message{}, ErrExpected
+	}
+	return m, nil
+}
+
+// decodeShapeAndSemantics は package 内の認証済 native 受信でも使う非公開 parser。
+// 単独では認証済 context や実行許可を作りません。
+func decodeShapeAndSemantics(record []byte, limits ReceiverLimits) (Message, error) {
 	if limits.MaxFrames < 1 || int64(limits.MaxFrames) > 2147483647 || limits.MaxCleanupTimeout <= 0 {
 		return Message{}, ErrLimits
 	}
@@ -103,9 +116,6 @@ func DecodeRecord(record []byte, expected Expected, limits ReceiverLimits) (Mess
 	}
 	if m.Limits.Frames > limits.MaxFrames || m.Limits.CleanupTimeout > limits.MaxCleanupTimeout {
 		return Message{}, ErrLimits
-	}
-	if !matches(m, expected) {
-		return Message{}, ErrExpected
 	}
 	return m, nil
 }
