@@ -227,3 +227,27 @@ fn a_reader_completion_report_seals_input_without_changing_peer_state() {
     assert!(ended.peer_snapshot_claim().is_none());
     assert!(ended.channel_fault().is_none());
 }
+
+#[test]
+fn correlated_protocol_errors_close_control_without_proving_termination() {
+    for (wire_code, code) in [
+        ("VERSION_MISMATCH", Code::VersionMismatch),
+        ("INVALID_MESSAGE", Code::InvalidMessage),
+        ("CONTEXT_MISMATCH", Code::ContextMismatch),
+    ] {
+        let mut conversation = bound();
+        conversation.request(Request::Snapshot).unwrap();
+        let response = reply(
+            "error",
+            "1",
+            "1",
+            json!({"code": wire_code, "retryable": false, "goCloseConfirmed": true}),
+        );
+        assert_eq!(conversation.receive(&response), Err(code));
+        assert!(conversation.is_closed());
+        assert_eq!(conversation.request(Request::Stop), Err(code));
+        assert_eq!(conversation.peer_error_claim(), Some(code));
+        assert!(conversation.peer_snapshot_claim().is_none());
+        assert!(!conversation.peer_stop_receipt());
+    }
+}
