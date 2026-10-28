@@ -1,12 +1,41 @@
 package childjob
 
-import "strings"
+import (
+	"encoding/hex"
+	"strings"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap"
+)
 
 type launchPlan struct {
 	application, commandLine, directory string
 	environment                         [2]uint16
 	handles                             [3]uintptr
 	flags, startFlags                   uint32
+	bootstrap                           uintptr
+}
+
+func (p launchPlan) inheritedHandles() []uintptr {
+	values := append([]uintptr(nil), p.handles[:]...)
+	if p.bootstrap != 0 {
+		values = append(values, p.bootstrap)
+	}
+	return values
+}
+
+func bootstrapArgs(spec Spec) ([]string, error) {
+	b := spec.Bootstrap
+	if b == nil {
+		return []string{"--supervised-internal"}, nil
+	}
+	if !ordinaryHandle(b.ReadHandle) || b.ReadHandle == spec.PrimaryToken || b.Values.Wire.Binding.ArtifactSHA256 != hex.EncodeToString(spec.Artifact.SHA256[:]) {
+		return nil, ErrConfig
+	}
+	args, err := bootstrap.FormatLaunchArgs(b.Values, b.ReadHandle, [3]uintptr{spec.Handles.Stdin, spec.Handles.Stdout, spec.Handles.Stderr})
+	if err != nil {
+		return nil, ErrConfig
+	}
+	return args, nil
 }
 
 // ローカルdriveの正規絶対pathだけを扱う。UNC/device/search pathを採らない。
@@ -32,17 +61,26 @@ func makePlan(spec Spec) (launchPlan, error) {
 	if !configured(spec) || !localImagePath(spec.Artifact.Path) {
 		return launchPlan{}, ErrConfig
 	}
+	args, err := bootstrapArgs(spec)
+	if err != nil {
+		return launchPlan{}, ErrConfig
+	}
 	separator := strings.LastIndex(spec.Artifact.Path, `\`)
 	directory := spec.Artifact.Path[:separator]
 	if separator == 2 {
 		directory += `\`
 	}
+	var read uintptr
+	if spec.Bootstrap != nil {
+		read = spec.Bootstrap.ReadHandle
+	}
 	return launchPlan{
 		application: spec.Artifact.Path,
-		commandLine: `"` + spec.Artifact.Path + `" --supervised-internal`,
+		commandLine: `"` + spec.Artifact.Path + `" ` + strings.Join(args, " "),
 		directory:   directory,
 		handles:     [3]uintptr{spec.Handles.Stdin, spec.Handles.Stdout, spec.Handles.Stderr},
 		// CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW。
 		flags: 0x08080404, startFlags: 0x100, // STARTF_USESTDHANDLES。
+		bootstrap: read,
 	}, nil
 }

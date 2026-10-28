@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// 保護bootstrapの取得/認証経路は未実装。flagやstdinを承認値へ変換しない。
-	os.Exit(execute(context.Background(), os.Args[1:], nil, os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(executeNative(context.Background(), os.Args[1:], nil, os.Stdin, os.Stdout, os.Stderr))
 }
 
 type protectedBootstrap interface {
@@ -33,6 +33,11 @@ func execute(ctx context.Context, args []string, source protectedBootstrap, inpu
 	if err != nil || ctx.Err() != nil {
 		return refuse()
 	}
+	return runApprovedRuntime(ctx, config, input, output, stderr)
+}
+
+func runApprovedRuntime(ctx context.Context, config runbackend.ApprovedConfig, input io.ReadCloser, output io.WriteCloser, stderr io.Writer) (code int) {
+	refuse := func() int { fmt.Fprintln(stderr, "製品の制御起動は未接続です"); return 2 }
 	runtime, err := runbackend.New(config)
 	if runtime != nil {
 		defer func() {

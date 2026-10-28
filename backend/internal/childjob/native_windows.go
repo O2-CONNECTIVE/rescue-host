@@ -56,7 +56,11 @@ func (windowsKernel) createSuspended(spec Spec) (uintptr, uintptr, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	handles := [3]windows.Handle{windows.Handle(plan.handles[0]), windows.Handle(plan.handles[1]), windows.Handle(plan.handles[2])}
+	values := plan.inheritedHandles()
+	handles := make([]windows.Handle, len(values))
+	for i, value := range values {
+		handles[i] = windows.Handle(value)
+	}
 	for _, handle := range handles {
 		if !inheritablePipe(handle) {
 			return 0, 0, ErrConfig
@@ -67,7 +71,7 @@ func (windowsKernel) createSuspended(spec Spec) (uintptr, uintptr, error) {
 		return 0, 0, ErrStart
 	}
 	defer attributes.Delete()
-	if err := attributes.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), unsafe.Sizeof(handles)); err != nil {
+	if err := attributes.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), uintptr(len(handles))*unsafe.Sizeof(handles[0])); err != nil {
 		return 0, 0, ErrStart
 	}
 	image, err := windows.UTF16PtrFromString(plan.application)
