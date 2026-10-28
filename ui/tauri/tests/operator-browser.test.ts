@@ -175,3 +175,23 @@ void test('履歴削除をkeyboardでキャンセルしたら確認を開いた�
   assert.equal(await instance.getByRole('region', { name: '接続履歴（メモリのモック）' }).getByText('終了確認済み（モック）', { exact: true }).count(), 1);
   await instance.close();
 });
+
+void test('通常の確認画面は相手・許可・期限を残し、技術・診断・履歴を詳細へ段階開示する', async () => {
+  const instance = await page(); await receive(instance);
+  const disclosure = instance.getByRole('button', { name: '詳細を見る', exact: true });
+  assert.equal(await disclosure.count(), 1);
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  assert.equal(await instance.getByText('練習用PC 01（架空）', { exact: true }).isVisible(), true);
+  assert.equal(await instance.getByText('指定した1台への SSH 接続・非管理者ユーザー', { exact: true }).isVisible(), true);
+  assert.equal(await instance.getByText('承認後15分（サンプル・自動延長なし）', { exact: true }).isVisible(), true);
+  assert.equal(await instance.getByRole('heading', { name: 'モックの応答', exact: true }).count(), 0);
+  assert.equal(await instance.getByRole('heading', { name: '診断情報', exact: true }).count(), 0);
+  assert.equal(await instance.getByRole('region', { name: '接続履歴（メモリのモック）' }).count(), 0);
+  await disclosure.focus(); await instance.keyboard.press('Enter');
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'true');
+  assert.equal(await instance.getByRole('heading', { name: '診断情報', exact: true }).isVisible(), true);
+  await instance.keyboard.press('Enter');
+  assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+  assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
+  await instance.close();
+});
