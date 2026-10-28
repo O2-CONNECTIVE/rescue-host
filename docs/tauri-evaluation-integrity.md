@@ -26,7 +26,8 @@ inventoryで追認したEXE等も拒否し、PEのMZ headerをlicense本文と�
 
 展開前に重複名、大文字小文字の衝突、symlink等の非通常member、暗号化member、
 親参照・予約名・末尾dot等のWindowsで曖昧になる名前を拒否する。
-現行生成物のASCII名だけを許可する。
+現行生成物のASCII名だけを許可し、原名とPythonが正規化した名が異なる場合も拒否する。
+NUL以降を切り捨てて許可名へ見せるmemberは受理しない。
 [Microsoftの命名規則](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file)を参照した。
 ZIPは64MiB、展開後の申告合計128MiB、各member32MiB、4096 memberまでに制限する。
 圧縮方式は現行のDEFLATEと無圧縮STOREDだけを本文読取前に許可し、LZMA等は処理しない。
@@ -65,8 +66,9 @@ ZIPの未知フィールド、license本文、ファイル名、ローカルpath
    現行validatorはbackendを含む構成自体を拒否するため、そのまま接続版の検証へ流用できない。
 4. backendのGo toolchain、go.mod/go.sumと推移依存license/runtime notice、対象OS/arch、
    PE importや必要DLL、動的依存の検証。現Rust/frontend inventoryをGoの証拠へ流用しない。
-5. GUIからの自己所有子process起動・停止、IPC認可と失効、TTL・close故障、診断allowlist、
-   cleanupと残留の実行証跡。静的hash一致から動作成功を推定しない。
+5. 保護serviceが所有するGo子process / Jobの起動・停止、IPC認可と失効、TTL・close故障、
+   cleanupと残留の実行証跡。GUIのreader・診断allowlist・終了観測とは所有責務を分け、
+   GUIの子process観測や静的hash一致から、保護serviceの所有・回収や動作成功を推定しない。
 6. 配布先でのhash照合元と更新/署名方針。信頼根・signing・credentialは必要性と具体操作を別途確認する。
 
 これらの不足を理由に未完成runtimeを同梱したり、製品gateを解除したりしない。

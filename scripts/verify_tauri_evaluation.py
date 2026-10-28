@@ -89,7 +89,8 @@ def verify(archive, source, archive_sha256, exe_sha256):
                 "PACKAGE_COMPRESSION_UNSUPPORTED")
         require(len(infos) <= 4096 and sum(i.file_size for i in infos) <= 128 * 1024 * 1024
                 and all(i.file_size <= 32 * 1024 * 1024 for i in infos), "PACKAGE_SIZE_LIMIT")
-        require(all(safe_member(i.filename) for i in infos), "PACKAGE_MEMBER_PATH_INVALID")
+        require(all(i.orig_filename == i.filename and safe_member(i.orig_filename)
+                    for i in infos), "PACKAGE_MEMBER_PATH_INVALID")
         require(len({i.filename.casefold() for i in infos}) == len(infos)
                 and all((i.external_attr >> 16) & 0o170000 in {0, 0o100000}
                         and not i.flag_bits & 1 for i in infos), "PACKAGE_MEMBER_AMBIGUOUS")

@@ -86,6 +86,28 @@ class EvaluationVerificationTests(unittest.TestCase):
         self.assertEqual(result.stderr, "")
         self.assertEqual(json.loads(result.stdout)["code"], "PACKAGE_COMPRESSION_UNSUPPORTED")
 
+    def test_nul_suffix_in_original_member_name_is_rejected(self):
+        name = PREFIX + "LICENSE"
+        alias = name + "_NUL_SUFFIX"
+
+        def rename(entries):
+            entries[alias] = entries.pop(name)
+
+        self.rewrite(rename)
+        raw = self.archive.read_bytes()
+        self.assertEqual(raw.count(alias.encode("ascii")), 2)
+        # local/central headerの同じ長さの原名だけを変更し、本文とoffsetは保持する。
+        self.archive.write_bytes(raw.replace(alias.encode("ascii"),
+                                            (name + "\x00NUL_SUFFIX").encode("ascii")))
+        with zipfile.ZipFile(self.archive) as bundle:
+            info = bundle.getinfo(name)
+            self.assertEqual(info.filename, name)
+            self.assertEqual(info.orig_filename, name + "\x00NUL_SUFFIX")
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout)["code"], "PACKAGE_MEMBER_PATH_INVALID")
+
     def test_nested_runtime_cannot_hide_in_license_files_or_inventory(self):
         original = self.archive.read_bytes()
         for referenced in [False, True]:

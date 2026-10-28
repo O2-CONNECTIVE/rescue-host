@@ -53,6 +53,8 @@ WebView2 / VC runtime の不足では自動導入せず報告します。unsigne
 利用者から実機起動と表示の確認報告があります。現在の確認範囲と配布CIの失敗は[検証状況](status.md)を参照してください。
 keyboard、profileへの作用、終了後の残留は未確認で、表示確認を実SSHやOS保護の保証へ広げません。
 操作は同梱 [日本語手順](tauri-evaluation-readme.txt) に限定します。
+既存の起動と表示の確認を再度必須にせず、候補と環境の差分を確認します。
+実機の事前確認、実装ownerへの確認事項、実行時承認、受け入れと撤去は[Windows限定評価手順](windows-evaluation-runbook.md)を正本とし、本書の未接続GUI評価と実SSHの評価を分けます。
 
 配布候補ごとに完全 source SHA、ZIP / EXE hash、CI URL、実行数と終了結果を対応付けます。
 native 0 件、失敗、timeout、取得不能を合格にせず、失敗 artifact は JSON 証跡だけです。
