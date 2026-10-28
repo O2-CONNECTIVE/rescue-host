@@ -136,5 +136,5 @@ fn encoder_rejects_an_internal_close_claim_without_terminated_state() {
         );
         checked += 1;
     }
-    assert_eq!(checked, 2);
+    assert_eq!(checked, 3);
 }
