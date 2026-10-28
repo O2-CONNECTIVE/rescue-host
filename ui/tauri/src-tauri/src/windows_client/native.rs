@@ -31,16 +31,17 @@ impl Calls for Native {
         &self,
         pipe: HANDLE,
         kind: Kind,
-        data: &mut [u8],
-        op: &mut OVERLAPPED,
+        data: *mut u8,
+        length: usize,
+        op: *mut OVERLAPPED,
     ) -> Result<(), u32> {
-        let length = u32::try_from(data.len()).expect("bounded frame length");
+        let length = u32::try_from(length).expect("bounded frame length");
         // Caller retains both addresses until completion. Count=NULL for async IO;
         // only GetOverlappedResult may supply the completed transfer count.
         let ok = unsafe {
             match kind {
-                Kind::Read => ReadFile(pipe, data.as_mut_ptr(), length, null_mut(), op),
-                Kind::Write => WriteFile(pipe, data.as_ptr(), length, null_mut(), op),
+                Kind::Read => ReadFile(pipe, data, length, null_mut(), op),
+                Kind::Write => WriteFile(pipe, data, length, null_mut(), op),
             }
         };
         result(ok)
@@ -50,13 +51,13 @@ impl Calls for Native {
         unsafe { WaitForSingleObject(event, millis) }
     }
 
-    fn result(&self, pipe: HANDLE, op: &mut OVERLAPPED) -> Result<usize, u32> {
+    unsafe fn result(&self, pipe: HANDLE, op: *const OVERLAPPED) -> Result<usize, u32> {
         let mut count = 0;
         result(unsafe { GetOverlappedResult(pipe, op, &mut count, 0) })?;
         Ok(count as usize)
     }
 
-    fn cancel(&self, pipe: HANDLE, op: &mut OVERLAPPED) -> Result<(), u32> {
+    unsafe fn cancel(&self, pipe: HANDLE, op: *const OVERLAPPED) -> Result<(), u32> {
         // Never NULL: cancel only this owner's operation, not unrelated IO.
         result(unsafe { CancelIoEx(pipe, op) })
     }

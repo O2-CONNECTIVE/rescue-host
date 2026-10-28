@@ -22,8 +22,9 @@ impl Calls for UnconfirmedCompletion {
         &self,
         _: HANDLE,
         kind: Kind,
-        _: &mut [u8],
-        _: &mut OVERLAPPED,
+        _: *mut u8,
+        _: usize,
+        _: *mut OVERLAPPED,
     ) -> Result<(), u32> {
         assert!(kind == Kind::Read);
         self.starts.set(self.starts.get() + 1);
@@ -34,12 +35,12 @@ impl Calls for UnconfirmedCompletion {
         WAIT_OBJECT_0
     }
 
-    fn result(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<usize, u32> {
+    unsafe fn result(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<usize, u32> {
         self.results.set(self.results.get() + 1);
         Err(ERROR_INVALID_HANDLE)
     }
 
-    fn cancel(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<(), u32> {
+    unsafe fn cancel(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<(), u32> {
         panic!("this completion-query fixture must not request cancellation")
     }
 

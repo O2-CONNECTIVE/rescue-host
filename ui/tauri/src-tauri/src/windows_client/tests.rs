@@ -14,8 +14,9 @@ impl Calls for ShortWrite {
         &self,
         _: HANDLE,
         kind: Kind,
-        _: &mut [u8],
-        _: &mut OVERLAPPED,
+        _: *mut u8,
+        _: usize,
+        _: *mut OVERLAPPED,
     ) -> Result<(), u32> {
         assert!(kind == Kind::Write);
         self.starts.set(self.starts.get() + 1);
@@ -24,10 +25,10 @@ impl Calls for ShortWrite {
     fn wait(&self, _: HANDLE, _: u32) -> u32 {
         panic!("synchronous fake must not wait")
     }
-    fn result(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<usize, u32> {
+    unsafe fn result(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<usize, u32> {
         Ok(2)
     }
-    fn cancel(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<(), u32> {
+    unsafe fn cancel(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<(), u32> {
         panic!("synchronous fake must not cancel")
     }
     fn close(&self, _: HANDLE) {}

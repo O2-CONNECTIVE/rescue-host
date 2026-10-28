@@ -1,4 +1,5 @@
 use super::{Calls, Fault, Kind};
+use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{
@@ -8,14 +9,14 @@ use windows_sys::Win32::Foundation::{
 use windows_sys::Win32::System::IO::OVERLAPPED;
 
 struct Work {
-    op: OVERLAPPED,
+    op: UnsafeCell<OVERLAPPED>,
     data: Vec<u8>,
 }
 
-// Retain both allocations even if a fake fatal unwinds. Native fatal aborts
-// without unwinding, so pending OS references are never freed or reused.
-fn unresolved(api: &impl Calls, work: Box<Work>) -> ! {
-    let _ = Box::leak(work);
+// Raw ownership is deliberately not reconstructed before completion. No Rust
+// reference is created while the kernel may update the OVERLAPPED. Native fatal
+// aborts; a fake fatal may unwind without freeing either allocation.
+fn unresolved(api: &impl Calls, _work: *mut Work) -> ! {
     api.fatal()
 }
 
@@ -43,18 +44,18 @@ pub(super) fn transfer(
     }
     let event = api.event()?;
     let mut work = Box::new(Work {
-        op: OVERLAPPED {
+        op: UnsafeCell::new(OVERLAPPED {
             hEvent: event,
             ..unsafe { std::mem::zeroed() }
-        },
+        }),
         data: data.to_vec(),
     });
-    let started = {
-        let Work { op, data } = work.as_mut();
-        // Box and Vec addresses remain stable until completed result, or leak
-        // immediately before non-returning fatal. Native API does not unwind.
-        unsafe { api.start(pipe, kind, data, op) }
-    };
+    let op = work.op.get();
+    let bytes = work.data.as_mut_ptr();
+    // Transfer ownership before starting IO. Until a terminal result, only these
+    // raw pointers are used: no &mut to Work/OVERLAPPED/data is regenerated.
+    let work = Box::into_raw(work);
+    let started = unsafe { api.start(pipe, kind, bytes, data.len(), op) };
     let mut cancelled = false;
     if started == Err(ERROR_IO_PENDING) {
         let mut cleanup_deadline = None;
@@ -62,7 +63,7 @@ pub(super) fn transfer(
             if !cancelled && (cancel.load(Ordering::Acquire) || api.now() >= deadline) {
                 cancelled = true;
                 cleanup_deadline = Some(api.now() + Duration::from_secs(1));
-                match api.cancel(pipe, &mut work.op) {
+                match unsafe { api.cancel(pipe, op) } {
                     Ok(()) | Err(ERROR_NOT_FOUND) => {}
                     Err(_) => unresolved(api, work),
                 }
@@ -79,15 +80,20 @@ pub(super) fn transfer(
     } else if let Err(error) = started {
         // Anything except IO_PENDING is a completed start failure.
         api.close(event);
+        // No pending IO exists on this synchronous start-error path.
+        drop(unsafe { Box::from_raw(work) });
         return Err(failure(kind, error));
     }
-    let result = api.result(pipe, &mut work.op);
+    let result = unsafe { api.result(pipe, op) };
     match result {
         Ok(_) | Err(ERROR_OPERATION_ABORTED | ERROR_BROKEN_PIPE | ERROR_MORE_DATA) => {}
         // An incomplete/invalid query cannot establish that the kernel stopped
         // using our addresses, even if the event appeared signalled.
         Err(_) => unresolved(api, work),
     }
+    // The kernel has stopped using both allocations; Rust ownership/references
+    // may now be reconstructed.
+    let work = unsafe { Box::from_raw(work) };
     api.close(event); // Only after a terminal completed result.
     if cancelled || cancel.load(Ordering::Acquire) || api.now() >= deadline {
         return Err(Fault::Cancelled);

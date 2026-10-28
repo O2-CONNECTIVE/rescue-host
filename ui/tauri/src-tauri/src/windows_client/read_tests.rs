@@ -15,11 +15,13 @@ impl Calls for MessageRead {
         &self,
         _: HANDLE,
         kind: Kind,
-        data: &mut [u8],
-        _: &mut OVERLAPPED,
+        data: *mut u8,
+        length: usize,
+        _: *mut OVERLAPPED,
     ) -> Result<(), u32> {
         assert!(kind == Kind::Read);
-        assert_eq!(data.len(), crate::control_codec::MAX_FRAME_BYTES);
+        assert_eq!(length, crate::control_codec::MAX_FRAME_BYTES);
+        let data = unsafe { std::slice::from_raw_parts_mut(data, length) };
         data[..self.frame.len()].copy_from_slice(&self.frame);
         self.starts.set(self.starts.get() + 1);
         Ok(())
@@ -27,10 +29,10 @@ impl Calls for MessageRead {
     fn wait(&self, _: HANDLE, _: u32) -> u32 {
         panic!("synchronous fake must not wait")
     }
-    fn result(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<usize, u32> {
+    unsafe fn result(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<usize, u32> {
         Ok(self.frame.len())
     }
-    fn cancel(&self, _: HANDLE, _: &mut OVERLAPPED) -> Result<(), u32> {
+    unsafe fn cancel(&self, _: HANDLE, _: *const OVERLAPPED) -> Result<(), u32> {
         panic!("synchronous fake must not cancel")
     }
     fn close(&self, _: HANDLE) {}

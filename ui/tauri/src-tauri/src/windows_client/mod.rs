@@ -49,12 +49,13 @@ trait Calls {
         &self,
         pipe: HANDLE,
         kind: Kind,
-        data: &mut [u8],
-        op: &mut OVERLAPPED,
+        data: *mut u8,
+        length: usize,
+        op: *mut OVERLAPPED,
     ) -> Result<(), u32>;
     fn wait(&self, event: HANDLE, millis: u32) -> u32;
-    fn result(&self, pipe: HANDLE, op: &mut OVERLAPPED) -> Result<usize, u32>;
-    fn cancel(&self, pipe: HANDLE, op: &mut OVERLAPPED) -> Result<(), u32>;
+    unsafe fn result(&self, pipe: HANDLE, op: *const OVERLAPPED) -> Result<usize, u32>;
+    unsafe fn cancel(&self, pipe: HANDLE, op: *const OVERLAPPED) -> Result<(), u32>;
     fn close(&self, handle: HANDLE);
     fn now(&self) -> Instant;
     fn fatal(&self) -> !;
