@@ -101,21 +101,18 @@ stream Closeは取消と非blocking確認だけを行い、未完了なら同じ
 有限deadline付きの`Pipes.Close(ctx)`で同じoperationを回収し、buffer/event/handleをcompletion前に解放しない。
 このsourceは戻らないOS API、監督hang、OS sleep、実guest分離を解決済みとするものではない。
 
-## 許可0でのSCM readyに残る依存
+## 許可0でのSCM readyと残る依存
 
-現`Host.Run`は承認読取りと単回起動を直結している。
-現localcontrolはsession Identity/generationを必須とし、公開Openも閉鎖しているため、初回承認前の制御面へそのまま転用できない。
-一方、既存native service認証はSCM RUNNINGの確認を要求する。
-この変更ではその循環をRUNNINGの自己申告、空Identity、仮のgrantで埋めない。
-
-後続では、初回承認前のservice制御面の認証/停止/ready条件を確定し、許可0でのready確認→SCM RUNNING報告→明示operator承認→今回の子起動へ分ける必要がある。
-制御面がreadyでない、承認元が未構成、初期許可が0でない場合はRUNNINGを報告しない。
-既存control/1へのapprove/renew追加や、現localcontrolの任意開放はこの変更に含めない。
+明示構成の`Service`と`RunReadySCM`は、sessionなしのnative準備とSCM実RUNNING確認、一つのissuer、全失効から同じ回収へ合流するsourceへ接続した。
+詳細と回収未確認/fatal時の契約は[service lifecycle](service.md)を参照する。
+既定`RunSCM`は引き続き未設定Hostで拒否し、製品gateは開放しない。
+control/1とは別のlistenerのkernel準備までを扱い、operatorのserver認証と命令codec、実protected provisioning値の供給は未接続である。
+現localcontrolのIdentity必須の入口や公開Openを転用せず、空Identityや仮grantを作らない。
 
 ## sourceで閉じられる作業と実機の別承認
 
 専用codec、native reader/writer、固定key-reference reader、第4handleの生成/継承/closeはsourceで接続した。
-保護stdioの生成とstderrの有限drainは、以下の明示構成sourceへ接続した。固定provisioning値の読取、SCM grant0 ready、正規operatorの初回承認入口と受理transportの供給は未設定である。
+保護stdioの生成とstderrの有限drainは、以下の明示構成sourceへ接続した。固定provisioning値の読取、正規operatorの初回承認入口と受理transportの供給は未設定である。許可0のSCM readyは明示構成sourceであり、既定入口は未設定を維持する。
 既定mainのreceiverとSCMのHostはnilのままで、RUNNINGやSSH activeを自己申告しない。
 Session/lease内部へ絶対hard deadlineを直接渡すinterfaceも後続の担当module変更で、現runtimeは元のdeadlineを保持し、相対時間の生成前後照合とcontextで保守的に拒否する。
 

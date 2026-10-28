@@ -26,7 +26,8 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral': {'issuer.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
-        'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go'},
+        'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
+        'scm_ready.go', 'service.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
@@ -37,7 +38,9 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childstdio': {'operation.go', 'pipes.go', 'streams.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapio': {'io.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth': {
-        'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go'},
+        'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready': {
+        'config.go', 'operation.go', 'plane.go', 'security.go'},
 }
 
 
@@ -94,10 +97,26 @@ NATIVE_BOOTSTRAP_FILES = {
 }
 
 
+SCM_READY_FILES = {
+    'linux': {
+        'internal/serviceready': {'native_other.go'},
+        'servicehost': {'scm_ready_other.go'},
+    },
+    'darwin': {
+        'internal/serviceready': {'native_other.go'},
+        'servicehost': {'scm_ready_other.go'},
+    },
+    'windows': {
+        'internal/serviceready': {'native_windows.go', 'connect_windows.go', 'listener_windows.go'},
+        'servicehost': {'scm_ready_windows.go'},
+    },
+}
+
+
 def product_files_for(goos):
     if (goos not in SCM_FILES or goos not in LOCALCONTROL_FILES
             or goos not in CHILDJOB_FILES or goos not in PROTECTEDKEY_FILES
-            or goos not in NATIVE_BOOTSTRAP_FILES):
+            or goos not in NATIVE_BOOTSTRAP_FILES or goos not in SCM_READY_FILES):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
@@ -105,6 +124,8 @@ def product_files_for(goos):
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob'].update(CHILDJOB_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey'].add(PROTECTEDKEY_FILES[goos])
     for suffix, files in NATIVE_BOOTSTRAP_FILES[goos].items():
+        expected['github.com/O2-CONNECTIVE/rescue-host/backend/' + suffix].update(files)
+    for suffix, files in SCM_READY_FILES[goos].items():
         expected['github.com/O2-CONNECTIVE/rescue-host/backend/' + suffix].update(files)
     return expected
 

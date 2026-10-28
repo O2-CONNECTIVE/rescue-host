@@ -40,6 +40,8 @@ type Host struct {
 	mu               sync.Mutex
 	used             bool
 	provisioning     ProtectedProvisioning
+	borrowedIssuer   *ephemeral.Issuer
+	serviceStop      func(error)
 	authority        *supervisor.Authority
 	launcher         Launcher
 	budgets          Budgets
@@ -96,22 +98,37 @@ func (h *Host) Run(ctx context.Context) (result error) {
 	if err != nil {
 		return ErrProvisioningRejected
 	}
-	issuer, err := ephemeral.New()
-	if err != nil {
-		return ErrProvisioningRejected
+	issuer := h.borrowedIssuer
+	if issuer == nil {
+		issuer, err = ephemeral.New()
+		if err != nil {
+			return ErrProvisioningRejected
+		}
+		defer issuer.Close()
 	}
-	defer issuer.Close()
 	challenge, err := issuer.Prepare(policy)
 	if err != nil {
 		return ErrProvisioningRejected
 	}
+	releaseGrant := func() {
+		if h.borrowedIssuer == nil {
+			_ = issuer.Close()
+		} else {
+			_ = issuer.Revoke(challenge.Binding())
+		}
+	}
+	defer releaseGrant()
 	issued := IssuedLaunch{instance: issuer.Snapshot().InstanceEpoch, binding: challenge.Binding()}
 	runCtx, cancel := context.WithDeadline(ctx, policy.HardDeadline)
 	defer cancel()
 	var owned Process
 	defer func() {
+		// service全体の発行拒否/全失効も、部分process回収より先に確定する。
+		if h.serviceStop != nil {
+			h.serviceStop(result)
+		}
 		// 認可失効をprocess回収より先に確定する。取消済のctxをcleanupへ流用しない。
-		issuer.Close()
+		releaseGrant()
 		cancel()
 		if owned != nil {
 			cleanup, end := context.WithTimeout(context.Background(), h.budgets.Cleanup)

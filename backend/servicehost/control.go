@@ -19,6 +19,8 @@ type ServiceState string
 
 const (
 	StartPending ServiceState = "start-pending"
+	Running      ServiceState = "running"
+	Stopped      ServiceState = "stopped"
 	StopPending  ServiceState = "stop-pending"
 )
 
