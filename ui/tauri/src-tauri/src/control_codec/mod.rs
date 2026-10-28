@@ -83,3 +83,7 @@ pub(crate) fn decode_frame(frame: &[u8]) -> Result<Message, Code> {
     }
     Ok(message)
 }
+
+pub(crate) fn encode_frame(_message: &Message) -> Result<Vec<u8>, Code> {
+    Err(Code::InvalidMessage)
+}

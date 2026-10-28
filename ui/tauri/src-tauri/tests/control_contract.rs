@@ -83,3 +83,30 @@ fn shared_wire_vectors_match_the_pure_rust_codec() {
     assert_eq!(accepted, 12);
     println!("control-codec: vectors=49 accepted=12 rejected=37");
 }
+
+#[test]
+fn encoder_preserves_the_shared_positive_literal_objects() {
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../../../../contracts/control-v1/vectors.json"
+    ))
+    .unwrap();
+    let mut checked = 0;
+    for case in fixture["wireCases"].as_array().unwrap() {
+        if !case["frameAccepted"].as_bool().unwrap() {
+            continue;
+        }
+        let id = case["id"].as_str().unwrap();
+        let literal = expand(case);
+        let message = control_codec::decode_frame(&literal).unwrap();
+        let encoded = control_codec::encode_frame(&message).expect(id);
+        assert!(encoded.len() <= control_codec::MAX_FRAME_BYTES, "{id}");
+        assert_eq!(encoded.last(), Some(&b'\n'), "{id}");
+        assert!(!encoded[..encoded.len() - 1].contains(&b'\n'), "{id}");
+        let expected: Value = serde_json::from_slice(&literal).unwrap();
+        let actual: Value = serde_json::from_slice(&encoded).unwrap();
+        assert!(actual == expected, "{id}");
+        checked += 1;
+    }
+    assert_eq!(checked, 12);
+    println!("control-encoder: shared positive literals=12");
+}
