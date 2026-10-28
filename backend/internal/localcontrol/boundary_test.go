@@ -1,9 +1,12 @@
 package localcontrol
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +23,10 @@ type fakeKernel struct {
 	impersonateError, revertError, tokenError error
 	fatalCount                                int
 	plan                                      PipePlan
-	command                                   Command
+	frame, output                             []byte
+	connects                                  int
+	readEntered                               chan struct{}
+	readError, writeError, connectError       error
 	tokenEntered, tokenRelease                chan struct{}
 }
 
@@ -29,11 +35,21 @@ func (f *fakeKernel) create(plan PipePlan) (uintptr, error) {
 	f.events = append(f.events, "create")
 	return 123, nil
 }
-func (f *fakeKernel) close(uintptr) error   { f.events = append(f.events, "close"); return nil }
-func (f *fakeKernel) inspect(uintptr) error { f.events = append(f.events, "inspect"); return nil }
-func (f *fakeKernel) read(context.Context, uintptr) (Command, error) {
+func (f *fakeKernel) close(uintptr) error                    { f.events = append(f.events, "close"); return nil }
+func (f *fakeKernel) inspect(uintptr) error                  { f.events = append(f.events, "inspect"); return nil }
+func (f *fakeKernel) connect(context.Context, uintptr) error { f.connects++; return f.connectError }
+func (f *fakeKernel) read(ctx context.Context, _ uintptr) ([]byte, error) {
 	f.events = append(f.events, "read")
-	return f.command, nil
+	if f.readEntered != nil {
+		close(f.readEntered)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return f.frame, f.readError
+}
+func (f *fakeKernel) write(_ context.Context, _ uintptr, frame []byte) error {
+	f.output = append([]byte(nil), frame...)
+	return f.writeError
 }
 func (f *fakeKernel) serverSID() (string, error) { return f.config.ServiceSID, nil }
 func (f *fakeKernel) pin()                       { f.events = append(f.events, "pin") }
@@ -57,21 +73,66 @@ func (f *fakeKernel) clientToken() (peerToken, error) {
 func (f *fakeKernel) revert() error { f.events = append(f.events, "revert"); return f.revertError }
 func (f *fakeKernel) fatal()        { f.fatalCount++; f.events = append(f.events, "fatal") }
 
-func execute(e *Endpoint, ctx context.Context, command Command) (backend.Snapshot, error) {
-	e.boundary.api.(*fakeKernel).command = command
-	return e.Next(ctx)
+type Command struct {
+	Generation uint64
+	Identity   backend.Identity
+	Operation  control.Operation
+}
+
+func execute(e *Endpoint, ctx context.Context, command Command) error {
+	kind := "snapshot"
+	payload := json.RawMessage(`{}`)
+	if command.Operation == control.Stop {
+		kind = "stop"
+	}
+	if command.Operation == control.Start {
+		kind = "start"
+		payload = json.RawMessage(`{"policyRef":"test"}`)
+	}
+	frame, err := control.Encode(control.Message{Protocol: control.Protocol, Kind: kind, Generation: strconv.FormatUint(command.Generation, 10), Sequence: "1", RequestID: "1", Identity: control.WireIdentity{LaunchID: command.Identity.LaunchID, Epoch: command.Identity.Epoch, PolicyDigest: command.Identity.PolicyDigest}, Payload: payload})
+	if err != nil {
+		return err
+	}
+	e.boundary.api.(*fakeKernel).frame = frame
+	return e.Exchange(ctx)
 }
 
 type fakeDispatcher struct {
-	calls int
-	api   *fakeKernel
-	err   error
+	calls           int
+	closes          int
+	closeError      error
+	closeBudgetSeen bool
+	api             *fakeKernel
+	err             error
 }
 
-func (d *fakeDispatcher) Dispatch(ctx context.Context, op control.Operation, id backend.Identity) (backend.Snapshot, error) {
+func (d *fakeDispatcher) Handle(_ context.Context, frame []byte) ([]byte, error) {
 	d.calls++
 	d.api.events = append(d.api.events, "dispatch")
-	return backend.Snapshot{Identity: id, State: "terminated"}, d.err
+	message, err := control.Decode(frame)
+	if err != nil {
+		return nil, err
+	}
+	if d.err != nil {
+		return nil, d.err
+	}
+	if message.Kind == "hello" {
+		message.Kind = "hello_ack"
+	} else if message.Kind == "stop" {
+		message.Kind = "receipt"
+		message.Payload = json.RawMessage(`{"operation":"stop","accepted":true}`)
+	} else {
+		message.Kind = "snapshot_result"
+		message.Payload = json.RawMessage(`{"goState":"terminated","pending":"0","active":"0","owned":"0","goCloseConfirmed":false}`)
+	}
+	return control.Encode(message)
+}
+
+func (d *fakeDispatcher) Close(ctx context.Context) error {
+	d.closes++
+	_, deadline := ctx.Deadline()
+	d.closeBudgetSeen = deadline && ctx.Err() == nil
+	return d.closeError
 }
 
 func TestVerifiedOperatorCanStopOnlyBoundSession(t *testing.T) {
@@ -88,9 +149,13 @@ func TestVerifiedOperatorCanStopOnlyBoundSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
-	if err != nil || snapshot.Identity != config.Identity || dispatch.calls != 1 {
+	err = execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+	if err != nil || dispatch.calls != 1 {
 		t.Fatal("kernel-verified operator stop rejected")
+	}
+	response, err := control.Decode(api.output)
+	if err != nil || response.Kind != "receipt" || response.Identity != (control.WireIdentity{LaunchID: config.Identity.LaunchID, Epoch: config.Identity.Epoch, PolicyDigest: config.Identity.PolicyDigest}) || !bytes.Contains(response.Payload, []byte(`"accepted":true`)) {
+		t.Fatal("bound stop response missing")
 	}
 }
 
@@ -102,7 +167,7 @@ func TestAuthorizedStopFailureRemainsUnconfirmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e, _ := b.open(ctx)
-	if _, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop}); err != ErrUnconfirmed || dispatch.calls != 1 {
+	if err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop}); err != ErrUnconfirmed || dispatch.calls != 1 {
 		t.Fatal("authorized stop failure lost its unconfirmed status")
 	}
 }
@@ -140,7 +205,7 @@ func TestPeerAndImpersonationFailuresNeverDispatch(t *testing.T) {
 			if name == "preexisting-thread" {
 				api.thread = true
 			}
-			_, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+			err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
 			if err != ErrDenied && err != ErrFatal {
 				t.Fatal("native error escaped fixed result")
 			}
@@ -159,7 +224,7 @@ func TestPeerAndImpersonationFailuresNeverDispatch(t *testing.T) {
 				if api.fatalCount != 1 {
 					t.Fatal("unsafe state was not fatal")
 				}
-				if _, err = execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop}); err != ErrFatal {
+				if err = e.Exchange(ctx); err != ErrFatal {
 					t.Fatal("poisoned endpoint resumed")
 				}
 			}
@@ -175,7 +240,7 @@ func TestKernelRestorationPrecedesPrivilegedDispatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e, _ := b.open(ctx)
-	if _, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.ReadSnapshot}); err != nil {
+	if err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.ReadSnapshot}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(api.events, []string{"pin", "thread-check", "create", "unpin", "read", "inspect", "pin", "thread-check", "impersonate", "token", "revert", "unpin", "dispatch"}) {
@@ -202,7 +267,7 @@ func TestGenerationIdentityAndStartCannotEscapeScope(t *testing.T) {
 			case "start":
 				command.Operation = control.Start
 			}
-			if _, err := execute(e, ctx, command); err != ErrDenied || dispatch.calls != 0 {
+			if err := execute(e, ctx, command); err != ErrDenied || dispatch.calls != 0 {
 				t.Fatal("scope escape accepted")
 			}
 		})
@@ -251,7 +316,7 @@ func TestCloseCannotInterleaveClientTokenScope(t *testing.T) {
 	defer unblock()
 	done := make(chan error, 1)
 	go func() {
-		_, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+		err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
 		done <- err
 	}()
 	select {
@@ -270,8 +335,8 @@ func TestCloseCannotInterleaveClientTokenScope(t *testing.T) {
 	unblock()
 	select {
 	case err := <-done:
-		if err != nil {
-			t.Fatal(err)
+		if err != ErrDenied || dispatch.calls != 0 {
+			t.Fatal("cancelled request dispatched after close")
 		}
 	case <-ctx.Done():
 		t.Fatal("token scope did not finish")
@@ -279,7 +344,7 @@ func TestCloseCannotInterleaveClientTokenScope(t *testing.T) {
 	if err := e.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Next(ctx); err != ErrClosed {
+	if err := e.Exchange(ctx); err != ErrClosed {
 		t.Fatal("closed endpoint resumed")
 	}
 }

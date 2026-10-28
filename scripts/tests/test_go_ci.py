@@ -147,29 +147,31 @@ class GoResourceRecordTests(unittest.TestCase):
 class GoProductionInventoryTests(unittest.TestCase):
     def test_scm_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'
-        for target, selected, excluded in (
-                ('linux', 'scm_other.go', 'scm_windows.go'),
-                ('darwin', 'scm_other.go', 'scm_windows.go'),
-                ('windows', 'scm_windows.go', 'scm_other.go')):
+        for target, selected, excluded, production_count in (
+                ('linux', 'scm_other.go', 'scm_windows.go', 19),
+                ('darwin', 'scm_other.go', 'scm_windows.go', 19),
+                ('windows', 'scm_windows.go', 'scm_other.go', 20)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[package], {'control.go', 'host.go', selected})
                 self.assertNotIn(excluded, inventory[package])
                 self.assertEqual(len(inventory), 11)
-                self.assertEqual(sum(map(len, inventory.values())), 18)
+                self.assertEqual(sum(map(len, inventory.values())), production_count)
 
     def test_localcontrol_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'
-        for target, selected, excluded in (
-                ('linux', 'native_other.go', 'native_windows.go'),
-                ('darwin', 'native_other.go', 'native_windows.go'),
-                ('windows', 'native_windows.go', 'native_other.go')):
+        for target, selected, excluded, production_count in (
+                ('linux', {'native_other.go'}, 'native_windows.go', 19),
+                ('darwin', {'native_other.go'}, 'native_windows.go', 19),
+                ('windows', {'native_windows.go', 'io_windows.go'}, 'native_other.go', 20)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
-                self.assertEqual(inventory[package], {'policy.go', 'boundary.go', selected})
+                self.assertEqual(inventory[package], {'policy.go', 'boundary.go', 'wire.go'} | selected)
                 self.assertNotIn(excluded, inventory[package])
+                if target != 'windows':
+                    self.assertNotIn('io_windows.go', inventory[package])
                 self.assertEqual(len(inventory), 11)
-                self.assertEqual(sum(map(len, inventory.values())), 18)
+                self.assertEqual(sum(map(len, inventory.values())), production_count)
 
     def test_unknown_go_target_is_rejected(self):
         for target in ('', 'plan9', 'windows/../linux'):
