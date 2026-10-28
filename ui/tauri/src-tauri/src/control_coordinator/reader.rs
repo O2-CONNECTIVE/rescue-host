@@ -81,13 +81,13 @@ pub(crate) struct ReaderTask {
 
 impl ReaderTask {
     pub fn start(reader: impl Read + Send + 'static) -> io::Result<Self> {
-        let frame_limit = u16::try_from(MAX_FRAME_BYTES)
-            .map_err(|_| io::Error::other("invalid frame limit"))?;
+        let frame_limit =
+            u16::try_from(MAX_FRAME_BYTES).map_err(|_| io::Error::other("invalid frame limit"))?;
         let (sender, receiver) = mpsc::sync_channel(1);
         let cancel = Arc::new(AtomicBool::new(false));
         let requested = Arc::clone(&cancel);
-        let thread = thread::Builder::new()
-            .spawn(move || run(reader, sender, &requested, frame_limit))?;
+        let thread =
+            thread::Builder::new().spawn(move || run(reader, sender, &requested, frame_limit))?;
         Ok(Self {
             receiver: Some(receiver),
             thread: Some(thread),
