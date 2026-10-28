@@ -91,6 +91,20 @@ impl<'de> Deserialize<'de> for Token {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Decimal<const POSITIVE: bool>(u64);
 
+impl<const POSITIVE: bool> Decimal<POSITIVE> {
+    pub fn new(value: u64) -> Option<Self> {
+        if POSITIVE && value == 0 {
+            None
+        } else {
+            Some(Self(value))
+        }
+    }
+
+    pub fn get(self) -> u64 {
+        self.0
+    }
+}
+
 impl<const POSITIVE: bool> Serialize for Decimal<POSITIVE> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         serializer.serialize_str(&self.0.to_string())

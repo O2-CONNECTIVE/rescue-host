@@ -1,4 +1,4 @@
-use super::object::Object;
+pub(crate) use super::object::Object;
 use super::scalar::{Code, Decimal, GoState, Hex, Operation, Protocol, Token, WireBool};
 use serde::{Deserialize, Serialize};
 
