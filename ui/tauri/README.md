@@ -48,11 +48,14 @@ queue は1 frame、worker が保持する frame と4096 byteの読取 buffer は
 EOF の通知は queued frame の処理と worker の実 join 後です。
 所有子 adapter は既存 `ChildOwner` の実回収を別に観測し、停止 receipt、peer の終了主張、reader EOF、process 回収を同一視しません。
 
-cancel は協調停止で、blocking `Read` を中断しません。
+汎用 reader の cancel は協調停止で、任意の blocking `Read` を中断しません。
 poll の予算切れは `Pending` と所有 handle を残し、OS scheduling や最終 join の実時間上限を保証しません。
 未完了 reader を Drop すると detach し得るため、実 endpoint の取消完了と owner 寿命を確立するまで製品配線は禁止です（[Rust JoinHandle](https://doc.rust-lang.org/stable/std/thread/struct.JoinHandle.html)）。
-この変更に Windows pipe client / writer、server identity 検証、認証済み bootstrap、Go 起動はありません。
-Go localcontrol は1 pipe message = 1 JSONL frameを要求するので、byte stream reader だけで接続可能とは扱いません（[localcontrol 境界](../../docs/windows-local-control.md)）。
+Windows 専用の内部 `NativeClient` 候補は、固定 local pipe、個別 access、実 WinAPI の read/write と server process 照合へ接続します。
+同じ cancel token で対象 OVERLAPPED の取消を要求し、実完了・reader join・最後の owner の解放を分けます。
+Go localcontrol の1 message = 1 JSONL frameを、内部16KiB bufferで全体検査してから reader へ渡します。
+[候補 client の確認範囲](WINDOWS_CONTROL.md)と[localcontrol 境界](../../docs/windows-local-control.md)を参照してください。
+認証済み bootstrap と Go 起動は未接続で、既定 runtime は endpoint なしです。実 pipe/WinAPI 動作、別 account の query 権限、OS 保護は未実証です。
 
 shell は [Tauri managed state](https://v2.tauri.app/develop/state-management/) に reader の所有者を保持する入口を用意しますが、既定は endpoint なしです。
 GUI の5 field応答は未接続・開始不可・停止不可・終了未確認を維持し、peer の active / terminated 主張では解除しません。
@@ -84,7 +87,7 @@ OS app icon は識別用の暫定資材で、Lucide の操作アイコンとは�
 ## native と配布の確認範囲
 
 専用 readonly Windows CI は Node 24.22.1、公式 Rust 1.99.1 を固定します。
-Rust 直接依存は Tauri 2.12.5、tauri-build 2.7.4、serde 1.0.229、試験用 serde_json 1.0.154 で、Cargo.lock を維持します。
+Rust 直接依存は Tauri 2.12.5、tauri-build 2.7.4、serde 1.0.229、serde_json 1.0.154 と、Windows 限定の windows-sys 0.61.2（MIT OR Apache-2.0）です。Cargo.lock の既存解決版を維持します。
 承認済み toolchain のある環境だけ、frontend build 後に実行します。
 
 ```bash
