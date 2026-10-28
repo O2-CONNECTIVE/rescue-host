@@ -68,3 +68,15 @@ clipboardはbrowser APIへDI配線していますが、E2Eは隔離したclipboa
 規約レビューのP2（消える操作後のfocus復帰2経路）をbrowserでRED確認し、`e059e45`で5件すべてGREENにしています。
 同headの差分レビューで規約・仕様/securityの未解決findingはありません。
 静的レビュー、ローカル操作、今後の共有CIと実機は別々の証跡です。正式PR approveは行っていません。
+
+## 情報量を整理した後続差分
+
+`7e6171a`を基点に、通常画面を相手・端末、許可範囲・期限、状態と主操作へ絞り、技術情報・診断・履歴・通知見本・モック操作を「詳細を見る」へ移しました。
+`68c1c49`の変更前UIで詳細triggerが0件（期待1件）となるREDを観測し、変更後のbrowserは6件成功しています。
+コピー前確認、停止要求と終了証拠の分離、終了未確認時の新規接続禁止と、詳細のkeyboard開閉・focus復帰を確認します。
+controller / adapter / 履歴store / 認可のモデルは変更していません。既存unit16件と型/lint/Knipは別に再実行します。
+
+同じ1200×1000 viewport・同じ確認／終了未確認状態で変更前後を比較します。
+変更前は上記 `operator-review-wide.png` / `operator-unconfirmed-wide.png`、変更後は `operator-review-after.png` / `operator-unconfirmed-after.png` です。
+変更前画像を再生成せず、既存の別送画像をそのまま比較に使います。通常画面の主操作が初期viewport内にあることは画像だけでなくbrowserでも検査しています。
+追加差分も実接続・nativeトレイ・OS通知・永続化の実装や、AA達成の証拠へ読み替えません。

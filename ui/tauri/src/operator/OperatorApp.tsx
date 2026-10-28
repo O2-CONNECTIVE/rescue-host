@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Laptop, Square, X } from 'lucide-react';
+import { Laptop, Square } from 'lucide-react';
 import { Button } from '../components/ui/button.tsx';
 import { Card } from '../components/ui/card.tsx';
 import { createOperatorController } from './controller.ts';
@@ -7,8 +7,7 @@ import { initialState, type Observation, type OperatorAdapter, type SampleId } f
 import { status } from './status.ts';
 import { ReceiveForm } from './ReceiveForm.tsx';
 import { ConnectionPanel } from './ConnectionPanel.tsx';
-import { PrototypeTools } from './PrototypeTools.tsx';
-import { HistoryPanel } from './HistoryPanel.tsx';
+import { OperatorDetails } from './OperatorDetails.tsx';
 import type { createMemoryHistory } from './history.ts';
 
 export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock }: {
@@ -16,6 +15,7 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
   history: ReturnType<typeof createMemoryHistory>; advanceHistoryClock: () => void;
 }) {
   const [state, setState] = useState(initialState);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const controller = useRef<ReturnType<typeof createOperatorController> | null>(null);
   const focusAfterAction = useRef<string | null>(null);
   useEffect(() => {
@@ -32,28 +32,27 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
     }
   }, [state]);
   function receive(sample: SampleId) { focusAfterAction.current = 'review-heading'; controller.current?.acceptSample(sample); }
-  function reset() { if (state.termination === 'unconfirmed') return; focusAfterAction.current = 'sample-input'; controller.current?.reset(); }
-  function observe(event: Observation) { focusAfterAction.current = 'operator-status-title'; emit(event); }
+  function reset() { if (state.termination === 'unconfirmed') return; focusAfterAction.current = 'sample-input'; setDetailsOpen(false); controller.current?.reset(); }
+  function observe(event: Observation) { focusAfterAction.current = 'operator-status-title'; setDetailsOpen(false); emit(event); }
+  function closeWindow() { focusAfterAction.current = 'tray-heading'; setDetailsOpen(false); controller.current?.minimizeToTray(); }
   const view = status[state.phase];
   const StatusIcon = view.icon;
+  const description = state.phase === 'failed' && state.termination === 'not_started' ? '承認されませんでした。入力を確認してやり直せます。'
+    : state.phase === 'unconfirmed' && !state.validSession ? '新しい接続は始められません。接続先へ終了状況を確認してください。'
+    : state.phase === 'unconfirmed' && state.checkingStatus ? '同じ接続の状態を確認しています。終了はまだ未確認です。' : view.text;
   return <main className="operator">
-    <header className="operator-header"><p className="operator-brand"><Laptop className="icon" aria-hidden="true" focusable="false" />Rescue / 操作側クライアント</p>
-      <p className="operator-prototype-label">操作プロトタイプ・実接続なし</p><h1>サポート接続を準備する</h1>
-      <p>外部エージェントへ渡す情報を確認します。同時に扱える接続は1件です。</p>
-      {state.visibility === 'window' && <Button variant="quiet" className="operator-close" onClick={() => { focusAfterAction.current = 'tray-heading'; controller.current?.minimizeToTray(); }}><X className="icon" aria-hidden="true" focusable="false" />閉じる（トレイのモック）</Button>}</header>
-    <ol className="operator-steps" aria-label="接続の流れ">{['内容を確認', '承認を待つ', '接続・作業', '終了を確認'].map((label, index) => <li key={label} aria-current={view.step === index ? 'step' : undefined}><span aria-hidden="true">{index + 1}</span>{label}</li>)}</ol>
+    <header className="operator-header"><div className="operator-topbar"><p className="operator-brand"><Laptop className="icon" aria-hidden="true" focusable="false" />Rescue / 操作側クライアント</p>
+      <p className="operator-prototype-label">操作プロトタイプ・実接続なし</p></div><h1>サポート接続を準備する</h1></header>
     <section className={`status${view.role ? ` status--${view.role}` : ''}`} role="status" aria-live="polite" aria-atomic="true">
       <span className={`status__icon${state.phase === 'waiting' || state.phase === 'connecting' ? ' icon-spin' : ''}`}><StatusIcon className="icon" aria-hidden="true" focusable="false" /></span>
-      <div className="status__content"><h2 id="operator-status-title" tabIndex={-1}>{view.title}</h2><p>{view.text}</p></div></section>
-    <div className="operator-layout"><section aria-label="接続の操作">{state.visibility === 'tray' ? <Card><h2 id="tray-heading" tabIndex={-1}>トレイ格納中（モック）</h2>
+      <div className="status__content"><h2 id="operator-status-title" tabIndex={-1}>{view.title}</h2><p id="operator-state-description">{description}</p></div></section>
+    <section aria-label="接続の操作">{state.visibility === 'tray' ? <Card><h2 id="tray-heading" tabIndex={-1}>トレイ格納中（モック）</h2>
       <p>接続状態を維持したまま、ウィンドウだけを隠す体験です。OSのトレイには格納していません。</p>
       <Button onClick={() => { focusAfterAction.current = state.sample ? 'review-heading' : 'sample-input'; controller.current?.restoreWindow(); }}>ウィンドウを戻す（モック）</Button>
       {state.validSession && !state.stopRequested && ['ready', 'connected', 'unconfirmed'].includes(state.phase) && <Button variant="danger" onClick={() => { focusAfterAction.current = 'operator-status-title'; void controller.current?.requestStop(); }}><Square className="icon" aria-hidden="true" focusable="false" />接続を停止（サンプル）</Button>}
     </Card> : state.sample ? <ConnectionPanel state={state}
       onApproval={confirmed => { void controller.current?.requestApproval(confirmed); }} onStop={() => { void controller.current?.requestStop(); }}
-      onRetry={() => { void controller.current?.retryStatus(); }} copy={copy} /> : <ReceiveForm onReceive={receive} />}</section>
-      <PrototypeTools state={state} emit={observe} reset={reset} /></div>
-    <HistoryPanel history={history} advanceClock={advanceHistoryClock} />
-    <footer className="caption">画面を閉じることや、体験を初期化することは、通信の終了確認ではありません。この入口は実通信を開始しません。</footer>
+      onRetry={() => { void controller.current?.retryStatus(); }} onReset={reset} copy={copy} /> : <ReceiveForm onReceive={receive} />}</section>
+    <OperatorDetails state={state} open={detailsOpen} onOpenChange={setDetailsOpen} emit={observe} closeWindow={closeWindow} history={history} advanceClock={advanceHistoryClock} />
   </main>;
 }

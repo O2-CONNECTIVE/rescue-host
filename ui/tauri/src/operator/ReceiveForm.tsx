@@ -9,8 +9,8 @@ export function ReceiveForm({ onReceive }: { onReceive: (sample: SampleId) => vo
   const [error, setError] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
   return <Card className="operator-receive">
-    <div><p className="operator-step-label">STEP 1 / 受取り</p><h2>サンプルの接続情報を入力</h2></div>
-    <p id="sample-help">下のサンプルだけ使えます。実際の接続コード・鍵・接続定義を貼り付けないでください。</p>
+    <h2>サンプルの接続情報を入力</h2>
+    <p id="sample-help">サンプル専用です。実際のコードや鍵を入力しないでください。</p>
     <form onSubmit={event => {
       event.preventDefault();
       const sample = readSample(kind, input.current?.value ?? '');
@@ -36,6 +36,5 @@ export function ReceiveForm({ onReceive }: { onReceive: (sample: SampleId) => vo
       }}><FileText className="icon" aria-hidden="true" focusable="false" />サンプルを入力</Button>
       <Button type="submit" className="operator-primary"><ArrowRight className="icon" aria-hidden="true" focusable="false" />接続内容を確認</Button>
     </form>
-    <p className="caption">確定時に入力欄を消去し、サンプルの種類だけを次の画面へ渡します。入力は保存・送信しません。</p>
   </Card>;
 }
