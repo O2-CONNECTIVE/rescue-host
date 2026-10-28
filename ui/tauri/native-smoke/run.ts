@@ -6,14 +6,12 @@ import { Driver } from './webdriver.ts';
 import { armRefresh, disarmRefresh, waitForRefresh } from './refresh-observer.ts';
 import { checkKeyboard } from './keyboard.ts';
 import { checkUnwired } from './assert-unwired.ts';
-import { saveStartupLogFacts } from './startup-logs.ts';
 import { observeSessionStartup } from './session-observation.ts';
 
 const output = process.env.NATIVE_OUTPUT_DIR;
 const application = process.env.NATIVE_APP_EXE;
 const profile = process.env.NATIVE_PROFILE;
 const logs = process.env.NATIVE_TOOLS_DIR;
-let sessionCreated = false;
 let observation: ReturnType<typeof createNativeObservation> | undefined;
 let deadline: ReturnType<typeof setTimeout> | undefined;
 try {
@@ -28,7 +26,6 @@ try {
   const browserVersion = logs
     ? await observeSessionStartup(() => driver.create(application, profile), logs, output)
     : await driver.create(application, profile);
-  sessionCreated = true;
   observation.phase('origin-check');
   await driver.waitForBundledDocument((origin, state) => { observation?.origin(origin); observation?.documentState(state); });
   observation.phase('readiness');
@@ -88,10 +85,6 @@ try {
   console.log('NATIVE_WEBVIEW_AND_REAL_IPC_OBSERVED');
 } catch (error) {
   try { observation?.fail(error); } catch { console.error('NATIVE_EVIDENCE_WRITE_FAILED'); }
-  if (!sessionCreated && output && logs) {
-    try { await saveStartupLogFacts(logs, output); }
-    catch { console.error('NATIVE_STARTUP_LOG_EVIDENCE_FAILED'); }
-  }
   console.error('NATIVE_WEBVIEW_OR_IPC_FAILED');
   process.exitCode = 1;
 } finally { clearTimeout(deadline); }
