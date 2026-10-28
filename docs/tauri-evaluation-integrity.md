@@ -29,6 +29,7 @@ inventoryで追認したEXE等も拒否し、PEのMZ headerをlicense本文と�
 現行生成物のASCII名だけを許可する。
 [Microsoftの命名規則](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file)を参照した。
 ZIPは64MiB、展開後の申告合計128MiB、各member32MiB、4096 memberまでに制限する。
+圧縮方式は現行のDEFLATEと無圧縮STOREDだけを本文読取前に許可し、LZMA等は処理しない。
 hashと内容検証は一度取得した同じbytesへ適用し、検証中にpathを再読込しない。
 これは汎用の安全なZIP展開器ではなく、この配布形式の検証器である。
 
@@ -78,5 +79,7 @@ CLIからpackagerで作ったfixture ZIPを検証する。
 Windows曖昧path、重複/別名/symlink拒否は、それぞれ失敗を先に観測して最小修正した。
 外部source/ZIP/EXE期待値、gate閉鎖とGUI欠落は実装後の回帰であり、TDDと改称しない。
 独立レビューのCLI引数・破損DEFLATE・license配下のruntime混入指摘も、負例を先に観測して修正した。
+未許可圧縮methodをheaderに宣言する負例も、本文読取前の固定code拒否を確認する。
+このfixtureはLZMAの正常圧縮・展開試験ではなく、追加依存の導入を必要としない。
 fixture bytesは実行物ではなく、実EXE/backend試験の件数に加算しない。
 既存評価ZIPのread-only検証とCIの実native起動結果も分けて記録する。

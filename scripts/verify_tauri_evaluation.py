@@ -85,6 +85,8 @@ def verify(archive, source, archive_sha256, exe_sha256):
     # hashと検証を同じ取得bytesへ適用。以降にpathを再読込しない。
     with zipfile.ZipFile(io.BytesIO(data)) as bundle:
         infos = bundle.infolist()
+        require(all(i.compress_type in {zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED} for i in infos),
+                "PACKAGE_COMPRESSION_UNSUPPORTED")
         require(len(infos) <= 4096 and sum(i.file_size for i in infos) <= 128 * 1024 * 1024
                 and all(i.file_size <= 32 * 1024 * 1024 for i in infos), "PACKAGE_SIZE_LIMIT")
         require(all(safe_member(i.filename) for i in infos), "PACKAGE_MEMBER_PATH_INVALID")

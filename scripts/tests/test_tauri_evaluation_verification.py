@@ -73,6 +73,19 @@ class EvaluationVerificationTests(unittest.TestCase):
             for name, data in entries.items():
                 bundle.writestr(name, data)
 
+    def test_non_distribution_compression_is_rejected_before_reading_members(self):
+        # 未許可methodをheaderに宣言するfixture。LZMA実装を必要とせず、本文読取前の拒否を試す。
+        data = bytearray(self.archive.read_bytes())
+        self.assertEqual(data[:4], b"PK\x03\x04")
+        central = data.index(b"PK\x01\x02")
+        struct.pack_into("<H", data, 8, zipfile.ZIP_LZMA)
+        struct.pack_into("<H", data, central + 10, zipfile.ZIP_LZMA)
+        self.archive.write_bytes(data)
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout)["code"], "PACKAGE_COMPRESSION_UNSUPPORTED")
+
     def test_nested_runtime_cannot_hide_in_license_files_or_inventory(self):
         original = self.archive.read_bytes()
         for referenced in [False, True]:
