@@ -301,7 +301,10 @@ fn transport_fault_after_event_acquisition_precedes_queued_frame_processing() {
         ReaderProgress::Discarded
     );
     assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
-    assert_eq!(connection.request(Request::Stop), Err(Code::VersionMismatch));
+    assert_eq!(
+        connection.request(Request::Stop),
+        Err(Code::VersionMismatch)
+    );
     assert!(!connection.target().context_matched());
     let joined = connection
         .cancel_and_join_until(Instant::now() + Duration::from_secs(2))
