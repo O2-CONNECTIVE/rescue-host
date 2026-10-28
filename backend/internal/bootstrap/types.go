@@ -37,8 +37,9 @@ type Message struct {
 	Limits              stdio.Limits
 }
 
-// Expected は将来の認証済み factory が payload と独立に供給する全束縛値。
-// この型の構築や一致は認証ではない。payload から作る公開 factory は設けない。
+// Expected は独立した既知レコードとの純粋な完全一致比較に使う全束縛値。
+// この型の構築や一致は認証ではなく、native の認証済み受信 API でもない。
+// payload を複製して比較を通す factory は設けない。
 type Expected struct {
 	IssuerInstanceEpoch string
 	Grant               supervisor.ProvisionedGrant

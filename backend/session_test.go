@@ -99,6 +99,9 @@ func testListenWithControl(t *testing.T, control func(string, string, syscall.Ra
 	return v
 }
 func testDial(ctx context.Context, address string) (net.Conn, error) {
+	return testDialWithControl(ctx, address, nil)
+}
+func testDialWithControl(ctx context.Context, address string, control func(string, string, syscall.RawConn) error) (net.Conn, error) {
 	// 接続完了まで所有 listener の close と同じ lock を使い、ポート再利用を避ける。
 	network.Lock()
 	defer network.Unlock()
@@ -108,7 +111,7 @@ func testDial(ctx context.Context, address string) (net.Conn, error) {
 		network.forbidden++
 		return nil, errors.New("所有外への試験接続を禁止")
 	}
-	c, e := (&net.Dialer{Timeout: time.Second}).DialContext(ctx, "tcp4", address)
+	c, e := (&net.Dialer{Timeout: time.Second, Control: control}).DialContext(ctx, "tcp4", address)
 	if e != nil {
 		return nil, e
 	}

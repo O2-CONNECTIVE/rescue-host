@@ -15,13 +15,14 @@ import (
 )
 
 type oneFixture struct {
-	l    *trackedListener
-	peer atomic.Pointer[trackedConn]
-	done chan struct{}
+	l     *trackedListener
+	peer  atomic.Pointer[trackedConn]
+	ready chan struct{}
+	done  chan struct{}
 }
 
 func oneShotFixture(t *testing.T, control func(string, string, syscall.RawConn) error, handler func(net.Conn)) *oneFixture {
-	f := &oneFixture{l: testListenWithControl(t, control), done: make(chan struct{})}
+	f := &oneFixture{l: testListenWithControl(t, control), ready: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(f.done)
 		raw, err := f.l.Accept()
@@ -37,6 +38,7 @@ func oneShotFixture(t *testing.T, control func(string, string, syscall.RawConn) 
 			}
 		}
 		f.peer.Store(c)
+		close(f.ready)
 		defer c.Close()
 		c.SetDeadline(time.Now().Add(4 * time.Second))
 		handler(c)
@@ -219,8 +221,10 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			release := make(chan struct{})
 			var control func(string, string, syscall.RawConn) error
+			var targetControl func(string, string, syscall.RawConn) error
 			if kind == "tcp-backpressure" {
 				control = smallFixtureReceiveBuffer
+				targetControl = fixtureBackpressureControl()
 			}
 			peerRead := make(chan error, 1)
 			peerProgress := make(chan error, 1)
@@ -246,11 +250,22 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 			var writer atomic.Pointer[pendingTCPWrite]
 			var targetRaw atomic.Pointer[net.TCPConn]
 			s, err := newSessionWithCutoff(cfg, func(ctx context.Context) (net.Conn, func() error, error) {
-				conn, raw, err := fixtureTarget(ctx, f.l.Addr().String())
+				conn, raw, err := fixtureTargetWithControl(ctx, f.l.Addr().String(), targetControl)
 				if err != nil {
+					t.Logf("自己fixtureのTCP接続準備に失敗: %v", err)
 					return nil, nil, err
 				}
 				if kind == "tcp-backpressure" {
+					// accept側の受信buffer設定完了後に初回Writeを開始する。
+					select {
+					case <-f.ready:
+					case <-f.done:
+						conn.Close()
+						return nil, nil, errors.New("自己fixtureの受信準備が失敗")
+					case <-time.After(200 * time.Millisecond):
+						conn.Close()
+						return nil, nil, errors.New("自己fixtureの受信準備が到達予算を超過")
+					}
 					if err = raw.SetWriteBuffer(fixtureSendSize()); err != nil {
 						conn.Close()
 						return nil, nil, err
@@ -276,6 +291,18 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer ch.Close()
+			if kind == "tcp-backpressure" {
+				peer := f.peer.Load().Conn.(*net.TCPConn)
+				profile, profileErr := checkFixtureBackpressureProfile(targetRaw.Load(), peer)
+				if profileErr != nil {
+					t.Fatal(profileErr)
+				}
+				peerSend, peerReceive, socketErr := ownedSocketBuffers(peer)
+				if socketErr != nil {
+					t.Fatal(socketErr)
+				}
+				t.Logf("before_first_write %s peer_send_buffer=%d peer_receive_buffer=%d", profile, peerSend, peerReceive)
+			}
 			amount := 4096
 			if kind == "tcp-backpressure" {
 				amount = 65536
