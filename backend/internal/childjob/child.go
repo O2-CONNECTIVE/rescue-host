@@ -1,0 +1,219 @@
+// Package childjob は保護所有者が固定したWindows子とJobの所有を扱う。
+// Jobは権限隔離ではない。token/保護root/ACLの承認・取得を提供しない。
+// 入力をUI、argv、環境変数、保存stateから直接構築してはならない。
+package childjob
+
+import (
+	"context"
+	"errors"
+	"strings"
+	"time"
+)
+
+var ErrConfig = errors.New("子の保護起動設定が未設定です")
+var ErrUnsupported = errors.New("Windowsの保護子起動を利用できません")
+var ErrStart = errors.New("子の起動を確認できません")
+var ErrUnconfirmed = errors.New("子とJobの終了を確認できません")
+var ErrExit = errors.New("子は異常終了しました")
+
+type Artifact struct {
+	Path   string
+	SHA256 [32]byte
+}
+
+// Handlesは保護所有者が既に所有した標準pipeだけを借用する。
+// このmoduleは元handleやprimary tokenの所有を引き取らない。
+type Handles struct{ Stdin, Stdout, Stderr uintptr }
+
+// Specは未決の保護provisioningからの型付き入力で、認証の証明ではない。
+// PrimaryTokenは承認済み既存primary tokenが必須。取得や昇格fallbackはしない。
+type Spec struct {
+	Artifact       Artifact
+	Handles        Handles
+	PrimaryToken   uintptr
+	CleanupTimeout time.Duration
+}
+
+type kernel interface {
+	verifyArtifact(context.Context, Artifact) (uintptr, error)
+	newJob() (uintptr, error)
+	createSuspended(Spec) (uintptr, uintptr, error)
+	assign(uintptr, uintptr) error
+	resume(uintptr) error
+	terminateJob(uintptr) error
+	terminateProcess(uintptr) error
+	waitProcess(context.Context, uintptr) (uint32, error)
+	waitEmpty(context.Context, uintptr) error
+	close(uintptr) error
+}
+
+// Childはprocess/Jobの終了確認までhandleを保持する。初回利用後はコピーしない。
+// 元pipe、primary token、PIDの所有を引き取らず、PID検索による再取得もしない。
+type Child struct {
+	api                         kernel
+	gate                        chan struct{}
+	image, job, process, thread uintptr
+	assigned, exited            bool
+	exitCode                    uint32
+}
+
+func bounded(ctx context.Context) bool {
+	if ctx == nil || ctx.Err() != nil {
+		return false
+	}
+	_, ok := ctx.Deadline()
+	return ok
+}
+
+func configured(spec Spec) bool {
+	h := spec.Handles
+	return spec.Artifact.Path != "" && !strings.ContainsRune(spec.Artifact.Path, 0) && spec.Artifact.SHA256 != ([32]byte{}) &&
+		ordinaryHandle(spec.PrimaryToken) && spec.CleanupTimeout > 0 &&
+		ordinaryHandle(h.Stdin) && ordinaryHandle(h.Stdout) && ordinaryHandle(h.Stderr) &&
+		h.Stdin != h.Stdout && h.Stdin != h.Stderr && h.Stdout != h.Stderr
+}
+
+// INVALID_HANDLE_VALUEと現在process/thread/token等の負のpseudo handleを採らない。
+func ordinaryHandle(handle uintptr) bool { return handle != 0 && handle < ^uintptr(15) }
+
+func Start(ctx context.Context, spec Spec) (*Child, error) {
+	if !bounded(ctx) || !configured(spec) {
+		return nil, ErrConfig
+	}
+	return platformStart(ctx, spec)
+}
+
+func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
+	if !bounded(ctx) || !configured(spec) || api == nil {
+		return nil, ErrConfig
+	}
+	c := &Child{api: api, gate: make(chan struct{}, 1)}
+	c.gate <- struct{}{}
+	fail := func() (*Child, error) {
+		cleanup, cancel := context.WithTimeout(context.Background(), spec.CleanupTimeout)
+		defer cancel()
+		if err := c.Close(cleanup); err != nil {
+			// 部分起動の所有参照を捨てず、呼出側へ回収責務ごと返す。
+			return c, ErrUnconfirmed
+		}
+		return nil, ErrStart
+	}
+	var err error
+	c.image, err = api.verifyArtifact(ctx, spec.Artifact)
+	if err != nil || c.image == 0 || ctx.Err() != nil {
+		return fail()
+	}
+	c.job, err = api.newJob()
+	if err != nil || c.job == 0 || ctx.Err() != nil {
+		return fail()
+	}
+	c.process, c.thread, err = api.createSuspended(spec)
+	if err != nil || c.process == 0 || c.thread == 0 || ctx.Err() != nil {
+		return fail()
+	}
+	if err = api.assign(c.job, c.process); err != nil || ctx.Err() != nil {
+		return fail()
+	}
+	c.assigned = true
+	if err = api.resume(c.thread); err != nil || ctx.Err() != nil {
+		return fail()
+	}
+	if err = c.release(&c.thread); err != nil {
+		return fail()
+	}
+	if err = c.release(&c.image); err != nil || ctx.Err() != nil {
+		return fail()
+	}
+	return c, nil
+}
+
+func (c *Child) take(ctx context.Context) error {
+	if c == nil || !bounded(ctx) {
+		return ErrConfig
+	}
+	select {
+	case <-ctx.Done():
+		return ErrUnconfirmed
+	case <-c.gate:
+	}
+	if ctx.Err() != nil {
+		c.gate <- struct{}{}
+		return ErrUnconfirmed
+	}
+	return nil
+}
+
+func (c *Child) release(handle *uintptr) error {
+	if *handle == 0 {
+		return nil
+	}
+	if err := c.api.close(*handle); err != nil {
+		return ErrUnconfirmed
+	}
+	*handle = 0
+	return nil
+}
+
+func (c *Child) waitOwned(ctx context.Context) error {
+	if c.process != 0 && !c.exited {
+		code, err := c.api.waitProcess(ctx, c.process)
+		if err != nil {
+			return ErrUnconfirmed
+		}
+		c.exitCode, c.exited = code, true
+	}
+	if c.job != 0 {
+		if err := c.api.waitEmpty(ctx, c.job); err != nil {
+			return ErrUnconfirmed
+		}
+	}
+	if ctx.Err() != nil {
+		return ErrUnconfirmed
+	}
+	var unconfirmed bool
+	for _, handle := range []*uintptr{&c.thread, &c.image, &c.process, &c.job} {
+		if err := c.release(handle); err != nil {
+			unconfirmed = true
+		}
+	}
+	if unconfirmed || ctx.Err() != nil {
+		return ErrUnconfirmed
+	}
+	return nil
+}
+
+// Waitはprocessの退出とJob active=0、所有handleの回収まで確認する。
+// 成功はGoのClose応答やSSHの停止証明ではない。非0退出はErrExitと区別する。
+func (c *Child) Wait(ctx context.Context) error {
+	if err := c.take(ctx); err != nil {
+		return err
+	}
+	defer func() { c.gate <- struct{}{} }()
+	if err := c.waitOwned(ctx); err != nil {
+		return err
+	}
+	if c.exited && c.exitCode != 0 {
+		return ErrExit
+	}
+	return nil
+}
+
+// Closeは明示停止後もJobを空と確認するまで最後のhandleを保持する。
+// 協調的なOS API呼出しが前提で、OS hang/sleep中の強制執行を保証しない。
+func (c *Child) Close(ctx context.Context) error {
+	if err := c.take(ctx); err != nil {
+		return err
+	}
+	defer func() { c.gate <- struct{}{} }()
+	// leader退出後も子孫が残り得る。Job参照があれば常にJob全体の停止を要求する。
+	if c.job != 0 {
+		_ = c.api.terminateJob(c.job)
+	}
+	if c.process != 0 && !c.exited {
+		// 割当失敗の結果が未知でも、停止中のprocess本体を取り残さない。
+		if !c.assigned {
+			_ = c.api.terminateProcess(c.process)
+		}
+	}
+	return c.waitOwned(ctx)
+}

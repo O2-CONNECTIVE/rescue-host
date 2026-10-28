@@ -112,3 +112,33 @@ $duplicateGeneration.CreationDate = $legitimate.CreationDate.AddSeconds(1)
 Reject { Get-OwnedApp $driver $edge 'app.exe' @($lineageGraph + $duplicateGeneration) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
 if (($lineageEvidence | ConvertTo-Json -Depth 5).Contains('ProcessId')) { throw 'LINEAGE_IDENTITY_LEAK' }
 Write-Output 'LINEAGE_CONTRACT_PASS checks=4 (fixtures only; not native evidence)'
+
+# session作成の失敗を通常closeや所有保証へ読み替えず、匿名の起動状態を残す。
+. "$PSScriptRoot/startup-observation.ps1"
+$startup = Get-StartupFacts $driver $edge 'app.exe' $valid @($loop4, $edge4, $edge6)
+if ($startup.driverIdentity -ne 'same-identity' -or $startup.edgeIdentity -ne 'same-identity' -or $startup.appCandidates -ne 2 -or $startup.correlatedApps -ne 1 -or $startup.correlatedWebviews -ne 1) { throw 'STARTUP_CORRELATION_FACTS_MISSING' }
+$startup = Get-StartupFacts $driver $edge 'app.exe' @($driver, $edge) @($loop4, $edge4)
+if ($startup.appCandidates -ne 0 -or $startup.correlatedApps -ne 0 -or $startup.PSObject.Properties.Name -contains 'normalCloseVerified') { throw 'STARTUP_ABSENCE_BECAME_SUCCESS' }
+$startup = Get-StartupFacts $driver $edge 'PRIVATE_APP.exe' @($driver, $reused, $edge) @($loop4, $edge4)
+$serialized = $startup | ConvertTo-Json -Depth 6
+if ($startup.driverIdentity -ne 'ambiguous' -or $serialized.Contains('PRIVATE_') -or $serialized.Contains('ProcessId') -or $serialized.Contains('2026-10-27')) { throw 'STARTUP_IDENTITY_OR_PRIVATE_DATA_LOST' }
+Write-Output 'STARTUP_OBSERVATION_CONTRACT_PASS checks=3 (fixtures only; not native evidence)'
+
+$startupFolder = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $startupFolder -ErrorAction Stop | Out-Null
+try {
+    $notDirectory = Join-Path $startupFolder 'PRIVATE_OUTPUT'
+    Set-Content -LiteralPath $notDirectory -Value 'fixture'
+    $failedReport = [ordered]@{ nativeTestsPassed = 0; normalCloseVerified = $false; cleanupFailures = 0 }
+    $saveCode = 'none'
+    try { Save-NativeReport $failedReport $notDirectory }
+    catch { $saveCode = if ($_.Exception.Message -eq 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED') { $_.Exception.Message } else { 'unclassified' } }
+    $unknownAddress = [pscustomobject]@{ LocalPort = 4444; LocalAddress = 'PRIVATE_INVALID_ADDRESS'; OwningProcess = 10 }
+    $facts = Get-StartupFacts $driver $edge 'app.exe' $valid @($unknownAddress)
+    $failures = 0
+    if ($saveCode -ne 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED') { Write-Output 'STARTUP_SAVE_FAILURE_UNCLASSIFIED'; $failures += 1 }
+    if ($null -ne $facts.listeners[0].loopback) { Write-Output 'STARTUP_UNKNOWN_ADDRESS_FALSE_FACT'; $failures += 1 }
+    if ($failedReport.nativeTestsPassed -ne 0 -or $failedReport.normalCloseVerified -or $failedReport.cleanupFailures -ne 0) { throw 'STARTUP_SAVE_CHANGED_ORIGINAL_VERDICT' }
+    if ($failures -ne 0) { throw 'STARTUP_DIAGNOSTIC_FAILURE_CONTRACT' }
+} finally { Remove-Item -LiteralPath $startupFolder -Recurse -Force }
+Write-Output 'STARTUP_DIAGNOSTIC_FAILURE_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'

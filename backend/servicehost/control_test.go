@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
-	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
 func TestServiceStopCancelsReadAndWaitsForItsCompletion(t *testing.T) {
@@ -24,12 +24,12 @@ func TestServiceStopCancelsReadAndWaitsForItsCompletion(t *testing.T) {
 					close(release)
 				}
 			}()
-			host := servicehost.New(provisioningFunc(func(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+			host := servicehost.New(provisioningFunc(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 				close(entered)
 				<-ctx.Done()
 				close(canceled)
 				<-release
-				return supervisor.ProvisionedGrant{}, ctx.Err()
+				return ephemeral.ApprovedPolicy{}, ctx.Err()
 			}))
 			controls := make(chan servicehost.Control, 1)
 			defer close(controls)
@@ -90,11 +90,11 @@ func TestServiceReturnsUnconfiguredFailure(t *testing.T) {
 func TestStatusBackpressureAndInterrogateDoNotBlockStopOrReloadPolicy(t *testing.T) {
 	entered := make(chan struct{})
 	reads := 0
-	host := servicehost.New(provisioningFunc(func(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 		reads++
 		close(entered)
 		<-ctx.Done()
-		return supervisor.ProvisionedGrant{}, ctx.Err()
+		return ephemeral.ApprovedPolicy{}, ctx.Err()
 	}))
 	controls := make(chan servicehost.Control, 3)
 	defer close(controls)
@@ -123,10 +123,10 @@ func TestStatusBackpressureAndInterrogateDoNotBlockStopOrReloadPolicy(t *testing
 
 func TestClosedControlInputCancelsOwnedRead(t *testing.T) {
 	entered := make(chan struct{})
-	host := servicehost.New(provisioningFunc(func(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 		close(entered)
 		<-ctx.Done()
-		return supervisor.ProvisionedGrant{}, ctx.Err()
+		return ephemeral.ApprovedPolicy{}, ctx.Err()
 	}))
 	controls := make(chan servicehost.Control)
 	done := make(chan error, 1)

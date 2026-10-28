@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
 . "$PSScriptRoot/close-observation.ps1"
+. "$PSScriptRoot/startup-observation.ps1"
 New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop | Out-Null
 $appPath = (Resolve-Path $(if ($ApplicationPath) { $ApplicationPath } else { "$PSScriptRoot/../src-tauri/target/debug/rescue-host-shell.exe" })).Path
 $edgePath = (Resolve-Path "$ToolsDirectory/edge/msedgedriver.exe").Path
@@ -37,11 +38,14 @@ try {
         [ordered]@{ port = $_.LocalPort; loopback = [Net.IPAddress]::IsLoopback($address); family = $address.AddressFamily.ToString(); owned = $_.OwningProcess -eq $(if ($_.LocalPort -eq 4444) { $driver[0].ProcessId } else { $edge[0].ProcessId }) }
     })
     Assert-ListenerSnapshot $listeners $driver[0].ProcessId $edge[0].ProcessId
+    try { $report.beforeSessionFacts = Get-StartupFacts $driver[0] $edge[0] $appPath $snapshot $listeners }
+    catch { $report.beforeSessionObservation = 'unavailable' }
     $phase = 'webview-and-ipc'
     $report.nativeTestsRun = 1
     $env:NATIVE_OUTPUT_DIR = $OutputDirectory
     $env:NATIVE_APP_EXE = $appPath
     $env:NATIVE_PROFILE = Join-Path $ToolsDirectory 'webview-profile'
+    $env:NATIVE_TOOLS_DIR = $ToolsDirectory
     $nodeProcess = Start-Process (Get-Command node.exe).Source -ArgumentList "$PSScriptRoot/run.ts" -PassThru -NoNewWindow -RedirectStandardOutput "$ToolsDirectory/test.stdout.log" -RedirectStandardError "$ToolsDirectory/test.stderr.log"
     if (-not $nodeProcess.WaitForExit(80000)) { throw 'NATIVE_TEST_PROCESS_TIMEOUT' }
     if ($nodeProcess.ExitCode -ne 0) { throw 'NATIVE_WEBVIEW_OR_IPC_ASSERTION_FAILED' }
@@ -111,8 +115,26 @@ try {
     $report.failureScript = Split-Path $_.InvocationInfo.ScriptName -Leaf
     $report.failureLine = $_.InvocationInfo.ScriptLineNumber
     Write-Output $report.failureCode
+    if ($phase -eq 'webview-and-ipc') {
+        # 元のFAIL確定後、cleanupで状態を変える前の一回だけの診断。再session要求はしない。
+        $startupQuery = [Diagnostics.Stopwatch]::StartNew()
+        try {
+            $failedSnapshot = Get-Snapshot
+            $failedListeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
+            $report.startupFailureFacts = Get-StartupFacts $driver[0] $edge[0] $appPath $failedSnapshot $failedListeners
+        } catch { $report.startupFailureObservation = 'unavailable' }
+        finally { $report.startupFailureQueryMs = $startupQuery.ElapsedMilliseconds }
+    }
 } finally {
     # 通常closeの合否確定後にのみcleanupし、元のFAILと記録を保持する。
     Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE
+    if ($phase -eq 'webview-and-ipc' -and $report.nativeTestsPassed -eq 0) {
+        try {
+            $afterSnapshot = Get-Snapshot
+            $afterListeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
+            $report.startupAfterCleanupFacts = Get-StartupFacts $driver[0] $edge[0] $appPath $afterSnapshot $afterListeners
+        } catch { $report.startupAfterCleanupObservation = 'unavailable' }
+        finally { Save-NativeReport $report $OutputDirectory }
+    }
 }
 if ($report.cleanupFailures -gt 0 -or $report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }
