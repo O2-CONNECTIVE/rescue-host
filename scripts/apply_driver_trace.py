@@ -9,8 +9,8 @@ import sys
 import tarfile
 
 UPSTREAM = '2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953'
-PATCH_SHA256 = 'PENDING'
-CODE_SHA256 = {}
+PATCH_SHA256 = '35f4f12a913603ebb6a201f40d20530827d54f94e64a359a618526d490609ae5'
+CODE_SHA256 = {'diagnostic.rs': '5a0d00a4032ef5dd7f75b6cba10b75fe07f29a9448035497720c449fd562cf6e', 'diagnostic_tests.rs': 'ccce02206e54296cd2407b60ebbbdf11df1a2c72f7b0086b9c7771b9c77f3bb4'}
 PREFIX = 'tauri-driver-2.1.0/'
 ALLOWED = {'src/main.rs', 'src/server.rs', 'src/diagnostic.rs', 'src/diagnostic_tests.rs'}
 
