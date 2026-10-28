@@ -26,7 +26,7 @@ raceはcgoと対応C compilerが必要です。
 TestMainの資源記録は残留と禁止dialの件数、loopback境界だけを確認して削除し、生の接続記録をartifactへ公開しません。
 試験が失敗した場合も資源件数と経過時間を確認してから削除し、試験失敗と資源異常を両方報告します。
 
-通常buildに選択される13package、Linux/macOSでは26実装、Windowsでは28実装ファイルを照合します。
+通常buildに選択される15package、Linux/macOSでは39実装、Windowsでは41実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
@@ -39,6 +39,10 @@ Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを�
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
 runbackendはruntime.goだけ、childjobは共通child.go/plan.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/artifact_windows.goだけを許可します。
+protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/validation.goと、
+非Windowsのnative_other.goまたはWindowsのnative_windows.goの1件だけを許可します。
+bootstrapはcodec.go/launch.go/strict.go/types.go/validate.goの5件だけを許可し、
+純粋codecやargv相関の成功をnative認証・保護主体・実EOFの成立へ広げません。
 Go JSONと終了コードを両方検査し、pass、fail、skip、no-test package、未終端を区別します。
 選択された公開test sourceと実際のtop-level結果を照合し、全skipや欠落を成功にしません。
 検査をJSON fixtureで検証する開発ツール試験は、製品のSSH境界のTDDとは別です。

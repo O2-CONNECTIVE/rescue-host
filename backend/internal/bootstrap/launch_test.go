@@ -48,6 +48,20 @@ func TestFormatLaunchArgsHasFixedGrammar(t *testing.T) {
 	}
 }
 
+// owner の文言修正に対応する既存 control/1 との互換性回帰。機能 TDD ではない。
+func TestLaunchSessionEpochZeroMatchesControlContract(t *testing.T) {
+	_, expected, _ := fixture(t)
+	values := bootstrap.LaunchValues{IssuerInstanceEpoch: expected.IssuerInstanceEpoch, Wire: expected.Wire}
+	args, err := bootstrap.FormatLaunchArgs(values, 14, [3]uintptr{1, 2, 3})
+	if err != nil || args[5] != "--bootstrap-session-epoch=0" {
+		t.Fatalf("session epoch 0 の既存意味を維持できない: %v", err)
+	}
+	parsed, err := bootstrap.ParseLaunchArgs(args, [3]uintptr{1, 2, 3})
+	if err != nil || parsed.Correlation().Wire.Identity.Epoch != "0" {
+		t.Fatalf("session epoch 0 の相関値を解析できない: %v", err)
+	}
+}
+
 func TestLaunchGrammarRejectsArbitraryArgumentsAndHandleAliases(t *testing.T) {
 	for name, change := range map[string]func([]string) []string{
 		"missing":              func(a []string) []string { return a[:9] },

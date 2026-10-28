@@ -153,3 +153,51 @@ void test('headers受信後もbodyの期限切れ・通信断・JSON不正を分
     assert.equal(JSON.stringify(traces).includes('PRIVATE_BODY_'), false);
   }
 });
+
+void test('session失敗のdriverログを固定分類だけで保存し原文を複製しない', async t => {
+  const { mkdtemp, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'startup-log-fixture-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, 'driver.stderr.log'), 'session not created: PRIVATE_TOKEN /private/profile\nDevToolsActivePort file doesn\'t exist');
+  const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
+  await saveStartupLogFacts(directory, directory);
+  const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
+  const record: unknown = JSON.parse(raw);
+  assert.ok(record !== null && typeof record === 'object' && 'stderr' in record && 'stdout' in record);
+  assert.ok(record.stderr !== null && typeof record.stderr === 'object' && 'status' in record.stderr && 'hints' in record.stderr);
+  assert.ok(record.stderr.hints !== null && typeof record.stderr.hints === 'object' && 'sessionNotCreated' in record.stderr.hints && 'devtoolsPortMissing' in record.stderr.hints);
+  assert.ok(record.stdout !== null && typeof record.stdout === 'object' && 'status' in record.stdout && 'hints' in record.stdout);
+  assert.equal(record.stderr.status, 'read');
+  assert.equal(record.stderr.hints.sessionNotCreated, true);
+  assert.equal(record.stderr.hints.devtoolsPortMissing, true);
+  assert.equal(record.stdout.status, 'unavailable');
+  assert.equal(record.stdout.hints, null);
+  assert.equal(raw.includes('PRIVATE_TOKEN'), false);
+  assert.equal(raw.includes('/private/profile'), false);
+  assert.equal(raw.includes(directory), false);
+});
+
+void test('driverログ読取は各64KiBで打ち切り、非通常fileを未知として残す', async t => {
+  // 上限とfile種別の実装後回帰。先行TDDとは区別する。
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'startup-log-limit-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, 'driver.stdout.log'));
+  await writeFile(path.join(directory, 'driver.stderr.log'), 'x'.repeat(65536) + 'session not created PRIVATE_TAIL');
+  const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
+  await saveStartupLogFacts(directory, directory);
+  const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
+  const record: unknown = JSON.parse(raw);
+  assert.ok(record !== null && typeof record === 'object' && 'stderr' in record && 'stdout' in record);
+  assert.ok(record.stderr !== null && typeof record.stderr === 'object' && 'bytesRead' in record.stderr && 'truncated' in record.stderr && 'hints' in record.stderr);
+  assert.ok(record.stderr.hints !== null && typeof record.stderr.hints === 'object' && 'sessionNotCreated' in record.stderr.hints);
+  assert.equal(record.stderr.bytesRead, 65536);
+  assert.equal(record.stderr.truncated, true);
+  assert.equal(record.stderr.hints.sessionNotCreated, false);
+  assert.deepEqual(record.stdout, { status: 'unavailable', bytesRead: null, truncated: null, hints: null });
+  assert.equal(raw.includes('PRIVATE_TAIL'), false);
+});

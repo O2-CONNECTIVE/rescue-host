@@ -29,6 +29,10 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey': {
+        'acl.go', 'format.go', 'loader.go', 'profile.go', 'scope.go', 'source.go', 'validation.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap': {
+        'codec.go', 'launch.go', 'strict.go', 'types.go', 'validate.go'},
 }
 
 
@@ -53,13 +57,22 @@ CHILDJOB_FILES = {
 }
 
 
+PROTECTEDKEY_FILES = {
+    'linux': 'native_other.go',
+    'darwin': 'native_other.go',
+    'windows': 'native_windows.go',
+}
+
+
 def product_files_for(goos):
-    if goos not in SCM_FILES or goos not in LOCALCONTROL_FILES or goos not in CHILDJOB_FILES:
+    if (goos not in SCM_FILES or goos not in LOCALCONTROL_FILES
+            or goos not in CHILDJOB_FILES or goos not in PROTECTEDKEY_FILES):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].update(LOCALCONTROL_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob'].update(CHILDJOB_FILES[goos])
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey'].add(PROTECTEDKEY_FILES[goos])
     return expected
 
 

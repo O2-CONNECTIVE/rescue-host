@@ -59,7 +59,8 @@ func EncodeRecord(message Message) ([]byte, error) {
 }
 
 // DecodeRecord は slice 全体の構造だけを検査し、実 pipe EOF は観測しない。
-// Expected の独立供給と認証済み factory は未実装であり、認可を返さない。
+// Expected は呼出し前から独立に既知の全値を要求する。認可は返さない。
+// native 受信では認証後の package 内経路を別途使い、payload から Expected を作らない。
 func DecodeRecord(record []byte, expected Expected, limits ReceiverLimits) (Message, error) {
 	if limits.MaxFrames < 1 || int64(limits.MaxFrames) > 2147483647 || limits.MaxCleanupTimeout <= 0 {
 		return Message{}, ErrLimits

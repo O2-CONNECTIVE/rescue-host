@@ -15,7 +15,7 @@ type LaunchValues struct {
 }
 
 // UntrustedLaunchArgs は解析しただけの未認証入力です。
-// 認証済み Expected や runtime 設定へ変換する factory は未接続です。
+// 認証済み context や runtime 設定へ変換する factory は未接続です。
 type UntrustedLaunchArgs struct {
 	handle uintptr
 	values LaunchValues

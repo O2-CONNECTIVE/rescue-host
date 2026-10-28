@@ -20,15 +20,22 @@ sliceの末尾は実pipeのEOF観測ではありません。I/O層による実EO
 | `stdio` | 明示したframesとcleanupTimeoutNs。frameBytesは16384固定で送らない |
 
 整数はoverflow検査付きの正規decimal string、時刻はUTC RFC3339Nanoの`Z`表現をparse/formatで完全一致させます。
+generationは正値です。identityのsession epochは既存control/1とissuerに合わせて0を許し、起動instance epochへ読み替えません。
 公開鍵はraw SSH Ed25519 marshal bytesの標準base64正規形で、parse・re-encode・既存KeySetDigestを照合します。
 maximum/lease/capacityは既存backend上限を超えず、leaseはgrantの短lease ceilingも超えません。
 現在時刻は読まず、deadlineを相対時間へ再基準化せず、Authority/Sessionも作成しません。
 失効・期限・認可の判定は保護された所有者と既存runtimeの責務です。
 
-`Expected` は将来の保護factoryがpayloadと独立に供給する全grant/config/binding値です。
+`DecodeRecord` の`Expected` は、呼出し前から独立に既知の全grant/config/binding値との純粋な完全一致比較です。
 `ReceiverLimits` のframes/cleanup ceilingも保護側が必ず明示し、既定値はありません。
-現時点でこのfactoryは接続されていません。payloadをExpectedへ複製して照合成功と称してはいけません。
+これはnative接続用APIではありません。payloadをExpectedへ複製して照合成功と称してはいけません。
 一致は構造上の相関確認であり、認証・承認済provisioning・grantの真正性を証明しません。
+
+native接続は、payload読取り前に固定profileとpipe/SCM/保持processの由来を確認したfactoryが所有する二段経路を採用します。
+認証済み受信側だけがpackage内の構造・意味検査を再利用し、独立argvのissuer/full binding相関と、保護されたReceiverLimits/keyRef catalogの上限を照合してから設定へ進みます。
+grant/configの残りは同じAuthorityから単回発行された認証済みservice由来のpayloadとして検査し、全値をargvへ追加しません。
+未認証のargvやpayloadから認証済みcontextを作る公開constructorや`trusted=true`指定は設けません。
+このfactoryと設定への昇格経路は今回未実装で、`Message`だけから実行許可が成立するものではありません。
 
 `FormatLaunchArgs` は固定順10引数を整形し、`ParseLaunchArgs` は未認証の`UntrustedLaunchArgs`だけを返します。
 ASCII予算4096byte（各引数の終端分込み）、canonical positive uintptr、stdio3と第4handleの非zero・相互非重複を検査します。
