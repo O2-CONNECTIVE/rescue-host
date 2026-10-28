@@ -82,16 +82,11 @@ pub(crate) struct ReaderTask {
 impl ReaderTask {
     pub fn start_with_cancel(
         reader: impl Read + Send + 'static,
-        _cancel: Arc<AtomicBool>,
+        cancel: Arc<AtomicBool>,
     ) -> io::Result<Self> {
-        Self::start(reader)
-    }
-
-    pub fn start(reader: impl Read + Send + 'static) -> io::Result<Self> {
         let frame_limit =
             u16::try_from(MAX_FRAME_BYTES).map_err(|_| io::Error::other("invalid frame limit"))?;
         let (sender, receiver) = mpsc::sync_channel(1);
-        let cancel = Arc::new(AtomicBool::new(false));
         let requested = Arc::clone(&cancel);
         let thread =
             thread::Builder::new().spawn(move || run(reader, sender, &requested, frame_limit))?;
@@ -101,6 +96,10 @@ impl ReaderTask {
             joined: None,
             cancel,
         })
+    }
+
+    pub fn start(reader: impl Read + Send + 'static) -> io::Result<Self> {
+        Self::start_with_cancel(reader, Arc::new(AtomicBool::new(false)))
     }
 
     pub fn cancel(&mut self) {

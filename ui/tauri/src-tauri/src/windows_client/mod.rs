@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod cancel_tests;
+mod endpoint;
 mod native;
 mod operation;
 mod peer;
