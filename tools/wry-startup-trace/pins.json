@@ -1,0 +1,18 @@
+{
+  "variant": "wry-0.57.1-callback-1",
+  "upstreamSha256": "759c50ddad0ef9913bb5496cb9d509a50433a3b78cb0238d61105526589cf0e9",
+  "replacementsSha256": "95efa2b3e3b73aa1f4dd593ad84be720589db4e9373366816ae6156afe70a60e",
+  "codeSha256": "ab2ead6ca5cd46c9ec1101b8866ec879d0d420c89ae8c5dbafd6721776ed8e3c",
+  "preimage": {
+    "src/lib.rs": "1563bfa16d1bcaa74e30e5f4688072442ec1d16355a040601a26547032855b51",
+    "src/webview2/mod.rs": "9ef674af12e52bc3519b0e300752c1042798b7f336e0e0dafca6a8944f348888",
+    "src/startup_probe.rs": null
+  },
+  "postimage": {
+    "src/lib.rs": "7c56aa1b35bdf75e464123544e6a2b0ae89a2c69a4fbfada5894db9e944098d9",
+    "src/webview2/mod.rs": "8a5cc98f04b2f781035e5c69dbc3e7104af9f86f918e6ea05105fbcc28f2e24d",
+    "src/startup_probe.rs": "ab2ead6ca5cd46c9ec1101b8866ec879d0d420c89ae8c5dbafd6721776ed8e3c"
+  },
+  "lockBeforeSha256": "a7d19325d5c922243009f39f6a7f9da225abf8a497b280ff8bf49081f2597af6",
+  "lockAfterSha256": "bda3f9f460e4f38d8e56b6e4a7c74f8fbadc6e3d1860e2284745f1fad182967c"
+}

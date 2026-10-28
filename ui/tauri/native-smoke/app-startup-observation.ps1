@@ -1,9 +1,10 @@
 # 試験専用。UI/要求の期限を変えず、既存diagnostic waitの1秒budgetだけを共有する。
-function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+function Wait-ClosedStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget,
+    [ValidateSet('app-startup-stages.json', 'wry-startup-stages.json')][string]$FileName) {
     if (-not $Budget.IsRunning) { $Budget.Start() }
     try {
         [IO.File]::WriteAllText((Join-Path $Directory 'app-startup.finish'), 'finish')
-        $file = Join-Path $Directory 'app-startup-stages.json'
+        $file = Join-Path $Directory $FileName
         do {
             $stream = $null
             try {
@@ -18,4 +19,10 @@ function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget
         return $false
     } catch { return $false }
     finally { $Budget.Stop() }
+}
+function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    return Wait-ClosedStartupTrace $Directory $Budget 'app-startup-stages.json'
+}
+function Wait-WryStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    return Wait-ClosedStartupTrace $Directory $Budget 'wry-startup-stages.json'
 }
