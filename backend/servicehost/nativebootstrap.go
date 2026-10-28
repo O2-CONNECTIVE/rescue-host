@@ -142,20 +142,22 @@ func (n *nativeChildProvisioning) prepareIssued(ctx context.Context, a *supervis
 }
 
 type nativePublication struct {
-	mu           sync.Mutex
-	used, closed bool
-	cleanup      chan struct{}
-	authority    *supervisor.Authority
-	grant        supervisor.ProvisionedGrant
-	record       []byte
-	probe        serviceProbe
-	pipe         bootstrapPair
-	children     childjob.Handles
-	stdio        *OwnedStdio
-	token        uintptr
-	api          nativeBootstrapCalls
-	budget       time.Duration
-	extra        PreparedBootstrap
+	mu             sync.Mutex
+	used, closed   bool
+	cleanup        chan struct{}
+	authority      *supervisor.Authority
+	grant          supervisor.ProvisionedGrant
+	record         []byte
+	probe          serviceProbe
+	pipe           bootstrapPair
+	children       childjob.Handles
+	stdio          *OwnedStdio
+	token          uintptr
+	api            nativeBootstrapCalls
+	budget         time.Duration
+	extra          PreparedBootstrap
+	probeAttempted bool
+	probeFailure   error
 }
 
 func (p *nativePublication) Publish(ctx context.Context, a *supervisor.Authority) (err error) {
@@ -169,9 +171,7 @@ func (p *nativePublication) Publish(ctx context.Context, a *supervisor.Authority
 	defer func() {
 		cleanup, cancel := context.WithTimeout(context.Background(), p.budget)
 		defer cancel()
-		if p.probe != nil {
-			err = errors.Join(err, p.probe.Close(cleanup))
-		}
+		err = errors.Join(err, p.closeProbe(cleanup, false))
 		if err != nil {
 			_ = p.authority.Revoke(p.grant.Binding)
 			if p.pipe != nil {
@@ -207,6 +207,45 @@ func (p *nativePublication) Publish(ctx context.Context, a *supervisor.Authority
 	return nil
 }
 
+// Publishがまだ回収していないscopeだけを、StartIssuedの元threadで終了する。
+// startup取消のcontextを流用せず、既に試した回収へ新しい予算を追加しない。
+func (p *nativePublication) releaseStartupThread() error {
+	p.mu.Lock()
+	attempted, failure := p.probeAttempted, p.probeFailure
+	p.mu.Unlock()
+	if attempted {
+		return failure
+	}
+	cleanup, cancel := context.WithTimeout(context.Background(), p.budget)
+	defer cancel()
+	return p.closeProbe(cleanup, false)
+}
+
+// cacheとCloseを直列化する。Hostへの返却後の所有回収でもfatalは消さない。
+// 不明なscopeはthread再利用不可とし、同じstartup中に成功まで再試行しない。
+func (p *nativePublication) closeProbe(ctx context.Context, retryOwned bool) (err error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	defer func() {
+		if recover() != nil {
+			p.probeFailure = runtimeFailure(p.probeFailure, bootstrapauth.ErrFatal)
+			err = p.probeFailure
+		}
+	}()
+	if p.probeAttempted && (!retryOwned || p.probeFailure == nil) {
+		return p.probeFailure
+	}
+	p.probeAttempted = true
+	if p.probe == nil {
+		return p.probeFailure
+	}
+	err = p.probe.Close(ctx)
+	if err != nil {
+		p.probeFailure = runtimeFailure(p.probeFailure, err, bootstrapauth.ErrFatal)
+	}
+	return errors.Join(p.probeFailure, err)
+}
+
 func (p *nativePublication) releaseChildren(ctx context.Context) error {
 	select {
 	case <-p.cleanup:
@@ -236,14 +275,15 @@ func (p *nativePublication) Close(ctx context.Context) error {
 	p.mu.Lock()
 	p.closed = true
 	p.used = true
+	failure := p.probeFailure
 	p.mu.Unlock()
 	if !controlBudget(ctx) {
-		return ErrRuntimeUnconfirmed
+		return errors.Join(ErrRuntimeUnconfirmed, failure)
 	}
 	select {
 	case <-p.cleanup:
 	case <-ctx.Done():
-		return ErrRuntimeUnconfirmed
+		return errors.Join(ErrRuntimeUnconfirmed, failure)
 	}
 	defer func() { p.cleanup <- struct{}{} }()
 	var err error
@@ -255,9 +295,7 @@ func (p *nativePublication) Close(ctx context.Context) error {
 	if p.pipe != nil {
 		err = errors.Join(err, p.pipe.Close(ctx))
 	}
-	if p.probe != nil {
-		err = errors.Join(err, p.probe.Close(ctx))
-	}
+	err = errors.Join(err, p.closeProbe(ctx, true))
 	if p.extra != nil {
 		err = errors.Join(err, p.extra.Close(ctx))
 	}
