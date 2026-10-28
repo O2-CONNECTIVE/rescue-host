@@ -5,7 +5,7 @@ import { inspectAppStartupFile, verifyStartupBuild } from './app-startup-files.t
 
 try {
   const { values } = parseArgs({ options: { directory: { type: 'string' }, manifest: { type: 'string' },
-    exe: { type: 'string' }, source: { type: 'string' }, 'build-only': { type: 'boolean' } } });
+    exe: { type: 'string' }, source: { type: 'string' }, collection: { type: 'string' }, 'build-only': { type: 'boolean' } } });
   if (!values.manifest || !values.exe || !values.source || (!values['build-only'] && !values.directory)) throw new Error();
   const manifestStat = await lstat(values.manifest); const exeStat = await lstat(values.exe);
   if (!manifestStat.isFile() || manifestStat.isSymbolicLink() || manifestStat.size > 2048
@@ -22,7 +22,17 @@ try {
     exeSha256, profile: manifest.profile, features: ['custom-protocol', 'startup-diagnostics'], distribution: false };
   if (values['build-only']) console.log(JSON.stringify({ code: 'APP_STARTUP_BUILD_VERIFIED', build }));
   else {
-    const startup = await inspectAppStartupFile(values.directory ?? '');
+    let collection: unknown;
+    try {
+      if (values.collection) {
+        const stat = await lstat(values.collection);
+        if (stat.isFile() && !stat.isSymbolicLink() && stat.size <= 65536) {
+          const text = await readFile(values.collection, 'utf8');
+          if (Buffer.byteLength(text) <= 65536) collection = JSON.parse(text);
+        }
+      }
+    } catch { /* 回収証跡欠測はincomplete。原文/例外を出さない。 */ }
+    const startup = await inspectAppStartupFile(values.directory ?? '', collection);
     const complete = startup.phase !== 'diagnostic-incomplete';
     console.log(JSON.stringify({ code: complete ? 'APP_STARTUP_COMPLETE' : 'APP_STARTUP_INCOMPLETE',
       diagnostic: complete ? 'complete' : 'incomplete', build, startup }));

@@ -28,6 +28,7 @@ Node成功後・app通常close前、または失敗確定後・cleanup前にapp-
 
 Rust writerはcreate_new後に書くため、FileShare.Noneで一度開けるまで途中出力を完成物としない。
 完成fileは2048bytes以内、readerも2049bytesまでしか読まず、不正UTF8/途中JSON/重複field/未知情報/欠落/未seal/dropはincomplete。
+cleanup前のnative-result.appStartupFileClosed=trueを後段readerでも必須とし、false/欠測なら後からfileが完成してもincompleteを保持する。
 既存classifyAppStartupにunknownとして入力し、固定reportだけを保存する。
 観測窓完了はapp正常起動/IPC/全process終了の合格と同一ではない。
 native-resultと診断reportは別判定。診断incompleteは専用CIの後段で非0とする。

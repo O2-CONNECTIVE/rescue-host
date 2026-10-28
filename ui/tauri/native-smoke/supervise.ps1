@@ -72,9 +72,7 @@ try {
     if ($view.nativeTestsStarted -ne 1 -or $view.checks -ne 3 -or -not $view.actualRustIpc) { throw 'NATIVE_ZERO_OR_INCOMPLETE_TESTS' }
     if ($StartupDiagnostic) {
         # Node成功後かつ通常close前に回収する。native合否とは別の観測。
-        try { $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget }
-        catch { $report.appStartupFileClosed = $false }
-        finally { $diagnosticBudget.Stop() }
+        $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
         $appTraceCollected = $true
     }
     $snapshot = Get-Snapshot
@@ -152,9 +150,7 @@ try {
     }
 } finally {
     if ($null -ne $appTraceDirectory -and -not $appTraceCollected) {
-        try { $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget }
-        catch { $report.appStartupFileClosed = $false }
-        finally { $diagnosticBudget.Stop() }
+        $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
     }
     # 合否確定後の診断cutoff。新requestは送らず、自己所有workerを最大1秒だけ待つ。
     try {

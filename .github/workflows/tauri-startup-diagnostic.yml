@@ -99,7 +99,7 @@ jobs:
         if: always()
         run: |
           New-Item -ItemType Directory "$env:RUNNER_TEMP/startup-evidence" -Force | Out-Null
-          node ui/tauri/native-smoke/inspect-app-startup.ts --directory "$env:RUNNER_TEMP/startup-tools/app-startup" --manifest $env:STARTUP_MANIFEST --exe $env:STARTUP_EXE --source $env:STARTUP_SOURCE > "$env:RUNNER_TEMP/startup-evidence/app-startup-report.json"
+          node ui/tauri/native-smoke/inspect-app-startup.ts --directory "$env:RUNNER_TEMP/startup-tools/app-startup" --manifest $env:STARTUP_MANIFEST --exe $env:STARTUP_EXE --source $env:STARTUP_SOURCE --collection "$env:RUNNER_TEMP/startup-evidence/native-result.json" > "$env:RUNNER_TEMP/startup-evidence/app-startup-report.json"
           exit $LASTEXITCODE
       - name: Validate anonymous driver stage and provenance
         if: always()

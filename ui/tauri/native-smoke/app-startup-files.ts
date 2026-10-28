@@ -15,9 +15,12 @@ export function verifyStartupBuild(input: unknown, source: string, sha256: strin
     && value.features[0] === 'custom-protocol' && value.features[1] === 'startup-diagnostics';
 }
 
-export async function inspectAppStartupFile(directory: string) {
+export async function inspectAppStartupFile(directory: string, collection?: unknown) {
   let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
+    if (!collection || typeof collection !== 'object' || !('kind' in collection)
+      || collection.kind !== 'windows-webview2-native-smoke' || !('appStartupFileClosed' in collection)
+      || collection.appStartupFileClosed !== true) return classifyAppStartup(null);
     const filename = path.join(directory, 'app-startup-stages.json');
     const stat = await lstat(filename);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2048) return classifyAppStartup(null);

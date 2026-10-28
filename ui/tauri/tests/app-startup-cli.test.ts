@@ -29,6 +29,16 @@ void test('CLIは一致buildを確認し、欠測traceを非0・秘密なしで�
     assert.equal(missing.status, 1); assert.deepEqual(report(missing.stdout).startup,
       { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [] });
     assert.equal(missing.stderr, ''); assert.equal(missing.stdout.includes(directory), false);
+    await writeFile(path.join(directory, 'app-startup-stages.json'), JSON.stringify({
+      schema: 1, variant: 'host-startup-stage-1', purpose: 'diagnostic-hints-only',
+      events: [{ seq: 1, stage: 'setup-enter', elapsedUs: 0 }],
+      attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0
+    }));
+    const collection = path.join(directory, 'collection.json');
+    await writeFile(collection, JSON.stringify({ kind: 'windows-webview2-native-smoke', appStartupFileClosed: false }));
+    assert.equal(report(run(['--collection', collection]).stdout).code, 'APP_STARTUP_INCOMPLETE');
+    await writeFile(collection, JSON.stringify({ kind: 'windows-webview2-native-smoke', appStartupFileClosed: true }));
+    assert.equal(report(run(['--collection', collection]).stdout).code, 'APP_STARTUP_COMPLETE');
     await writeFile(exe, 'PRIVATE_FIXTURE');
     const drift = run(['--build-only']);
     assert.equal(drift.status, 1); assert.equal(report(drift.stdout).code, 'APP_STARTUP_BUILD_REJECTED');

@@ -16,7 +16,10 @@ void test('所有trace fileを有限に読み、page-load済みと欠測を匿�
       events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
       attempted: 5, recorded: 5, dropped: 0, sealed: true, inFlight: 0
     }));
-    assert.equal((await inspectAppStartupFile(directory)).phase, 'first-page-load-finished');
+    assert.equal((await inspectAppStartupFile(directory, {
+      kind: 'windows-webview2-native-smoke', appStartupFileClosed: true
+    })).phase, 'first-page-load-finished');
+    assert.equal((await inspectAppStartupFile(directory)).phase, 'diagnostic-incomplete');
     // 完成fileが後から現れても、回収期限失敗を成功にしない。
     assert.equal((await inspectAppStartupFile(directory, {
       kind: 'windows-webview2-native-smoke', appStartupFileClosed: false
@@ -30,7 +33,9 @@ void test('途中・過大・重複field・秘密入りtraceは原文を出さ�
   try {
     for (const text of ['{', ' '.repeat(2049), '{"schema":1,"schema":1}', '{"secret":"PRIVATE_FIXTURE"}']) {
       await writeFile(filename, text);
-      const report = await inspectAppStartupFile(directory);
+      const report = await inspectAppStartupFile(directory, {
+        kind: 'windows-webview2-native-smoke', appStartupFileClosed: true
+      });
       assert.equal(report.phase, 'diagnostic-incomplete'); assert.deepEqual(report.events, []);
       assert.equal(JSON.stringify(report).includes('PRIVATE_FIXTURE'), false);
     }
