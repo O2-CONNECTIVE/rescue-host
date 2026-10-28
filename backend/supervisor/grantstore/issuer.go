@@ -122,6 +122,7 @@ func (i *Issuer) Authorize(ctx context.Context, grant supervisor.ProvisionedGran
 	i.attempted = true
 	digest, err := fingerprint(grant)
 	if err != nil || clock == nil || grant.Binding.Generation != i.record.Generation || digest != i.record.GrantDigest {
+		i.poison()
 		return nil, ErrRejected
 	}
 	if err := i.commit(ctx, Intent); err != nil {

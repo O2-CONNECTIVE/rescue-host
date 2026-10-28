@@ -372,3 +372,21 @@ func TestCoreStillRejectsUnsupportedGuestAfterDurableConsume(t *testing.T) {
 		t.Fatalf("invalid core grant lost quarantine: %v %v", other, err)
 	}
 }
+
+func TestRejectedApprovalCannotBecomeFreshAfterCloseAndReopen(t *testing.T) {
+	ctx := context.Background()
+	store := newTempStore(t, grantstore.Ready)
+	i, err := grantstore.Open(ctx, store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := grant()
+	g.Binding.Generation--
+	if a, err := i.Authorize(ctx, g, func() time.Time { return g.HardDeadline.Add(-20 * time.Second) }); a != nil || !errors.Is(err, grantstore.ErrRejected) {
+		t.Fatalf("old generation accepted: %v %v", a, err)
+	}
+	i.Close(ctx)
+	if another, err := grantstore.Open(ctx, &tempStore{dir: store.dir}); another != nil || !errors.Is(err, grantstore.ErrUnavailable) {
+		t.Fatalf("rejected attempt returned to fresh state: %v %v", another, err)
+	}
+}
