@@ -26,11 +26,10 @@ export async function observeSessionStartup<T>(operation: () => Promise<T>, dire
   let early: Promise<void> | undefined;
   const cancel = time.schedule(() => { early = capture('pending-timer'); });
   let status = 'success';
-  let settledMs = 0;
   try { return await operation(); }
   catch (error) { status = outcome(error); throw error; }
   finally {
-    settledMs = elapsed();
+    const settledMs = elapsed();
     pending = false;
     cancel();
     // 観測は同じ要求の結果を変更しない。request期限はDriver側の既存15秒のまま。
