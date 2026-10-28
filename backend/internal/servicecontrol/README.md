@@ -87,6 +87,7 @@ targetは`127.0.0.1`、文字列`"22"`、`direct-tcpip`だけ、guestClassはper
 これは内容相関であり、署名、同意、raw鍵とkeySetDigestの対応、未決のconfigDigest producer、現在時刻や期限内を証明しない。
 
 応答の共通vectorは`testdata/response-vectors.json`の無変更コピーで、SHA-256は`9905eccb3a7d646f357b502ebe27510d3e7b0bada2d5ef9275b24e01f49068d8`。
+この1ファイルは`.gitattributes`で改行変換を抑止し、Windows checkoutでも固定bytesを保持する。
 正例17・負例68・generic depth2・canonical preview2を検査し、全例の認証・owner proof・producer送信許可のフラグはfalseである。
 vector内のexecution欄は設計時点の記録を保持しており、この実装の試験結果はPR/CIで別途記録する。
 
