@@ -115,15 +115,14 @@ pub(crate) fn encode_frame(message: &Message) -> Result<Vec<u8>, Code> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn frame_writer_reserves_lf_and_rejects_before_extension() {
-        let mut writer = FrameWriter(Vec::with_capacity(MAX_FRAME_BYTES));
-        writer.write_all(&vec![b'x'; MAX_FRAME_BYTES - 1]).unwrap();
-        assert!(writer.write_all(b"x").is_err());
-        assert_eq!(writer.0.len(), MAX_FRAME_BYTES - 1);
+        let mut writer = super::FrameWriter(Vec::with_capacity(super::MAX_FRAME_BYTES));
+        let data = vec![b'x'; super::MAX_FRAME_BYTES - 1];
+        std::io::Write::write_all(&mut writer, &data).unwrap();
+        assert!(std::io::Write::write_all(&mut writer, b"x").is_err());
+        assert_eq!(writer.0.len(), super::MAX_FRAME_BYTES - 1);
         writer.0.push(b'\n');
-        assert_eq!(writer.0.len(), MAX_FRAME_BYTES);
+        assert_eq!(writer.0.len(), super::MAX_FRAME_BYTES);
     }
 }
