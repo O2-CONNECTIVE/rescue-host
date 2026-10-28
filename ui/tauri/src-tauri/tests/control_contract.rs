@@ -47,7 +47,10 @@ fn shared_wire_vectors_match_the_pure_rust_codec() {
         "../../../../contracts/control-v1/vectors.json"
     ))
     .unwrap();
-    assert_eq!(fixture["scope"], "control-contract-implementation-candidate");
+    assert_eq!(
+        fixture["scope"],
+        "control-contract-implementation-candidate"
+    );
     assert_eq!(fixture["protocol"], "rescue-host-control/1");
     assert_eq!(fixture["runtimeActivationAllowed"], false);
     assert_eq!(fixture["framePartExpansionLimitBytes"], 16_385);
@@ -55,7 +58,10 @@ fn shared_wire_vectors_match_the_pure_rust_codec() {
         fixture["limits"]["frameBytesIncludingLF"],
         control_codec::MAX_FRAME_BYTES
     );
-    assert_eq!(fixture["limits"]["containerDepth"], control_codec::MAX_DEPTH);
+    assert_eq!(
+        fixture["limits"]["containerDepth"],
+        control_codec::MAX_DEPTH
+    );
     let cases = fixture["wireCases"].as_array().unwrap();
     assert_eq!(cases.len(), 36);
     let mut ids = HashSet::new();
