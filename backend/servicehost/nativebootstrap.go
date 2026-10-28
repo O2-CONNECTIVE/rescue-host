@@ -57,6 +57,9 @@ func NewNativeChildProvisioning(base ProtectedChildProvisioning, c NativeBootstr
 	if base == nil || !ordinaryNativeHandle(c.PrimaryToken) || c.HostKeyRef == "" || c.Limits.CleanupTimeout <= 0 {
 		return nil, ErrProvisioningUnconfigured
 	}
+	if source, ok := base.(*nativeStdioProvisioning); ok && (source == nil || source.identity != stdioIdentityFrom(c.Profile, c.PrimaryToken)) {
+		return nil, ErrProvisioningRejected
+	}
 	f, err := bootstrapauth.NewNativeFactory(c.Profile)
 	if err != nil {
 		return nil, ErrProvisioningUnconfigured

@@ -27,10 +27,22 @@ type NativeStdioConfig struct {
 }
 
 type nativeStdioProvisioning struct {
-	mu   sync.Mutex
-	used bool
-	cfg  NativeStdioConfig
-	open func(context.Context, childstdio.Setup) (stdioPipes, error)
+	mu       sync.Mutex
+	used     bool
+	cfg      NativeStdioConfig
+	identity stdioIdentity
+	open     func(context.Context, childstdio.Setup) (stdioPipes, error)
+}
+
+// pipe作成に使う認証対象だけを値として固定する。ACL/catalogの権威はwrapperのscopeに残す。
+type stdioIdentity struct {
+	user, service, name string
+	supervisor, child   childjob.Artifact
+	token               uintptr
+}
+
+func stdioIdentityFrom(p bootstrapauth.Profile, t uintptr) stdioIdentity {
+	return stdioIdentity{user: p.Keys.ProcessUserSID, service: p.Keys.ServiceSID, name: p.ServiceName, supervisor: childjob.Artifact{Path: p.SupervisorImage.Path, SHA256: p.SupervisorImage.SHA256}, child: childjob.Artifact{Path: p.ChildImage.Path, SHA256: p.ChildImage.SHA256}, token: t}
 }
 
 func NewNativeStdioProvisioning(c NativeStdioConfig) (ProtectedChildProvisioning, error) {
@@ -40,7 +52,10 @@ func NewNativeStdioProvisioning(c NativeStdioConfig) (ProtectedChildProvisioning
 	if _, err := bootstrapauth.NewNativeFactory(c.Profile); err != nil {
 		return nil, ErrProvisioningRejected
 	}
-	return &nativeStdioProvisioning{cfg: c, open: func(ctx context.Context, s childstdio.Setup) (stdioPipes, error) { return childstdio.NewNative(ctx, s) }}, nil
+	identity := stdioIdentityFrom(c.Profile, c.PrimaryToken)
+	// 未使用のmutable profile/mapを保持して後から信頼判断へ使わない。
+	c.Profile = bootstrapauth.Profile{}
+	return &nativeStdioProvisioning{cfg: c, identity: identity, open: func(ctx context.Context, s childstdio.Setup) (stdioPipes, error) { return childstdio.NewNative(ctx, s) }}, nil
 }
 
 // 裸のbaseをlegacy起動のbootstrapへ転用しない。
@@ -70,15 +85,15 @@ func (n *nativeStdioProvisioning) prepareStdio(ctx context.Context, g supervisor
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return ChildPlan{}, ErrProvisioningRejected
 	}
-	wire := control.WireContext{Generation: strconv.FormatUint(g.Binding.Generation, 10), Identity: control.WireIdentity{LaunchID: g.Binding.Identity.LaunchID, Epoch: g.Binding.Identity.Epoch, PolicyDigest: g.Binding.Identity.PolicyDigest}, Binding: control.Binding{ArtifactSHA256: hex.EncodeToString(n.cfg.Profile.ChildImage.SHA256[:]), ChannelNonce: hex.EncodeToString(nonce[:])}, PolicyRef: n.cfg.PolicyRef}
+	wire := control.WireContext{Generation: strconv.FormatUint(g.Binding.Generation, 10), Identity: control.WireIdentity{LaunchID: g.Binding.Identity.LaunchID, Epoch: g.Binding.Identity.Epoch, PolicyDigest: g.Binding.Identity.PolicyDigest}, Binding: control.Binding{ArtifactSHA256: hex.EncodeToString(n.identity.child.SHA256[:]), ChannelNonce: hex.EncodeToString(nonce[:])}, PolicyRef: n.cfg.PolicyRef}
 	if _, err := control.NewState(wire); err != nil {
 		return ChildPlan{}, ErrProvisioningRejected
 	}
 	if err := probe.Recheck(ctx); err != nil || ctx.Err() != nil {
 		return ChildPlan{}, errors.Join(ErrProvisioningRejected, err)
 	}
-	pipes, openErr := n.open(ctx, childstdio.Setup{UserSID: n.cfg.Profile.Keys.ProcessUserSID, ServiceSID: n.cfg.Profile.Keys.ServiceSID, CleanupTimeout: n.cfg.CleanupTimeout})
-	plan := ChildPlan{Spec: childjob.Spec{Artifact: childjob.Artifact{Path: n.cfg.Profile.ChildImage.Path, SHA256: n.cfg.Profile.ChildImage.SHA256}, PrimaryToken: n.cfg.PrimaryToken, CleanupTimeout: n.cfg.CleanupTimeout}}
+	pipes, openErr := n.open(ctx, childstdio.Setup{UserSID: n.identity.user, ServiceSID: n.identity.service, CleanupTimeout: n.cfg.CleanupTimeout})
+	plan := ChildPlan{Spec: childjob.Spec{Artifact: n.identity.child, PrimaryToken: n.cfg.PrimaryToken, CleanupTimeout: n.cfg.CleanupTimeout}}
 	if pipes != nil {
 		if openErr != nil {
 			plan.Stdio = retainedStdio(pipes, n.cfg.StderrBytes)

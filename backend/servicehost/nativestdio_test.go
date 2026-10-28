@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"github.com/O2-CONNECTIVE/rescue-host/backend"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 	"golang.org/x/crypto/ssh"
@@ -280,5 +281,56 @@ func TestNativeStdioRejectsUnconfiguredValuesAndLegacyPreparation(t *testing.T) 
 	defer cancel()
 	if _, err := source.PrepareChild(ctx, g); !errors.Is(err, ErrProvisioningUnconfigured) {
 		t.Fatalf("legacy base accepted: %v", err)
+	}
+}
+
+func TestNativeStdioRejectsWrapperIdentityMismatchBeforeNativeCalls(t *testing.T) {
+	for _, field := range []string{"user", "service-sid", "service-name", "child-hash", "supervisor-hash", "token"} {
+		t.Run(field, func(t *testing.T) {
+			wrapper, _ := nativeConfigFixture(t)
+			profile := wrapper.Profile
+			if field == "user" {
+				profile.Keys.ProcessUserSID = "S-1-5-20"
+			}
+			if field == "service-sid" {
+				profile.Keys.ServiceSID = "S-1-5-80-6-7-8-9-10"
+			}
+			// Profileの意味検査も通る独立した入力を作り、相互bindingの拒否を検査する。
+			fixNodes := func(nodes []protectedkey.NodePolicy) []protectedkey.NodePolicy {
+				result := append([]protectedkey.NodePolicy(nil), nodes...)
+				for i := range result {
+					result[i].OwnerSID = profile.Keys.ProcessUserSID
+					result[i].ACL = []protectedkey.ACE{{SID: profile.Keys.ServiceSID, Mask: 0x1f01ff}}
+				}
+				return result
+			}
+			profile.Keys.Catalog = make(map[string]protectedkey.KeyProfile, len(wrapper.Profile.Keys.Catalog))
+			for ref, key := range wrapper.Profile.Keys.Catalog {
+				key.Nodes = fixNodes(key.Nodes)
+				profile.Keys.Catalog[ref] = key
+			}
+			profile.ChildImage.Nodes = fixNodes(profile.ChildImage.Nodes)
+			profile.SupervisorImage.Nodes = fixNodes(profile.SupervisorImage.Nodes)
+			if field == "service-name" {
+				profile.ServiceName = "OtherSupervisor"
+			}
+			if field == "child-hash" {
+				profile.ChildImage.SHA256[0]++
+			}
+			if field == "supervisor-hash" {
+				profile.SupervisorImage.SHA256[0]++
+			}
+			token := wrapper.PrimaryToken
+			if field == "token" {
+				token++
+			}
+			raw, err := NewNativeStdioProvisioning(NativeStdioConfig{Profile: profile, PrimaryToken: token, PolicyRef: "approved", PollInterval: time.Millisecond, OperationTimeout: time.Second, CleanupTimeout: time.Second, StderrBytes: 32})
+			if err != nil {
+				t.Fatalf("independent static profile invalid: %v", err)
+			}
+			if provisioner, err := NewNativeChildProvisioning(raw, wrapper); err == nil || provisioner != nil {
+				t.Fatal("different stdio identity accepted by bootstrap wrapper")
+			}
+		})
 	}
 }

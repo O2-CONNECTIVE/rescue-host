@@ -76,7 +76,10 @@ stderrは以下の所有者が内容を保存せずに有限drainする。承認
 
 ## 保護stdioの明示構成
 
-`NewNativeStdioProvisioning`は同じ固定profileと借用primary token、policyRef、poll/操作/cleanup予算、正の`StderrBytes`上限を必須とする。
+`NewNativeStdioProvisioning`は保護されたprofileと借用primary token、policyRef、poll/操作/cleanup予算、正の`StderrBytes`上限を必須とする。
+wrapperとのprocess/service SID、service名、supervisor/childの固定path/hash、借用tokenの一致をnative呼出前に照合する。
+pipe作成に使うこれらの識別値はconstructorで値として固定し、stdio側で未使用のACL/catalog mapは保持しない。
+ACLや配置の検証はwrapperが保持する認証scopeの権威に残す。
 このbaseを`NewNativeChildProvisioning`へ渡した場合だけ、同じservice認証scopeの再照合後に`childstdio.NewNative`で3本のbyte pipeを作る。
 裸のbaseの`PrepareChild`は拒否し、検証済みを表すboolや任意callbackを公開しない。
 生成前後の再照合、元hard deadline、grant由来のgeneration/full Identity、fresh channel nonce、固定artifactを保持する。
