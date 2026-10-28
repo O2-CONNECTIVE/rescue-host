@@ -45,6 +45,7 @@ try {
     $env:NATIVE_OUTPUT_DIR = $OutputDirectory
     $env:NATIVE_APP_EXE = $appPath
     $env:NATIVE_PROFILE = Join-Path $ToolsDirectory 'webview-profile'
+    $env:NATIVE_TOOLS_DIR = $ToolsDirectory
     $nodeProcess = Start-Process (Get-Command node.exe).Source -ArgumentList "$PSScriptRoot/run.ts" -PassThru -NoNewWindow -RedirectStandardOutput "$ToolsDirectory/test.stdout.log" -RedirectStandardError "$ToolsDirectory/test.stderr.log"
     if (-not $nodeProcess.WaitForExit(80000)) { throw 'NATIVE_TEST_PROCESS_TIMEOUT' }
     if ($nodeProcess.ExitCode -ne 0) { throw 'NATIVE_WEBVIEW_OR_IPC_ASSERTION_FAILED' }

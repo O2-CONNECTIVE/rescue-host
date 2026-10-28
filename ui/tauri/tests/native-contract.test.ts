@@ -174,3 +174,23 @@ void test('session失敗のdriverログを固定分類だけで保存し原文�
   assert.equal(raw.includes('/private/profile'), false);
   assert.equal(raw.includes(directory), false);
 });
+
+void test('driverログ読取は各64KiBで打ち切り、非通常fileを未知として残す', async t => {
+  // 上限とfile種別の実装後回帰。先行TDDとは区別する。
+  const { mkdtemp, mkdir, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'startup-log-limit-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await mkdir(path.join(directory, 'driver.stdout.log'));
+  await writeFile(path.join(directory, 'driver.stderr.log'), 'x'.repeat(65536) + 'session not created PRIVATE_TAIL');
+  const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
+  await saveStartupLogFacts(directory, directory);
+  const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
+  const record = JSON.parse(raw);
+  assert.equal(record.stderr.bytesRead, 65536);
+  assert.equal(record.stderr.truncated, true);
+  assert.equal(record.stderr.hints.sessionNotCreated, false);
+  assert.deepEqual(record.stdout, { status: 'unavailable', bytesRead: null, truncated: null, hints: null });
+  assert.equal(raw.includes('PRIVATE_TAIL'), false);
+});

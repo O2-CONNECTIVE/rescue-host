@@ -32,6 +32,18 @@ cleanupFailuresは従来の自己所有node/driver/handle操作の結果であ�
 hosted runner廃棄の独立確認、driver内部forwardingやappの過去の起動・終了履歴は、この変更では証明しない。
 既存stderrはCI artifactへ追加せず、raw値の収集や公開を広げない。
 
+## session失敗時のdriver log hint
+
+app/WebViewが存在してもsession応答が返らない実例をrun40648334716で観測した。
+driver内部の待ち箇所を絞るため、session作成失敗時だけ自己所有の固定2ログを読む。
+\`driver.stdout.log\`と\`driver.stderr.log\`を各64KiBまで一回読み、固定phraseの存在booleanと読取bytes/打切りだけを別JSONへ保存する。
+取得不能・非通常file・symlinkはunavailable/null。原文・filename・path・引数・driver payloadは保存しない。
+既存logを読むだけで、verbose設定や新しいdriver/session要求を追加しない。
+hintはproxy error/session未作成/DevTools port欠測/profile使用中/browser到達不能・終了/version不整合の固定分類。
+phraseが記録されたという情報であり、原因確定や正常性の判定ではない。
+falseは読んだprefix内で未検出という意味だけで、打切り・未記録・読取時点によって取りこぼす可能性を残す。
+JSON保存失敗も固定codeで扱い、元のFAILや15秒期限を変えない。
+
 ## 試験
 
 既存の所有/close契約25チェックを通過後、追加module不存在のREDをrun40646275884で観測（実app未起動）。
