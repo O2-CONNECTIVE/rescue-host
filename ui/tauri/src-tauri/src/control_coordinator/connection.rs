@@ -189,3 +189,9 @@ impl<T: ReaderTarget> ReaderConnection<T> {
         (self.target, self.reader, self.observation)
     }
 }
+
+impl ReaderConnection<OwnedCoordinator> {
+    pub fn poll_child(&mut self) -> Result<(), Code> {
+        Ok(())
+    }
+}
