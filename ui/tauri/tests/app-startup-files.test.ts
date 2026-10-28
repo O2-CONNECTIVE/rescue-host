@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { inspectAppStartupFile } from '../native-smoke/app-startup-files.ts';
+import { inspectAppStartupFile, verifyStartupBuild } from '../native-smoke/app-startup-files.ts';
 
 void test('所有trace fileを有限に読み、page-load済みと欠測を匿名reportへ分ける', async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'rescue-startup-reader-'));
@@ -18,4 +18,16 @@ void test('所有trace fileを有限に読み、page-load済みと欠測を匿�
     }));
     assert.equal((await inspectAppStartupFile(directory)).phase, 'first-page-load-finished');
   } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+void test('診断variantのsource・feature・hashが一致しないEXEを起動前に拒否する', () => {
+  const manifest = { schema: 1, variant: 'host-startup-diagnostic-1', sourceCommit: 'a'.repeat(40),
+    features: ['custom-protocol', 'startup-diagnostics'], profile: 'release',
+    exeSha256: 'b'.repeat(64), distribution: false };
+  assert.equal(verifyStartupBuild(manifest, 'a'.repeat(40), 'b'.repeat(64)), true);
+  for (const candidate of [{ ...manifest, features: ['custom-protocol'] },
+    { ...manifest, sourceCommit: 'c'.repeat(40) }, { ...manifest, exeSha256: 'c'.repeat(64) },
+    { ...manifest, distribution: true }, { ...manifest, secret: 'PRIVATE_FIXTURE' }]) {
+    assert.equal(verifyStartupBuild(candidate, 'a'.repeat(40), 'b'.repeat(64)), false);
+  }
 });
