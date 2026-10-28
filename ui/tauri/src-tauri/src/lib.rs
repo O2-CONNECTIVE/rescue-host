@@ -1,3 +1,7 @@
+#[cfg(windows)]
+#[allow(dead_code, reason = "authenticated Windows client bootstrap is not wired")]
+mod windows_client;
+
 use serde::{Deserialize, Serialize};
 
 #[allow(
