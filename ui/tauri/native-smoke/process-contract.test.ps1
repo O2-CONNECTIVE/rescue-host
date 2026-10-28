@@ -112,3 +112,14 @@ $duplicateGeneration.CreationDate = $legitimate.CreationDate.AddSeconds(1)
 Reject { Get-OwnedApp $driver $edge 'app.exe' @($lineageGraph + $duplicateGeneration) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
 if (($lineageEvidence | ConvertTo-Json -Depth 5).Contains('ProcessId')) { throw 'LINEAGE_IDENTITY_LEAK' }
 Write-Output 'LINEAGE_CONTRACT_PASS checks=4 (fixtures only; not native evidence)'
+
+# session作成の失敗を通常closeや所有保証へ読み替えず、匿名の起動状態を残す。
+. "$PSScriptRoot/startup-observation.ps1"
+$startup = Get-StartupFacts $driver $edge 'app.exe' $valid @($loop4, $edge4, $edge6)
+if ($startup.driverIdentity -ne 'same-identity' -or $startup.edgeIdentity -ne 'same-identity' -or $startup.appCandidates -ne 2 -or $startup.correlatedApps -ne 1 -or $startup.correlatedWebviews -ne 1) { throw 'STARTUP_CORRELATION_FACTS_MISSING' }
+$startup = Get-StartupFacts $driver $edge 'app.exe' @($driver, $edge) @($loop4, $edge4)
+if ($startup.appCandidates -ne 0 -or $startup.correlatedApps -ne 0 -or $startup.PSObject.Properties.Name -contains 'normalCloseVerified') { throw 'STARTUP_ABSENCE_BECAME_SUCCESS' }
+$startup = Get-StartupFacts $driver $edge 'PRIVATE_APP.exe' @($driver, $reused, $edge) @($loop4, $edge4)
+$serialized = $startup | ConvertTo-Json -Depth 6
+if ($startup.driverIdentity -ne 'ambiguous' -or $serialized.Contains('PRIVATE_') -or $serialized.Contains('ProcessId') -or $serialized.Contains('2026-10-27')) { throw 'STARTUP_IDENTITY_OR_PRIVATE_DATA_LOST' }
+Write-Output 'STARTUP_OBSERVATION_CONTRACT_PASS checks=3 (fixtures only; not native evidence)'
