@@ -4,6 +4,7 @@ use super::{
     Conversation, Request,
 };
 use crate::control_codec::scalar::Code;
+use std::time::Instant;
 
 pub(crate) trait ReaderTarget {
     fn hello(&mut self) -> Result<Vec<u8>, Code>;
@@ -144,6 +145,13 @@ impl<T: ReaderTarget> ReaderConnection<T> {
             _ => Code::TerminationUnconfirmed,
         };
         self.fail(code);
+    }
+
+    pub fn cancel_and_join_until(
+        &mut self,
+        _deadline: Instant,
+    ) -> Result<ConnectionObservation, Code> {
+        Err(Code::TerminationUnconfirmed)
     }
 
     /// Processes at most one frame. Blocking Read is always in the worker;
