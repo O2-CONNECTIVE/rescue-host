@@ -56,8 +56,7 @@ fn get_shell_status(
     if request.protocol_version != 1 {
         return Err("UNSUPPORTED_SHELL_VERSION");
     }
-    let _ = runtime.status();
-    Ok(ShellStatus::unwired())
+    runtime.status()
 }
 
 fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
