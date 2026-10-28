@@ -10,6 +10,7 @@ import (
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 )
 
@@ -56,10 +57,19 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 
 // StartIssued はcallerの元threadを固定し、native検査中の別threadへの移送を行いません。
 func (r *JobRuntime) StartIssued(ctx context.Context, a *supervisor.Authority, issued IssuedLaunch) (p Process, err error) {
-	runtime.LockOSThread()
+	return r.startIssuedWithThread(ctx, a, issued, runtime.LockOSThread, runtime.UnlockOSThread)
+}
+
+func (r *JobRuntime) startIssuedWithThread(ctx context.Context, a *supervisor.Authority, issued IssuedLaunch, lock, unlock func()) (p Process, err error) {
+	lock()
 	defer func() {
-		if !errors.Is(err, bootstrapauth.ErrFatal) {
-			runtime.UnlockOSThread()
+		if owned, ok := p.(*jobProcess); ok {
+			if native, ok := owned.bootstrap.(interface{ releaseStartupThread() error }); ok {
+				err = errors.Join(err, native.releaseStartupThread())
+			}
+		}
+		if !errors.Is(err, bootstrapauth.ErrFatal) && !errors.Is(err, protectedkey.ErrFatal) {
+			unlock()
 		}
 	}()
 	return r.start(ctx, a, &issued)
@@ -209,11 +219,11 @@ func (p *jobProcess) Close(ctx context.Context) error {
 		return err
 	}
 	if p.control == nil {
-		_ = p.child.Close(ctx)
+		cleanupErr := p.child.Close(ctx)
 		if p.bootstrap != nil {
-			_ = p.bootstrap.Close(ctx)
+			cleanupErr = errors.Join(cleanupErr, p.bootstrap.Close(ctx))
 		}
-		return ErrRuntimeUnconfirmed
+		return runtimeFailure(cleanupErr)
 	}
 	deadline, _ := ctx.Deadline()
 	// Goの応答待ちだけで全予算を消費せず、同じ期限内にJob回収の予算を残す。
@@ -233,13 +243,14 @@ func (p *jobProcess) Close(ctx context.Context) error {
 			return nil
 		}
 	}
+	var cleanupErr error
 	if goErr != nil {
-		_ = p.control.Abort(ctx)
+		cleanupErr = p.control.Abort(ctx)
 	}
-	_ = p.child.Close(ctx)
+	cleanupErr = errors.Join(cleanupErr, p.child.Close(ctx))
 	if p.bootstrap != nil {
-		_ = p.bootstrap.Close(ctx)
+		cleanupErr = errors.Join(cleanupErr, p.bootstrap.Close(ctx))
 	}
 	// 強制回収が成功しても正常exit0/Go Closeの証拠へ変換しない。
-	return ErrRuntimeUnconfirmed
+	return runtimeFailure(goErr, cleanupErr)
 }
