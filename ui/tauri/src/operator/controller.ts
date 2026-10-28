@@ -10,9 +10,13 @@ export function createOperatorController({ adapter, onChange }: {
   }
   adapter.subscribe(value => {
     if (typeof value !== 'object' || value === null || !('flow' in value) || value.flow !== flow || !('event' in value)) return;
+    if (!['waiting', 'connecting', 'connected', 'stopping'].includes(state.phase)) return;
     if (value.event === 'approved' && state.phase === 'waiting') publish({ phase: 'connecting', diagnostic: 'DEMO_APPROVED' });
     if (value.event === 'connected' && state.phase === 'connecting') publish({ phase: 'connected', diagnostic: 'DEMO_CONNECTED' });
     if (value.event === 'stop_confirmed' && state.phase === 'stopping') publish({ phase: 'stopped', termination: 'confirmed', diagnostic: 'DEMO_STOP_CONFIRMED' });
+    if (value.event === 'expired') publish({ phase: 'expired', diagnostic: 'DEMO_EXPIRED' });
+    if (value.event === 'denied' || value.event === 'failed') publish({ phase: 'failed', diagnostic: 'DEMO_FAILED' });
+    if (value.event === 'lost') publish({ phase: 'unconfirmed', diagnostic: 'DEMO_TERMINATION_UNCONFIRMED' });
   });
   return {
     acceptSample(sample: SampleId) {
