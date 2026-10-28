@@ -23,6 +23,21 @@ pub(crate) struct CloseObservations {
 
 impl CloseObservations {
     pub fn assess(&self) -> CloseAssessment {
-        CloseAssessment::EvidenceIncomplete
+        if self.peer_close_claim
+            && self.peer_state == Some(GoState::Terminated)
+            && self.context_matched
+            && !self.channel_failed
+            && self.reader_eof_completed_reported
+            && self.direct_child_reaped
+            && self.direct_child_exit0
+            && !self.cleanup_attempted
+            && self.kill == KillAttempt::None
+        {
+            // No success variant or caller-supplied trust flag exists. These are
+            // claims/local facts; protected IPC/manifest authority is unwired.
+            CloseAssessment::AuthorityNotEstablished
+        } else {
+            CloseAssessment::EvidenceIncomplete
+        }
     }
 }

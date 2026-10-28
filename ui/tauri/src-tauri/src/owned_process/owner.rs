@@ -50,6 +50,10 @@ impl ChildOwner {
         }
     }
 
+    pub fn cleanup_was_attempted(&self) -> bool {
+        self.cleanup_attempted
+    }
+
     pub fn id(&self) -> u32 {
         self.child.id()
     }

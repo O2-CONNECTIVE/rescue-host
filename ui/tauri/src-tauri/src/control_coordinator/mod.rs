@@ -1,5 +1,6 @@
 //! Internal preparation only; context matching is not peer authentication.
 pub(crate) mod observations;
+pub(crate) mod owned;
 use crate::control_codec::{
     decode_frame, encode_frame,
     model::{Bootstrap, Control, Empty, Identity, Message, Object, Snapshot},
@@ -11,6 +12,7 @@ enum Phase {
     Fresh,
     AwaitingAck,
     Bound,
+    InputEnded,
     Closed(Code),
 }
 
@@ -32,6 +34,7 @@ pub(crate) struct Conversation {
     peer_snapshot: Option<Snapshot>,
     peer_stop_receipt: bool,
     peer_error: Option<Code>,
+    context_matched: bool,
 }
 
 impl Conversation {
@@ -50,12 +53,14 @@ impl Conversation {
             peer_snapshot: None,
             peer_stop_receipt: false,
             peer_error: None,
+            context_matched: false,
         }
     }
 
     fn close<T>(&mut self, code: Code) -> Result<T, Code> {
         let code = match self.phase {
             Phase::Closed(previous) => previous,
+            Phase::InputEnded => return Err(Code::TerminationUnconfirmed),
             _ => code,
         };
         self.phase = Phase::Closed(code);
@@ -89,8 +94,10 @@ impl Conversation {
     }
 
     pub fn receive(&mut self, frame: &[u8]) -> Result<(), Code> {
-        if let Phase::Closed(code) = self.phase {
-            return Err(code);
+        match self.phase {
+            Phase::Closed(code) => return Err(code),
+            Phase::InputEnded => return Err(Code::TerminationUnconfirmed),
+            _ => {}
         }
         let message = match decode_frame(frame) {
             Ok(message) => message,
@@ -101,6 +108,7 @@ impl Conversation {
                 if self.phase == Phase::AwaitingAck && value == self.expected =>
             {
                 self.phase = Phase::Bound;
+                self.context_matched = true;
             }
             Message::SnapshotResult(value) => {
                 self.check_envelope(value.generation, &value.identity.0, value.sequence)?;
@@ -203,7 +211,26 @@ impl Conversation {
         self.peer_error
     }
 
+    /// Seals the channel after the local reader's completion report, without
+    /// turning that report into independently authenticated EOF/Close evidence.
+    pub fn end_input(&mut self) {
+        if !self.is_closed() {
+            self.phase = Phase::InputEnded;
+        }
+    }
+
+    pub fn context_matched(&self) -> bool {
+        self.context_matched
+    }
+
+    pub fn channel_fault(&self) -> Option<Code> {
+        match self.phase {
+            Phase::Closed(code) => Some(code),
+            _ => None,
+        }
+    }
+
     pub fn is_closed(&self) -> bool {
-        matches!(self.phase, Phase::Closed(_))
+        matches!(self.phase, Phase::Closed(_) | Phase::InputEnded)
     }
 }
