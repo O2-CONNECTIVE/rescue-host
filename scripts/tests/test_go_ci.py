@@ -23,7 +23,7 @@ class GoEventTests(unittest.TestCase):
             {'Package': module, 'Action': 'pass'},
         ]
         for suffix in ('internal/auth', 'internal/control', 'internal/forward',
-                       'internal/lease', 'internal/stdio', 'cmd/rescue-backend'):
+                       'internal/lease', 'internal/stdio', 'cmd/rescue-backend', 'supervisor'):
             result.append({'Package': module + '/' + suffix, 'Action': 'skip'})
         return result
 
