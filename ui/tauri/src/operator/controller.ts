@@ -24,6 +24,7 @@ export function createOperatorController({ adapter, onChange }: {
       publish({ phase: 'waiting', termination: 'unconfirmed', diagnostic: 'DEMO_APPROVAL_REQUESTED' });
       await adapter.requestApproval(flow);
     },
+    requestStop() { return Promise.resolve(); },
     snapshot() { return state; }
   };
 }

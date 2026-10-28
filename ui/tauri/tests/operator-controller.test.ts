@@ -5,7 +5,7 @@ import type { OperatorAdapter, OperatorState } from '../src/operator/model.ts';
 
 function setup() {
   let state: OperatorState | undefined;
-  let listener = (_event: unknown) => {};
+  let listener: (event: unknown) => void = () => {};
   let flow = 0;
   const requests: string[] = [];
   const adapter: OperatorAdapter = {
@@ -23,6 +23,21 @@ void test('サンプルの受取りだけでは依頼や接続を始めず、確
   assert.equal(state()?.phase, 'review');
   assert.equal(state()?.sample, 'code');
   assert.equal(state()?.termination, 'not_started');
+});
+
+void test('停止要求の受付と繰返し操作だけでは終了確認にせず、別の応答を待つ', async () => {
+  const { controller, requests, emit } = setup();
+  controller.acceptSample('code');
+  await controller.requestApproval(true);
+  emit('approved'); emit('connected');
+  await controller.requestStop();
+  assert.equal(controller.snapshot().phase, 'stopping');
+  assert.equal(controller.snapshot().termination, 'unconfirmed');
+  await controller.requestStop();
+  assert.deepEqual(requests, ['approval', 'stop']);
+  emit('stop_confirmed');
+  assert.equal(controller.snapshot().phase, 'stopped');
+  assert.equal(controller.snapshot().termination, 'confirmed');
 });
 
 void test('確認後の依頼受付・承認・接続完了をそれぞれ別の状態として扱う', async () => {
