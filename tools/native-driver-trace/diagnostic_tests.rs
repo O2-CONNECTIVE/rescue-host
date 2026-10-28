@@ -1,5 +1,57 @@
 use super::*;
 
+#[tokio::test(flavor = "current_thread")]
+async fn canceled_single_native_request_retains_connection_assignment() {
+    use http_body_util::Full;
+    use hyper::{body::Bytes, Request as HttpRequest};
+    use hyper_util::{client::legacy::Client, rt::TokioExecutor};
+    use tokio::{io::AsyncReadExt, net::TcpListener, sync::oneshot};
+
+    tokio::time::timeout(Duration::from_secs(2), async {
+        // 自己所有の単一IPv4 loopback fixtureだけ。payloadやaddressを記録しない。
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let address = listener.local_addr().unwrap();
+        assert!(address.port() >= 1024);
+        let (seen, received) = oneshot::channel();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut bytes = [0; 512];
+            assert!(socket.read(&mut bytes).await.unwrap() > 0);
+            let _ = seen.send(());
+            std::future::pending::<()>().await;
+        });
+        let recorder = Recorder::memory();
+        let connection = Connection::open(Some(recorder.clone()));
+        let mut trace = connection.session();
+        let mut outgoing = HttpRequest::post(format!("http://{address}/session"))
+            .body(Full::new(Bytes::from_static(b"fixture"))).unwrap();
+        trace.capture(&mut outgoing);
+        trace.forward();
+        let client = Client::builder(TokioExecutor::new())
+            .retry_canceled_requests(false).build_http();
+        {
+            let response = client.request(outgoing);
+            tokio::pin!(response);
+            tokio::select! {
+                _ = &mut response => panic!("fixture returned headers unexpectedly"),
+                result = received => result.unwrap(),
+            }
+            // native headerを返さないfutureを一度だけ取り消す。
+        }
+        drop(trace);
+        connection.end(Kind::Incomplete);
+        server.abort();
+        assert!(server.await.unwrap_err().is_cancelled());
+        let rows: Vec<serde_json::Value> = recorder.snapshot().lines()
+            .map(|line| serde_json::from_str(line).unwrap()).collect();
+        assert_eq!(rows[4]["stage"], "native-connection-assigned");
+        assert_eq!(rows[5]["stage"], "request-dropped");
+        assert_eq!(rows[4]["request"], rows[5]["request"]);
+        assert_eq!(rows.last().unwrap()["sealed"], true);
+    }).await.expect("owned fixture deadline");
+}
+
+
 #[test]
 fn one_forward_is_correlated_with_drop_and_incoming_eof() {
     let recorder = Recorder::memory();
