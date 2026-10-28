@@ -155,7 +155,7 @@ func (i *Issuer) Prepare(p ApprovedPolicy) (Challenge, error) {
 
 // Launch はcallbackの副作用より前にchallengeをlock内でburnする。再試行/保存値復元なし。
 // callbackは保護所有者がcontext/core失効を尊重し、実資源を別に所有・回収する責務を持つ。
-// callback外ではlockを保持せず、失効と取消を塞がない。実停止・回収成功は判定しない。
+// callback実行中はlockを保持せず、失効と取消を塞がない。実停止・回収成功は判定しない。
 func (i *Issuer) Launch(ctx context.Context, c Challenge, clock func() time.Time, launch func(context.Context, *supervisor.Authority) error) (*supervisor.Authority, error) {
 	i.mu.Lock()
 	e := c.entry
@@ -193,7 +193,8 @@ func (i *Issuer) Launch(ctx context.Context, c Challenge, clock func() time.Time
 	}
 	if i.closed || runCtx.Err() != nil || e != i.current || a.Snapshot(readClock(clock)).State != supervisor.Granted {
 		i.revoke(e)
-		return nil, ErrDenied
+		e.state = failed
+		return nil, ErrLaunchUnconfirmed
 	}
 	e.state = active
 	return a, nil

@@ -451,6 +451,30 @@ func TestCancellationDuringClockReadDoesNotInvokeLaunch(t *testing.T) {
 	}
 }
 
+func TestPostLaunchExpiryDoesNotBecomeFreshAfterRevoke(t *testing.T) {
+	i, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer i.Close()
+	p := policy()
+	c, err := i.Prepare(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := p.HardDeadline.Add(-20 * time.Second)
+	a, err := i.Launch(context.Background(), c, func() time.Time { return now }, func(context.Context, *supervisor.Authority) error { now = p.HardDeadline; return nil })
+	if a != nil || err == nil {
+		t.Fatal("expired post-launch result accepted")
+	}
+	if err := i.Revoke(c.Binding()); err != nil {
+		t.Fatal(err)
+	}
+	if next, err := i.Prepare(p); err == nil {
+		t.Fatalf("post-launch failure became fresh: %+v", next.Binding())
+	}
+}
+
 func TestPerBootGenerationRefusesWrap(t *testing.T) {
 	for _, tc := range []struct{ previous, want uint64 }{{0, 1}, {math.MaxUint64 - 1, math.MaxUint64}} {
 		got, err := ephemeral.NextGeneration(tc.previous)
