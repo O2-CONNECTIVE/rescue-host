@@ -205,13 +205,8 @@
       }
     },
     "generation": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{32}$",
-      "minLength": 32,
-      "maxLength": 32,
-      "not": {
-        "pattern": "[^0-9a-f]"
-      }
+      "$ref": "#/$defs/positiveU64",
+      "description": "Same positive uint64 generation as the protected supervisor binding, canonical decimal string."
     },
     "identity": {
       "type": "object",
