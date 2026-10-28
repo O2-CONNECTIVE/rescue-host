@@ -136,8 +136,14 @@ func TestUnusableOrRegressingClockIrrevocablyRevokes(t *testing.T) {
 func TestZeroAuthorityFailsClosed(t *testing.T) {
 	_, now := approvedGrant()
 	var a supervisor.Authority
+	if err := a.Revoke(supervisor.Binding{}); !errors.Is(err, supervisor.ErrDenied) {
+		t.Fatalf("zero binding accepted before observation: %v", err)
+	}
 	if got := a.Snapshot(now); got.State != supervisor.Revoked {
 		t.Fatalf("zero authority not revoked: %+v", got)
+	}
+	if err := a.Revoke(supervisor.Binding{}); !errors.Is(err, supervisor.ErrDenied) {
+		t.Fatalf("zero binding accepted after observation: %v", err)
 	}
 }
 

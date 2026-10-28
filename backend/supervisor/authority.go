@@ -121,7 +121,7 @@ func (a *Authority) Snapshot(now time.Time) Snapshot {
 func (a *Authority) Revoke(binding Binding) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if a.state == "" || binding != a.grant.Binding {
+	if a.grant.Binding.Generation == 0 || binding != a.grant.Binding {
 		return ErrDenied
 	}
 	if a.state == Granted {
