@@ -1,6 +1,8 @@
 mod native;
 mod operation;
 #[cfg(test)]
+mod read_tests;
+#[cfg(test)]
 mod tests;
 
 use std::sync::atomic::AtomicBool;
@@ -57,4 +59,21 @@ fn send(
         return Err(Fault::Failed);
     }
     Ok(())
+}
+
+fn receive(
+    api: &impl Calls,
+    pipe: HANDLE,
+    cancel: &AtomicBool,
+    deadline: Instant,
+) -> Result<Option<Vec<u8>>, Fault> {
+    let mut frame = vec![0; crate::control_codec::MAX_FRAME_BYTES];
+    match operation::transfer(api, pipe, Kind::Read, &mut frame, cancel, deadline) {
+        Ok(count) => {
+            frame.truncate(count);
+            Ok(Some(frame))
+        }
+        Err(Fault::Closed) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
