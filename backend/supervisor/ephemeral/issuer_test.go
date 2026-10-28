@@ -451,6 +451,56 @@ func TestCancellationDuringClockReadDoesNotInvokeLaunch(t *testing.T) {
 	}
 }
 
+func TestCancellationDuringFinalClockReadRevokesAndRemainsFailed(t *testing.T) {
+	i, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer i.Close()
+	p := policy()
+	c, err := i.Prepare(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	now := p.HardDeadline.Add(-20 * time.Second)
+	reads, launches := 0, 0
+	var borrowed *supervisor.Authority
+	a, err := i.Launch(ctx, c, func() time.Time {
+		reads++
+		if reads == 2 {
+			cancel()
+		}
+		return now
+	}, func(_ context.Context, core *supervisor.Authority) error {
+		launches++
+		borrowed = core
+		return nil
+	})
+	if a != nil || !errors.Is(err, ephemeral.ErrLaunchUnconfirmed) || reads != 2 || launches != 1 {
+		t.Fatalf("final clock cancellation accepted: authority=%v error=%v reads=%d launches=%d", a, err, reads, launches)
+	}
+	if borrowed == nil || borrowed.Snapshot(now).State != supervisor.Revoked || i.Snapshot().HasAuthority {
+		t.Fatal("final clock cancellation retained authority")
+	}
+	if _, err := i.Lookup(c.Binding(), func() time.Time { return now }); !errors.Is(err, ephemeral.ErrDenied) {
+		t.Fatalf("canceled binding remained available: %v", err)
+	}
+	if _, err := i.Launch(context.Background(), c, func() time.Time { return now }, func(context.Context, *supervisor.Authority) error {
+		t.Fatal("consumed challenge launched again")
+		return nil
+	}); !errors.Is(err, ephemeral.ErrConsumed) {
+		t.Fatalf("canceled challenge became reusable: %v", err)
+	}
+	if err := i.Revoke(c.Binding()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := i.Prepare(p); !errors.Is(err, ephemeral.ErrBusy) {
+		t.Fatalf("canceled launch became fresh after revoke: %v", err)
+	}
+}
+
 func TestPostLaunchExpiryDoesNotBecomeFreshAfterRevoke(t *testing.T) {
 	i, err := ephemeral.New()
 	if err != nil {

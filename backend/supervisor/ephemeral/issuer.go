@@ -191,7 +191,9 @@ func (i *Issuer) Launch(ctx context.Context, c Challenge, clock func() time.Time
 		e.state = failed
 		return nil, ErrLaunchUnconfirmed
 	}
-	if i.closed || runCtx.Err() != nil || e != i.current || a.Snapshot(readClock(clock)).State != supervisor.Granted {
+	// clock/coreの観測中にも取消が入り得るため、その観測より後にcontextを再確認する。
+	observed := a.Snapshot(readClock(clock))
+	if i.closed || runCtx.Err() != nil || e != i.current || observed.State != supervisor.Granted {
 		i.revoke(e)
 		e.state = failed
 		return nil, ErrLaunchUnconfirmed
