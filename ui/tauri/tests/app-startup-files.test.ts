@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { inspectAppStartupFile, verifyStartupBuild } from '../native-smoke/app-startup-files.ts';
@@ -17,6 +17,22 @@ void test('所有trace fileを有限に読み、page-load済みと欠測を匿�
       attempted: 5, recorded: 5, dropped: 0, sealed: true, inFlight: 0
     }));
     assert.equal((await inspectAppStartupFile(directory)).phase, 'first-page-load-finished');
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+void test('途中・過大・重複field・秘密入りtraceは原文を出さずincompleteにする', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'rescue-startup-invalid-'));
+  const filename = path.join(directory, 'app-startup-stages.json');
+  try {
+    for (const text of ['{', ' '.repeat(2049), '{"schema":1,"schema":1}', '{"secret":"PRIVATE_FIXTURE"}']) {
+      await writeFile(filename, text);
+      const report = await inspectAppStartupFile(directory);
+      assert.equal(report.phase, 'diagnostic-incomplete'); assert.deepEqual(report.events, []);
+      assert.equal(JSON.stringify(report).includes('PRIVATE_FIXTURE'), false);
+    }
+    await rm(filename);
+    await mkdir(filename);
+    assert.equal((await inspectAppStartupFile(directory)).phase, 'diagnostic-incomplete');
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
 

@@ -19,7 +19,7 @@ try {
   if (JSON.stringify(manifest) !== manifestText || !verifyStartupBuild(manifest, values.source, exeSha256)) throw new Error();
   // validator通過済みの固定情報だけを出力する。例外/path/原JSONは出さない。
   const build = { schema: 1, variant: 'host-startup-diagnostic-1', sourceCommit: values.source,
-    exeSha256, features: ['custom-protocol', 'startup-diagnostics'], distribution: false };
+    exeSha256, profile: manifest.profile, features: ['custom-protocol', 'startup-diagnostics'], distribution: false };
   if (values['build-only']) console.log(JSON.stringify({ code: 'APP_STARTUP_BUILD_VERIFIED', build }));
   else {
     const startup = await inspectAppStartupFile(values.directory ?? '');

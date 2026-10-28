@@ -2,7 +2,7 @@ import { open, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { classifyAppStartup } from './app-startup-stages.ts';
 
-export function verifyStartupBuild(input: unknown, source: string, sha256: string): boolean {
+export function verifyStartupBuild(input: unknown, source: string, sha256: string): input is { profile: 'debug' | 'release' } {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
   const value = input as Record<string, unknown>;
   const keys = ['schema', 'variant', 'sourceCommit', 'features', 'profile', 'exeSha256', 'distribution'];

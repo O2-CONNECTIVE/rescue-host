@@ -72,7 +72,9 @@ try {
     if ($view.nativeTestsStarted -ne 1 -or $view.checks -ne 3 -or -not $view.actualRustIpc) { throw 'NATIVE_ZERO_OR_INCOMPLETE_TESTS' }
     if ($StartupDiagnostic) {
         # Node成功後かつ通常close前に回収する。native合否とは別の観測。
-        $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
+        try { $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget }
+        catch { $report.appStartupFileClosed = $false }
+        finally { $diagnosticBudget.Stop() }
         $appTraceCollected = $true
     }
     $snapshot = Get-Snapshot
@@ -152,6 +154,7 @@ try {
     if ($null -ne $appTraceDirectory -and -not $appTraceCollected) {
         try { $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget }
         catch { $report.appStartupFileClosed = $false }
+        finally { $diagnosticBudget.Stop() }
     }
     # 合否確定後の診断cutoff。新requestは送らず、自己所有workerを最大1秒だけ待つ。
     try {
@@ -159,6 +162,7 @@ try {
         if (-not $diagnosticBudget.IsRunning) { $diagnosticBudget.Start() }
         do {
             if (Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')) { break }
+            if ($diagnosticBudget.ElapsedMilliseconds -ge 1000) { break }
             Start-Sleep -Milliseconds 20
         } while ($diagnosticBudget.ElapsedMilliseconds -lt 1000)
         $report.driverStageFileObserved = Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')
