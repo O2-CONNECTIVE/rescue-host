@@ -21,6 +21,7 @@ windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Secu
 tauri = { version = "=2.12.5", features = ["test"] }
 
 [features]
+startup-diagnostics = []
 custom-protocol = ["tauri/custom-protocol"]
 
 [[test]]
