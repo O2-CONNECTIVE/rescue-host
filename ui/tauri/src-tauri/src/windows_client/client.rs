@@ -3,14 +3,11 @@ use super::native::Native;
 use super::peer::ExpectedServer;
 use super::{Calls, Fault};
 use crate::control_codec::{model::Bootstrap, scalar::Code};
-use crate::control_coordinator::connection::{
-    ConnectionObservation, ReaderConnection,
-};
+use crate::control_coordinator::connection::{ConnectionObservation, ReaderConnection};
 use crate::control_coordinator::reader::ReaderTask;
 use crate::control_coordinator::{Conversation, Request};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::thread;
 use std::time::{Duration, Instant};
 
 /// Candidate internal adapter only. The caller must supply independent owner
@@ -89,18 +86,9 @@ impl NativeClient {
         &mut self,
         deadline: Instant,
     ) -> Result<ConnectionObservation, Code> {
-        self.connection.cancel();
+        self.absorb_transport_fault();
         self.writer.cancel();
-        loop {
-            let observation = self.poll();
-            if observation.reader_join.is_some() {
-                return Ok(observation);
-            }
-            if Instant::now() >= deadline {
-                return Err(Code::TerminationUnconfirmed);
-            }
-            thread::sleep(Duration::from_millis(5));
-        }
+        self.connection.cancel_and_join_until(deadline)
     }
 }
 

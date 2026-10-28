@@ -201,7 +201,11 @@ fn invalid_bootstrap_values_are_rejected_before_any_kernel_query_or_open() {
         let api = FakePeer::new(matching());
         assert_eq!(expected.validate(), Err(Fault::Failed));
         assert!(matches!(
-            bind(Arc::clone(&api), std::ptr::without_provenance_mut(1), expected),
+            bind(
+                Arc::clone(&api),
+                std::ptr::without_provenance_mut(1),
+                expected
+            ),
             Err(Fault::Failed)
         ));
         assert_eq!(api.queried.load(Ordering::SeqCst), 0);
