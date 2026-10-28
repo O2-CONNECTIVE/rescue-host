@@ -45,6 +45,8 @@ failed issuerやchallengeを再利用できるようにはしない。
 service ownerは未確認資源を保持しているため、未確認時に`Serve`が完了する保証はない。
 
 fatalなowner threadはUnlockせず終了する。
+承認sourceのfatalと取消が同時でも、policyは破棄し、fatal分類は取消で上書きせずworker退役とservice全体の失効へ繋ぐ。
+内部診断原文は返さず、停止要求と競合してもfatalを通常停止へ変換しない。
 健康なSCM entryは、fatal ownerが回収未確認のまま終了した場合にもStoppedを返さず、資源をServiceへ保持したStopPendingで外部介入を待つ。
 このhold経路は新しい認証query・発行・activationを行わず、回収完了や実停止を自己申告しない。
 `Execute`は`svc.Run`が所有する専用goroutineで使う契約とし、手動呼出し後に同じgoroutineでprivileged処理を続けない。

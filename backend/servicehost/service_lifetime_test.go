@@ -3,12 +3,14 @@ package servicehost
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
@@ -451,5 +453,38 @@ func TestServiceStopDuringReadinessRecheckRemainsAConfirmedStop(t *testing.T) {
 	}
 	if !s.Snapshot().CleanupConfirmed || s.Snapshot().HasAuthority {
 		t.Fatal("stop not confirmed")
+	}
+}
+
+func TestApprovalCancellationRetainsFatalAndRetiresItsWorker(t *testing.T) {
+	for _, fatal := range []error{bootstrapauth.ErrFatal, protectedkey.ErrFatal} {
+		t.Run(fatal.Error(), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			policy := lifetimeApproved(t)
+			private := errors.New("synthetic-private-diagnostic")
+			source := lifetimePolicySource(func(context.Context) (ephemeral.ApprovedPolicy, error) {
+				cancel()
+				return policy, errors.Join(fatal, private)
+			})
+			launcher := &lifetimeLauncher{wait: func(context.Context) error { t.Error("canceled policy launched"); return nil }, close: func(context.Context) error { return nil }}
+			plane := &serviceMemoryPlane{confirm: func(context.Context) error { return nil }}
+			s, err := newService(ServiceConfig{Provisioning: source, Launcher: launcher, Budgets: Budgets{Startup: time.Second, Cleanup: time.Second, Observe: time.Millisecond}}, func(context.Context) (servicePlane, error) { return plane, nil })
+			if err != nil {
+				t.Fatal(err)
+			}
+			var locked, unlocked atomic.Int32
+			s.approvalThread = serviceThreadOperations{lock: func() { locked.Add(1) }, unlock: func() { unlocked.Add(1) }}
+			err = s.Serve(ctx, nil, make(chan ServiceState, 8))
+			if !errors.Is(err, fatal) || strings.Contains(err.Error(), private.Error()) {
+				t.Fatalf("fatal classification lost or private diagnostic leaked: %v", err)
+			}
+			if locked.Load() != 1 || unlocked.Load() != 0 {
+				t.Fatalf("fatal worker reused: lock=%d unlock=%d", locked.Load(), unlocked.Load())
+			}
+			if s.Snapshot().Generation != 0 || s.Snapshot().HasAuthority {
+				t.Fatal("canceled policy was consumed")
+			}
+		})
 	}
 }

@@ -28,6 +28,8 @@ type servicePlane interface {
 	Close(context.Context) error
 }
 type servicePrepare func(context.Context) (servicePlane, error)
+type serviceThreadOperations struct{ lock, unlock func() }
+
 type serviceCleanupRequest struct {
 	ctx   context.Context
 	reply chan error
@@ -39,6 +41,7 @@ type Service struct {
 	cfg                                       ServiceConfig
 	prepare                                   servicePrepare
 	callerGuard                               func(context.Context) error
+	approvalThread                            serviceThreadOperations
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
 	host                                      *Host
@@ -85,7 +88,7 @@ func newService(c ServiceConfig, prepare servicePrepare) (*Service, error) {
 	if c.Provisioning == nil || c.Launcher == nil || c.Budgets.Startup <= 0 || c.Budgets.Cleanup <= 0 || c.Budgets.Observe <= 0 || prepare == nil {
 		return nil, ErrProvisioningUnconfigured
 	}
-	return &Service{cfg: c, prepare: prepare, done: make(chan struct{}), retries: make(chan serviceCleanupRequest), repeatStop: make(chan struct{}, 1), state: StartPending}, nil
+	return &Service{cfg: c, prepare: prepare, approvalThread: serviceThreadOperations{runtime.LockOSThread, runtime.UnlockOSThread}, done: make(chan struct{}), retries: make(chan serviceCleanupRequest), repeatStop: make(chan struct{}, 1), state: StartPending}, nil
 }
 func (s *Service) Snapshot() ServiceSnapshot {
 	if s == nil {
@@ -115,7 +118,9 @@ func (s *Service) stopFor(cause error) bool {
 	}
 	s.mu.Lock()
 	already := s.stopping
-	if !already && cause != nil && !errors.Is(cause, context.Canceled) {
+	if fatalServiceThread(cause) {
+		s.stopCause = runtimeFailure(s.stopCause, cause)
+	} else if !already && cause != nil && !errors.Is(cause, context.Canceled) {
 		s.stopCause = runtimeFailure(cause)
 	}
 	s.stopping = true
@@ -357,11 +362,11 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	approvals := make(chan approved, 1)
 	sourceDone := make(chan struct{})
 	approvalDone = sourceDone
+	thread := s.approvalThread
 	go func() {
-		runtime.LockOSThread()
-		policy, err := readServiceApproval(root, cfg.Provisioning)
-		if !fatalServiceThread(err) {
-			runtime.UnlockOSThread()
+		policy, err := runServiceApproval(root, cfg.Provisioning, thread)
+		if fatalServiceThread(err) {
+			s.stopFor(err)
 		}
 		approvals <- approved{policy, err}
 		close(sourceDone)
@@ -432,6 +437,18 @@ type lifetimePolicyValue struct{ policy ephemeral.ApprovedPolicy }
 func (p lifetimePolicyValue) ReadApproved(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 	return p.policy, ctx.Err()
 }
+func runServiceApproval(ctx context.Context, source ProtectedProvisioning, thread serviceThreadOperations) (policy ephemeral.ApprovedPolicy, err error) {
+	if thread.lock == nil || thread.unlock == nil {
+		return policy, ErrProvisioningUnconfigured
+	}
+	thread.lock()
+	defer func() {
+		if !fatalServiceThread(err) {
+			thread.unlock()
+		}
+	}()
+	return readServiceApproval(ctx, source)
+}
 func readServiceApproval(ctx context.Context, source ProtectedProvisioning) (p ephemeral.ApprovedPolicy, err error) {
 	defer func() {
 		if recover() != nil {
@@ -443,8 +460,11 @@ func readServiceApproval(ctx context.Context, source ProtectedProvisioning) (p e
 		return p, ctx.Err()
 	}
 	p, err = source.ReadApproved(ctx)
-	if ctx.Err() != nil {
-		return ephemeral.ApprovedPolicy{}, ctx.Err()
+	if canceled := ctx.Err(); canceled != nil {
+		if fatalServiceThread(err) {
+			return ephemeral.ApprovedPolicy{}, errors.Join(canceled, runtimeFailure(err))
+		}
+		return ephemeral.ApprovedPolicy{}, canceled
 	}
 	return p, err
 }
