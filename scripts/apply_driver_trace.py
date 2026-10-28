@@ -9,10 +9,10 @@ import sys
 import tarfile
 
 UPSTREAM = '2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953'
-PATCH_SHA256 = 'df8dd46174fc2b8aa4df4aed0c382713d7a3cadb5accda5f62aef74a960b5b9e'
-CODE_SHA256 = {'diagnostic.rs': '495dc2a0a469a3a981d316571b91a6a1e775850058f7fee6c467a2929e2a6f54', 'diagnostic_tests.rs': '2807c3dfd7773ee1dbda590ca0c458c7d1e26f60af5f6f9d5fb2583415dbe86e'}
+PATCH_SHA256 = '0521cd79d463f8d6fdfc1fcbaf8b0cdfbd2c05f03aee375858231d70cddf8fe0'
+CODE_SHA256 = {'diagnostic.rs': '38a7369bb05e76d9ebe280f66347017f010dddeaf024ce6334cf1af60ff2632b', 'diagnostic_tests.rs': '3eb57d89ef75bee258ec1616d305c88389a32116d9476febe2cbfe19681b1be8'}
 PREFIX = 'tauri-driver-2.1.0/'
-POSTIMAGE_SHA256 = '9aa32c62f4f93dd8cef07b4103e7373a227ae1077ee4d016d72b1d29f50bd8c5'
+POSTIMAGE_SHA256 = '91037ceeca368b64b254164d7e6a59b487d04cb9dfdb3140d5d7f809b85336d1'
 ALLOWED = {'src/main.rs', 'src/server.rs', 'src/diagnostic.rs', 'src/diagnostic_tests.rs'}
 
 
@@ -149,7 +149,7 @@ def apply(archive, folder, patch_folder, report, verify_only=False, binary=None)
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(after[name])
         check_tree(folder, after)
-    result = {'variant': 'tauri-driver-2.1.0-stage-1', 'upstreamSha256': UPSTREAM,
+    result = {'variant': 'tauri-driver-2.1.0-stage-2', 'upstreamSha256': UPSTREAM,
               'patchSha256': PATCH_SHA256, 'diagnosticCodeSha256': CODE_SHA256,
               'preimage': {name: sha(before[name]) if name in before else None for name in changed},
               'postimage': expected, 'postimageManifestSha256': POSTIMAGE_SHA256,
