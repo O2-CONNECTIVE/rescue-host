@@ -52,6 +52,9 @@ fn send(
     if frame.is_empty() || frame.len() > crate::control_codec::MAX_FRAME_BYTES {
         return Err(Fault::InvalidMessage);
     }
-    operation::transfer(api, pipe, Kind::Write, frame, cancel, deadline)?;
+    let count = operation::transfer(api, pipe, Kind::Write, frame, cancel, deadline)?;
+    if count != frame.len() {
+        return Err(Fault::Failed);
+    }
     Ok(())
 }
