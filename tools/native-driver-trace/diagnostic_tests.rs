@@ -5,7 +5,7 @@ async fn canceled_single_native_request_retains_connection_assignment() {
     use http_body_util::Full;
     use hyper::{body::Bytes, Request as HttpRequest};
     use hyper_util::{client::legacy::Client, rt::TokioExecutor};
-    use tokio::{io::AsyncReadExt, net::TcpListener, sync::oneshot};
+    use tokio::{net::TcpListener, sync::oneshot};
 
     tokio::time::timeout(Duration::from_secs(2), async {
         // 自己所有の単一IPv4 loopback fixtureだけ。payloadやaddressを記録しない。
@@ -14,9 +14,16 @@ async fn canceled_single_native_request_retains_connection_assignment() {
         assert!(address.port() >= 1024);
         let (seen, received) = oneshot::channel();
         let server = tokio::spawn(async move {
-            let (mut socket, _) = listener.accept().await.unwrap();
+            let (socket, _) = listener.accept().await.unwrap();
             let mut bytes = [0; 512];
-            assert!(socket.read(&mut bytes).await.unwrap() > 0);
+            loop {
+                socket.readable().await.unwrap();
+                match socket.try_read(&mut bytes) {
+                    Ok(count) => { assert!(count > 0); break; }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => continue,
+                    Err(_) => panic!("owned fixture read failed"),
+                }
+            }
             let _ = seen.send(());
             std::future::pending::<()>().await;
         });

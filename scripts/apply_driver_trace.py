@@ -10,9 +10,9 @@ import tarfile
 
 UPSTREAM = '2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953'
 PATCH_SHA256 = 'df8dd46174fc2b8aa4df4aed0c382713d7a3cadb5accda5f62aef74a960b5b9e'
-CODE_SHA256 = {'diagnostic.rs': '495dc2a0a469a3a981d316571b91a6a1e775850058f7fee6c467a2929e2a6f54', 'diagnostic_tests.rs': '9060111f2a6b9279299dd1c5903180a8825d28d0cf82b888a6fcefecc1f8767d'}
+CODE_SHA256 = {'diagnostic.rs': '495dc2a0a469a3a981d316571b91a6a1e775850058f7fee6c467a2929e2a6f54', 'diagnostic_tests.rs': '7484cf77a3919b48a406b6cdd9c87ff5dffa1a97a2db633923c5016152e496de'}
 PREFIX = 'tauri-driver-2.1.0/'
-POSTIMAGE_SHA256 = '7d98bc14524244dbabe8f993b0b3285b9c1d51a1253b1cd6a70c60d9a0a463e0'
+POSTIMAGE_SHA256 = '267a0890e9513a45a2449cebd9e9ff745594643bd15f24419a795a61cd38fa5a'
 ALLOWED = {'src/main.rs', 'src/server.rs', 'src/diagnostic.rs', 'src/diagnostic_tests.rs'}
 
 
