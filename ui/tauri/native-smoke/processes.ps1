@@ -56,7 +56,8 @@ function Assert-ListenerSnapshot($Listeners, [int]$DriverId, [int]$EdgeId) {
         }
     }
 }
-function Get-OwnedApp($Driver, $Edge, [string]$AppPath, $Snapshot, [ref]$LineageEvidence = $null) {
+function Get-OwnedApp($Driver, $Edge, [string]$AppPath, $Snapshot, $LineageEvidence = $null) {
+    if ($null -ne $LineageEvidence -and $LineageEvidence -isnot [System.Management.Automation.PSReference]) { throw 'NATIVE_LINEAGE_OWNER_UNCONFIRMED' }
     Require-Live $Driver $Snapshot
     Require-Live $Edge $Snapshot
     $owned = @(Get-Descendants $Driver.ProcessId $Snapshot $LineageEvidence)
