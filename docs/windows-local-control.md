@@ -125,3 +125,7 @@ ReadFile/WriteFileはasync時の転送countをNULLで渡し、GetOverlappedResul
 認証に失敗したframeを要求としてHandle/dispatchへ渡すことはありません。
 一方、その所有channelは異常終了となり、failclosed cleanupで同じSessionを失効させます。
 「未認証peerがSessionに一切影響できない」またはguestからのDoS耐性を保証するものではありません。
+
+Closeは独立した所有mutexでactive operationのcancelを同期的に呼び、非同期callbackの実行待ちに依存しません。
+`TestCloseCancelsActiveContextBeforeReturning`で旧実装の実行REDを観測し、同期取消へ変更してGREENを確認します。
+取消前に既に受理・実行されたstopを巻き戻す保証はありません。

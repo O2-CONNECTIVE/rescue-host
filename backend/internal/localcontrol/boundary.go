@@ -3,6 +3,7 @@ package localcontrol
 import (
 	"context"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio"
+	"sync"
 	"time"
 )
 
@@ -41,8 +42,9 @@ type Endpoint struct {
 	gate             chan struct{}
 	closed, poisoned bool
 	connected        bool
-	lifetime         context.Context
-	cancel           context.CancelFunc
+	activeMu         sync.Mutex
+	activeCancel     context.CancelFunc
+	stopping         bool
 	cleanupErr       error
 }
 
@@ -94,8 +96,7 @@ func (b *Boundary) open(ctx context.Context) (*Endpoint, error) {
 	}
 	gate := make(chan struct{}, 1)
 	gate <- struct{}{}
-	lifetime, cancel := context.WithCancel(context.Background())
-	return &Endpoint{boundary: b, handle: handle, gate: gate, lifetime: lifetime, cancel: cancel}, nil
+	return &Endpoint{boundary: b, handle: handle, gate: gate}, nil
 }
 
 func (e *Endpoint) acquire(ctx context.Context) error {
@@ -169,7 +170,7 @@ func (e *Endpoint) Close(ctx context.Context) error {
 	if e == nil {
 		return ErrDenied
 	}
-	e.cancel() // pending accept/read/writeを取消し、token scopeへcloseを割り込ませない。
+	e.stopOperations() // pending accept/read/writeを取消し、token scopeへcloseを割り込ませない。
 	if err := e.acquire(ctx); err != nil {
 		return err
 	}
@@ -187,7 +188,7 @@ func (e *Endpoint) closeLocked() error {
 	if e.closed {
 		return e.cleanupErr
 	}
-	e.cancel()
+	e.stopOperations()
 	if err := e.boundary.api.close(e.handle); err != nil {
 		e.poisoned = true
 		e.boundary.api.fatal()

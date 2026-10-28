@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -36,6 +37,53 @@ func TestOwnedPipeAuthenticatesHelloBeforeCodec(t *testing.T) {
 	}
 	if dispatch.calls != 1 || api.connects != 1 || len(api.output) == 0 {
 		t.Fatal("authenticated frame did not reach codec and owned response")
+	}
+}
+
+type heldRead struct {
+	*fakeKernel
+	entered chan context.Context
+	release chan struct{}
+}
+
+func (f *heldRead) read(ctx context.Context, _ uintptr) ([]byte, error) {
+	f.entered <- ctx
+	<-f.release
+	return nil, ctx.Err()
+}
+
+func TestCloseCancelsActiveContextBeforeReturning(t *testing.T) {
+	previous := runtime.GOMAXPROCS(1)
+	defer runtime.GOMAXPROCS(previous)
+	config := testConfig()
+	base := &fakeKernel{config: config}
+	api := &heldRead{fakeKernel: base, entered: make(chan context.Context), release: make(chan struct{})}
+	handler := &fakeDispatcher{api: base}
+	b, _ := newBoundary(config, api, handler)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	e, _ := b.open(ctx)
+	done := make(chan error, 1)
+	go func() { done <- e.Exchange(ctx) }()
+	var active context.Context
+	select {
+	case active = <-api.entered:
+	case <-ctx.Done():
+		t.Fatal("read did not start")
+	}
+	// 既取消のCloseはgateを待たない。return時点でactiveも同期的に取消済みが必要。
+	closeCtx, closeCancel := context.WithCancel(ctx)
+	closeCancel()
+	closeErr := e.Close(closeCtx)
+	synchronouslyCancelled := active.Err() != nil
+	close(api.release)
+	select {
+	case <-done:
+	case <-ctx.Done():
+		t.Fatal("read did not finish")
+	}
+	if closeErr != ErrDenied || !synchronouslyCancelled {
+		t.Fatal("Close returned before cancelling the active operation")
 	}
 }
 

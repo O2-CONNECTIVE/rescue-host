@@ -20,9 +20,11 @@ func (e *Endpoint) Exchange(ctx context.Context) (result error) {
 	if e.closed {
 		return ErrClosed
 	}
-	operation, cancel := context.WithCancel(ctx)
-	stop := context.AfterFunc(e.lifetime, cancel)
-	defer func() { stop(); cancel() }()
+	operation, cancel, err := e.beginOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer cancel()
 	defer func() {
 		if result != nil && !e.poisoned {
 			if err := e.closeLocked(); err != nil {
@@ -30,7 +32,7 @@ func (e *Endpoint) Exchange(ctx context.Context) (result error) {
 			}
 		}
 	}()
-	if operation.Err() != nil || e.lifetime.Err() != nil {
+	if operation.Err() != nil {
 		return ErrDenied
 	}
 	api := e.boundary.api
@@ -81,4 +83,29 @@ func wireBoundary(config Config, wire control.WireContext, api kernel, coordinat
 		return nil, ErrConfig
 	}
 	return newBoundary(config, api, adapter)
+}
+
+// gateはI/O/tokenの所有、activeMuはCloseからの同期的取消だけを保護する。
+func (e *Endpoint) beginOperation(ctx context.Context) (context.Context, context.CancelFunc, error) {
+	e.activeMu.Lock()
+	defer e.activeMu.Unlock()
+	if e.stopping {
+		return nil, nil, ErrDenied
+	}
+	operation, cancel := context.WithCancel(ctx)
+	e.activeCancel = cancel
+	return operation, func() {
+		e.activeMu.Lock()
+		e.activeCancel = nil
+		e.activeMu.Unlock()
+		cancel()
+	}, nil
+}
+func (e *Endpoint) stopOperations() {
+	e.activeMu.Lock()
+	defer e.activeMu.Unlock()
+	e.stopping = true
+	if e.activeCancel != nil {
+		e.activeCancel()
+	}
 }
