@@ -69,7 +69,7 @@ fn shared_wire_vectors_match_the_pure_rust_codec() {
         control_codec::MAX_DEPTH
     );
     let cases = fixture["wireCases"].as_array().unwrap();
-    assert_eq!(cases.len(), 45);
+    assert_eq!(cases.len(), 49);
     let mut ids = HashSet::new();
     let mut accepted = 0;
     for case in cases {
@@ -81,5 +81,5 @@ fn shared_wire_vectors_match_the_pure_rust_codec() {
         accepted += usize::from(expected);
     }
     assert_eq!(accepted, 12);
-    println!("control-codec: vectors=45 accepted=12 rejected=33");
+    println!("control-codec: vectors=49 accepted=12 rejected=37");
 }
