@@ -34,12 +34,28 @@ pipeのCloseが並行I/Oを解除し、serviceのHandle/Closeがcontextへ従う
 
 ## 証跡と後続
 
+`internal/control` は既存の `*backend.Session` を引き取るcoordinatorと、Go内の操作dispatcherです。
+snapshotは同じIdentityのGo Snapshotを読み、stopは同じIdentityのRevoke→Close→Snapshotへ対応します。
+startは常に拒否し、Ready/Activate/New/Serveは呼びません。
+終了確認期限の欠落・既に取り消されたcontextでは処理を開始しません。
+呼出側の切断時の失効やcleanupは、新しい有限の終了確認contextを持つ保護所有者の責務として残ります。
+別Identityや対象のIdentity変化を拒否し、Closeの失敗・期限切れ・非terminatedを終了成功へ変換しません。
+Closeの生errorは外へ返さず、固定の内部errorにします。
+これらはwire error codeの新設ではなく、契約adapterへ渡すGo内の結果です。
+snapshotはGoの観測だけで、Rustの観測や所有process回収を合成しません。
+SessionのClose成功だけで製品の正常終了を表示せず、同じIdentityのClose成功と所有process回収の両方が必要です。
+coordinatorはwireの版・generation・連番・request IDを検査するdecoderとは未接続です。
+
 TDDの最初の縦断はopaqueな試験frame3件の応答とcleanup、別の縦断は実binaryの起動拒否/終了です。
+coordinatorは純粋な状態seamで、同一Identity停止、別Identity拒否、未確認終了/期限の拒否、start拒否、snapshot/dispatcherを赤から緑へ進めました。
+この試験はSessionを生成せず、実SessionやSSHの動作証明には数えません。
 境界負例は実装後の回帰確認として区別します。
 frameの試験文字列は製品schemaではなく、開始/状態/停止の意味を表しません。
 自己pipeとメモリだけを使い、新listener・SSH接続・P2専用/代替再現は行いません。
 
-DEC-01/02、製品schema、IPC認証、artifact照合、独立失効、親死/子孫所有、背圧中の停止は未決/未実装です。
+製品schemaの実装候補は契約ownerが正本とvectorを管理し、この基盤へはまだ接続していません。
+IPC認証、artifact照合、独立失効、親死/子孫所有、背圧中の停止は未実装です。
+別保護supervisor/非管理者guestの設計方向と、具体的なservice identity/OS設定の採用・実行を区別します。
 既存#50の試験専用v1を共通化する場合も、契約ownerの共有fixture到着後に別差分で接続します。
 製品schemaや製品版へ自動昇格させません。
 P2専用runtime実証未完了、double-close NOT_MET、Windows背圧UNVERIFIED、製品gate閉鎖を維持します。
