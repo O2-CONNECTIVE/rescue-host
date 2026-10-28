@@ -208,7 +208,7 @@ def check_network_record():
         print('Fixture counters:', json.dumps(counters, sort_keys=True), flush=True)
         for key in ('test_exit_code', 'remaining_listeners', 'remaining_connections',
                     'forbidden_dial_attempts'):
-            if record.get(key) != 0:
+            if counters[key] != 0:
                 raise ValueError('Fixture cleanup/connection check failed: ' + key)
         for address in record.get('listener_addresses', []) + record.get('dial_addresses', []):
             host, port = address.rsplit(':', 1)

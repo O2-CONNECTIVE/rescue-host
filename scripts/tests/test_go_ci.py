@@ -5,10 +5,13 @@ import io
 import json
 from pathlib import Path
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from go_ci import test_events
+import go_ci
 
 
 class GoEventTests(unittest.TestCase):
@@ -88,6 +91,55 @@ class GoEventTests(unittest.TestCase):
         events.append({'Package': events[0]['Package'], 'Test': 'TestOtherBoundary', 'Action': 'skip'})
         with self.assertRaises(ValueError):
             self.check(events)
+
+
+class GoResourceRecordTests(unittest.TestCase):
+    COUNTERS = ('test_exit_code', 'remaining_listeners',
+                'remaining_connections', 'forbidden_dial_attempts')
+
+    def record(self):
+        return {**dict.fromkeys(self.COUNTERS, 0), 'duration_ms': 1,
+                'listener_addresses': [], 'dial_addresses': []}
+
+    def check(self, record):
+        with tempfile.TemporaryDirectory() as directory:
+            module = Path(directory)
+            path = module / 'go-result.json'
+            path.write_text(json.dumps(record), encoding='utf-8')
+            try:
+                with patch.object(go_ci, 'MODULE', module), contextlib.redirect_stdout(io.StringIO()):
+                    go_ci.check_network_record()
+            finally:
+                self.assertFalse(path.exists(), 'Synthetic resource record must be removed')
+
+    def test_integer_zero_counters_are_accepted(self):
+        self.check(self.record())
+
+    def test_noninteger_counters_are_rejected(self):
+        for key in self.COUNTERS:
+            for value in (False, True, 0.0, None, '0'):
+                with self.subTest(key=key, value=value):
+                    record = self.record()
+                    record[key] = value
+                    with self.assertRaises(ValueError):
+                        self.check(record)
+
+    def test_missing_counters_are_rejected(self):
+        for key in self.COUNTERS:
+            with self.subTest(key=key):
+                record = self.record()
+                del record[key]
+                with self.assertRaises(ValueError):
+                    self.check(record)
+
+    def test_nonzero_counters_are_rejected(self):
+        for key in self.COUNTERS:
+            for value in (-1, 1):
+                with self.subTest(key=key, value=value):
+                    record = self.record()
+                    record[key] = value
+                    with self.assertRaises(ValueError):
+                        self.check(record)
 
 
 if __name__ == '__main__':
