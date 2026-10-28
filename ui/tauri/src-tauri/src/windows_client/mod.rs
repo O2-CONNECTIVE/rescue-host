@@ -19,9 +19,19 @@ use windows_sys::Win32::System::IO::OVERLAPPED;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Fault {
     InvalidMessage,
+    VersionMismatch,
     Closed,
     Cancelled,
     Failed,
+}
+
+impl Fault {
+    fn from_code(code: crate::control_codec::scalar::Code) -> Self {
+        match code {
+            crate::control_codec::scalar::Code::VersionMismatch => Self::VersionMismatch,
+            _ => Self::InvalidMessage,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -77,6 +87,7 @@ fn receive(
     match operation::transfer(api, pipe, Kind::Read, &mut frame, cancel, deadline) {
         Ok(count) => {
             frame.truncate(count);
+            crate::control_codec::decode_frame(&frame).map_err(Fault::from_code)?;
             Ok(Some(frame))
         }
         Err(Fault::Closed) => Ok(None),

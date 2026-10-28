@@ -2,7 +2,7 @@ use super::{Calls, Fault, Kind};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{
-    ERROR_BROKEN_PIPE, ERROR_IO_INCOMPLETE, ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_NOT_FOUND,
+    ERROR_BROKEN_PIPE, ERROR_IO_PENDING, ERROR_MORE_DATA, ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED,
     HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::System::IO::OVERLAPPED;
@@ -82,8 +82,11 @@ pub(super) fn transfer(
         return Err(failure(kind, error));
     }
     let result = api.result(pipe, &mut work.op);
-    if result == Err(ERROR_IO_INCOMPLETE) {
-        unresolved(api, work);
+    match result {
+        Ok(_) | Err(ERROR_OPERATION_ABORTED | ERROR_BROKEN_PIPE | ERROR_MORE_DATA) => {}
+        // An incomplete/invalid query cannot establish that the kernel stopped
+        // using our addresses, even if the event appeared signalled.
+        Err(_) => unresolved(api, work),
     }
     api.close(event); // Only after a terminal completed result.
     if cancelled || cancel.load(Ordering::Acquire) || api.now() >= deadline {
