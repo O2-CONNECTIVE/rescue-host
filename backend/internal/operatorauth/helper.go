@@ -10,7 +10,7 @@ import (
 // Runは専用helper processで一度だけ呼ぶ。read→message token照会→復帰を
 // 同じ固定threadで行う。dispatch/鍵操作/要求callbackはこのscopeに入れない。
 func (h *Helper) Run(ctx context.Context) (result error) {
-	if h == nil || !finite(ctx) {
+	if h == nil {
 		return ErrDenied
 	}
 	h.mu.Lock()
@@ -20,6 +20,9 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 	}
 	h.used = true
 	h.mu.Unlock()
+	if !finite(ctx) {
+		return ErrDenied
+	}
 	api := h.ops.thread
 	api.lock()
 	poisoned := false

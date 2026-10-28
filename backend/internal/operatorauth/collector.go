@@ -10,7 +10,7 @@ import (
 // Collectはlaunch前から保持するreport readerを先にdrainする。wait先行で
 // helperのwrite完了を塞がない。EOF・終了code・同じlaunch bindingは別に確認する。
 func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
-	if c == nil || !finite(ctx) {
+	if c == nil {
 		return nil, ErrDenied
 	}
 	c.mu.Lock()
@@ -34,6 +34,9 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 			_ = c.Close(cleanup) // errorでも同じownerをcallerが保持する。
 		}
 	}()
+	if !finite(ctx) {
+		return nil, ErrDenied
+	}
 	if c.ops.check(ctx) != nil || !c.live(ctx) {
 		return nil, ErrDenied
 	}

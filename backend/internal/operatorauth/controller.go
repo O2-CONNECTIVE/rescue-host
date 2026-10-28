@@ -33,7 +33,7 @@ func NewNativeController() (*Controller, error) { return nil, ErrUnconfigured }
 // Exchangeは一つの要求scopeだけを扱う。返るbytesは認証済み相手の応答でも、
 // ownerのgrant/停止receiptを発行するものではない。channel全体の会話は未配線。
 func (c *Controller) Exchange(ctx context.Context, frame []byte) (response []byte, err error) {
-	if c == nil || !finite(ctx) {
+	if c == nil {
 		return nil, ErrDenied
 	}
 	c.mu.Lock()
@@ -61,6 +61,9 @@ func (c *Controller) Exchange(ctx context.Context, frame []byte) (response []byt
 			err = ErrDenied
 		}
 	}()
+	if !finite(ctx) {
+		return nil, ErrDenied
+	}
 	frame = append([]byte(nil), frame...)
 	request, e := servicecontrol.DecodeUntrustedFrame(frame)
 	if e != nil {
