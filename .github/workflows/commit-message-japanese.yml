@@ -3,6 +3,7 @@ name: Japanese commit messages
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, edited]
   push:
     branches: [main]
 
@@ -33,5 +34,10 @@ jobs:
           architecture: x64
       - name: Verify finite message and Git range fixtures
         run: python -I -m unittest discover -s scripts/tests -p test_commit_messages.py -v
+      - name: Verify PR H1 fixtures
+        run: python -I -m unittest discover -s scripts/tests -p test_pr_headings.py -v
       - name: Check event base and head commit messages
         run: python -I scripts/check_commit_messages.py --event "$GITHUB_EVENT_PATH"
+      - name: Check PR body H1 headings
+        if: github.event_name == 'pull_request'
+        run: python -I scripts/check_pr_headings.py --event "$GITHUB_EVENT_PATH"

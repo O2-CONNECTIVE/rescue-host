@@ -1,8 +1,8 @@
-# 日本語を基本とするcommit message
+# commit messageとPR本文H1の日本語方針
 
 今後mainへ導入するcommitのsubjectと、存在する説明bodyを日本語ベースにします。
-対象はcommit messageです。
-PRのtitle/bodyは今回の検査対象に含みません。
+commit messageに加えて、PR本文のH1見出しを一つずつ日本語ベースか検査します。
+PRのtitle、本文の通常段落、H2以下は検査しません。
 空bodyと、終端の有効な標準trailerだけのbodyは許可します。
 subjectと説明bodyは別々に評価し、一方の日本語量で他方を相殺しません。
 
@@ -48,6 +48,53 @@ trailer名は大文字小文字を区別しません。
 説明があるbodyを、code/URL/pathなどの除外後に「空body」へ読み替えることはありません。
 全体をcode fenceで囲んだbodyは日本語候補0字として失敗します。
 除外されたcodeの外側に残る説明も、同じ日本語量と比率を満たす必要があります。
+
+## PR本文のH1
+
+[PR見出しchecker](../scripts/check_pr_headings.py)は、PR本文の各H1へ**日本語候補1字以上、かつ説明letter全体の1/3以上**を要求します。
+NFKC、Unicode文字種と限定的な技術表記の除外はcommit方針と共通です。
+commit用の4字下限はH1へ適用せず、`# 概要`と`# API概要`は合格します。
+`# Summary`は失敗し、日本語の別H1や本文を加えても相殺できません。
+H1がない本文、空本文と未設定本文は許可し、H1の追加を必須にしません。
+
+Markdownの対象は、ATX H1（`#`の直後が空白、tabまたは行末）と、段落に`=`だけの下線を続けるSetext H1です。
+root、blockquote、bullet list、ordered listと、それらを入れ子にした内部を調べ、コンテナのprefixを除いた後の行頭0–3空白を許可します。
+listの継続行にはmarkerと開始時の空白から求めたcontent indentを使います。
+Setext H1の複数行は同じ見出しとして評価し、prefixを省略したlazy continuationだけでは新しい見出しを開始しません。
+lazy continuationの本文は段落に保持し、後で明示的なprefix付きのSetext下線が続く場合は見出し全体の文字数へ含めます。
+backtickまたはtildeを3個以上使うcode fence内と、コンテナ内のcontent indentに加えて4空白の独立したcode行を見出しへ数えません。
+fenceは同じ記号を開始時以上の長さで並べ、後ろが空白だけの行で閉じます。
+未閉鎖fenceは現在のコンテナの終端または文末までcodeとして扱い、外側へ戻った見出しを隠しません。
+backtick fenceのinfo stringにbacktickを含む行は、fenceの開始にしません。
+tabは構造判定時に4桁のtab stopで展開します。
+
+raw HTMLの`<h1>`も対象で、`<div><h1>概要</h1></div>`のような内部のH1を検査します。
+標準の[HTMLParser](https://docs.python.org/3.13/library/html.parser.html)でtextを取り出し、tag名、属性、コメントを日本語候補へ加算しません。
+文字参照を復号するため、`<h1>&#x6982;&#x8981;</h1>`も日本語H1です。
+`&lt;h1&gt;`、inline code、fenced code、indented code内のHTML表記はH1を作りません。
+HTMLコメント、raw HTML block内の`# English`と、`script/style/textarea/title`などのraw text要素の内容もMarkdown見出しとして検査しません。
+HTML blockは[CommonMarkの7種類の開始と終端](https://spec.commonmark.org/0.31.2/#html-blocks)を使い、通常のtagだけの行は段落の途中でblockを開始しません。
+
+このcheckerは上記の構文を扱う依存追加なしの検査で、Markdown rendererではありません。
+完全なlink参照解決、GFM tableやtask-listなど全拡張のblock相互作用、不正に入れ子にしたHTMLのDOM修復は実装していません。
+標準HTMLParserのpatch差によって、不正HTMLをコメントとして扱うか固定理由で拒否するかは異なる場合があります。
+[GitHub自身もGFM変換後に追加の処理とsanitizationを行う](https://github.github.com/gfm/#what-is-github-flavored-markdown-)ため、GitHubの最終DOMとの完全一致は保証しません。
+
+workflowは`opened/synchronize/reopened/edited`で動き、PR本文だけの編集でも検査を再実行します。
+[GitHubの既定PRイベント](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#pull_request)へ`edited`を明示的に追加し、既存commit検査も維持しています。
+mainへのpushではPR本文検査stepを実行せず、新規commit範囲の検査を実行します。
+PR本文は引用した`GITHUB_EVENT_PATH`を引数として渡し、PythonがJSONから読みます。
+本文をActions式でrunへ挿入したり、shellで展開、evalしたりしません。
+出力はH1の件数、位置、日本語候補数、letter数と固定の理由に限り、原文は出しません。
+
+```sh
+python -I scripts/check_pr_headings.py --event <PRイベントJSONのpath>
+python -I -m unittest discover -s scripts/tests -p test_pr_headings.py -v
+```
+
+CLIで英語と日本語H1、fence、Setext、見出し内backtick、HTML block、引用とlist内のH1、raw HTML H1とtext抽出の順にRED→GREENを確認しました。
+非段落block、段落を中断しないordered marker、Setext内のlazy continuation、backslash escape、fence終端のASCII空白と不正HTMLの原文非表示もRED→GREENで確認しました。
+短い見出し、複数H1の独立判定、コンテナ内codeとコンテナ終端、対象外本文、文字比率、edited event、shell記号を含む本文と不正eventは後付け回帰検証です。
 
 ## 新規commitの範囲
 
