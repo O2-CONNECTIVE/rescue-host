@@ -167,6 +167,17 @@ impl<T: ReaderTarget> ReaderConnection<T> {
 
     /// Processes at most one frame. Blocking Read is always in the worker;
     /// rejected/cancelled input is discarded without invoking the target again.
+    pub fn poll_with_transport_fault(
+        &mut self,
+        fault: impl FnOnce() -> Option<Code>,
+    ) -> ReaderProgress {
+        let progress = self.poll();
+        if let Some(code) = fault() {
+            self.transport_failed(code);
+        }
+        progress
+    }
+
     pub fn poll(&mut self) -> ReaderProgress {
         match self.reader.poll() {
             ReaderEvent::Frame(frame) => {

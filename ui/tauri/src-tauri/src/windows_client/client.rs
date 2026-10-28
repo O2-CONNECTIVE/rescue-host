@@ -51,7 +51,10 @@ impl NativeClient {
         // Preserve the typed message-prevalidation fault before a shared cancel
         // causes the worker to report Cancelled. Queued frames are discarded.
         self.absorb_transport_fault();
-        let _ = self.connection.poll();
+        let writer = &self.writer;
+        let _ = self
+            .connection
+            .poll_with_transport_fault(|| writer.fault());
         self.absorb_transport_fault();
         self.connection.observation()
     }

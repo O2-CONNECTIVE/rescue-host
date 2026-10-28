@@ -258,3 +258,54 @@ fn a_typed_transport_fault_seals_before_an_already_queued_ack() {
     }
     assert!(!connection.target().context_matched());
 }
+
+#[test]
+fn transport_fault_after_event_acquisition_precedes_queued_frame_processing() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::{Conversation, Request};
+    use std::io::{self, Read};
+    use std::sync::mpsc;
+
+    struct SignalEof {
+        bytes: Cursor<Vec<u8>>,
+        eof: mpsc::Sender<()>,
+    }
+    impl Read for SignalEof {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            let count = self.bytes.read(output)?;
+            if count == 0 {
+                let _ = self.eof.send(());
+            }
+            Ok(count)
+        }
+    }
+
+    let mut ack = serde_json::to_value(expected_context()).unwrap();
+    ack["kind"] = serde_json::json!("hello_ack");
+    ack["generation"] = serde_json::json!("2");
+    let (eof, observed) = mpsc::channel();
+    let reader = ReaderTask::start(SignalEof {
+        bytes: Cursor::new(wire(ack)),
+        eof,
+    })
+    .unwrap();
+    // The worker enqueues the complete frame before asking for the next read.
+    // This is a deterministic ordering witness, not a scheduler delay.
+    observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    assert_eq!(connection.observation().fault, None);
+    assert_eq!(
+        connection.poll_with_transport_fault(|| Some(Code::VersionMismatch)),
+        ReaderProgress::Discarded
+    );
+    assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
+    assert_eq!(connection.request(Request::Stop), Err(Code::VersionMismatch));
+    assert!(!connection.target().context_matched());
+    let joined = connection
+        .cancel_and_join_until(Instant::now() + Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(joined.fault, Some(Code::VersionMismatch));
+    assert!(joined.reader_join.is_some());
+}
