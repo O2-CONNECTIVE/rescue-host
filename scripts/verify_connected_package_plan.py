@@ -19,7 +19,7 @@ BLOCKERS = ['SERVICE_PROVISIONING_UNSET', 'PROTECTED_STDIO_UNVERIFIED',
             'DISTRIBUTION_TRUST_UNDECIDED']
 
 
-def is_hex_is_hex_digest(value, length):
+def is_hex_digest(value, length):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{' + str(length) + '}', value) is not None
 
 
