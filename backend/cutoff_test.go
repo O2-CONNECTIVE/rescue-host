@@ -12,13 +12,17 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
 
 // 試験専用。raw は fixture への実 TCP であり、製品宛先の差替え設定ではない。
 func fixtureTarget(ctx context.Context, address string) (net.Conn, *net.TCPConn, error) {
-	conn, err := testDial(ctx, address)
+	return fixtureTargetWithControl(ctx, address, nil)
+}
+func fixtureTargetWithControl(ctx context.Context, address string, control func(string, string, syscall.RawConn) error) (net.Conn, *net.TCPConn, error) {
+	conn, err := testDialWithControl(ctx, address, control)
 	if err != nil {
 		return nil, nil, err
 	}

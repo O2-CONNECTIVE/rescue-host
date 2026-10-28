@@ -26,6 +26,13 @@ raceはcgoと対応C compilerが必要です。
 TestMainの資源記録は残留と禁止dialの件数、loopback境界だけを確認して削除し、生の接続記録をartifactへ公開しません。
 試験が失敗した場合も資源件数と経過時間を確認してから削除し、試験失敗と資源異常を両方報告します。
 
+Darwinの背圧fixtureは、自己所有の対象socketへ接続前だけ`TCP_NOOPT`を設定し、接続前後の有効状態を検査します。
+これは[Appleの接続単位のTCP option](https://github.com/apple-oss-distributions/xnu/blob/f6217f891ac0bb64f3d375211650a4c1ff8ca1ea/bsd/man/man4/tcp.4)を使う試験設定で、製品socketやOS全体の設定は変更しません。Linux/Windowsの設定は維持します。
+accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write由来の先頭byte受信と、50ms間隔2回の未完了観測を対応させます。
+現在のbuffer容量やMSSは診断値であり、それだけで通知済みwindowや背圧の成立を証明しません。
+700ms以内に実Writeの未完了を観測できなければ失敗し、失効後1秒以内の同じWriteの中断・所有資源回収という条件は変更しません。
+この限定fixtureの成功を、製品Windows背圧や全TCP条件の保証へ広げません。
+
 通常buildに選択される15package、Linux/macOSでは39実装、Windowsでは41実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
