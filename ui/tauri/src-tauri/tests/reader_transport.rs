@@ -224,3 +224,134 @@ fn an_actual_reader_rejects_a_different_generation_ack() {
     assert!(!connection.target().context_matched());
     assert!(connection.target().is_closed());
 }
+
+#[test]
+fn a_typed_transport_fault_seals_before_an_already_queued_ack() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::{Conversation, Request};
+    let mut ack = serde_json::to_value(expected_context()).unwrap();
+    ack["kind"] = serde_json::json!("hello_ack");
+    let reader = ReaderTask::start(Cursor::new(wire(ack))).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    connection.transport_failed(Code::VersionMismatch);
+    assert_eq!(
+        connection.request(Request::Stop),
+        Err(Code::VersionMismatch)
+    );
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(
+            Instant::now() < deadline,
+            "finite typed fault join deadline"
+        );
+        match connection.poll() {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            ReaderProgress::Discarded => {}
+            ReaderProgress::Joined { fault, .. } => {
+                assert_eq!(fault, Some(Code::VersionMismatch));
+                break;
+            }
+            event => panic!("queued input crossed a sealed transport: {event:?}"),
+        }
+    }
+    assert!(!connection.target().context_matched());
+}
+
+#[test]
+fn transport_fault_after_event_acquisition_precedes_queued_frame_processing() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::{Conversation, Request};
+    use std::io::{self, Read};
+    use std::sync::mpsc;
+
+    struct SignalEof {
+        bytes: Cursor<Vec<u8>>,
+        eof: mpsc::Sender<()>,
+    }
+    impl Read for SignalEof {
+        fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+            let count = self.bytes.read(output)?;
+            if count == 0 {
+                let _ = self.eof.send(());
+            }
+            Ok(count)
+        }
+    }
+
+    let mut ack = serde_json::to_value(expected_context()).unwrap();
+    ack["kind"] = serde_json::json!("hello_ack");
+    ack["generation"] = serde_json::json!("2");
+    let (eof, observed) = mpsc::channel();
+    let reader = ReaderTask::start(SignalEof {
+        bytes: Cursor::new(wire(ack)),
+        eof,
+    })
+    .unwrap();
+    // The worker enqueues the complete frame before asking for the next read.
+    // This is a deterministic ordering witness, not a scheduler delay.
+    observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    assert_eq!(connection.observation().fault, None);
+    assert_eq!(
+        connection.poll_with_transport_fault(|_| Some(Code::VersionMismatch)),
+        ReaderProgress::Discarded
+    );
+    assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
+    assert_eq!(
+        connection.request(Request::Stop),
+        Err(Code::VersionMismatch)
+    );
+    assert!(!connection.target().context_matched());
+    let joined = connection
+        .cancel_and_join_until(Instant::now() + Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(joined.fault, Some(Code::VersionMismatch));
+    assert!(joined.reader_join.is_some());
+}
+
+#[test]
+fn a_typed_fault_observed_at_cancelled_join_precedes_the_generic_end() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::Conversation;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    let reader = ReaderTask::start_with_cancel(
+        Cursor::new(Vec::<u8>::new()),
+        Arc::new(AtomicBool::new(true)),
+    )
+    .unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite cancelled join deadline");
+        let progress = connection.poll_with_transport_fault(|event| {
+            if matches!(event, ReaderEvent::Joined(_)) {
+                Some(Code::VersionMismatch)
+            } else {
+                None
+            }
+        });
+        match progress {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            event => {
+                assert_eq!(
+                    event,
+                    ReaderProgress::Joined {
+                        end: ReaderEnd::Cancelled,
+                        fault: Some(Code::VersionMismatch)
+                    }
+                );
+                break;
+            }
+        }
+    }
+    assert!(!connection.target().context_matched());
+    assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
+}

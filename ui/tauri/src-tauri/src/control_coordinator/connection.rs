@@ -4,6 +4,8 @@ use super::{
     Conversation, Request,
 };
 use crate::control_codec::scalar::Code;
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub(crate) trait ReaderTarget {
     fn hello(&mut self) -> Result<Vec<u8>, Code>;
@@ -135,10 +137,48 @@ impl<T: ReaderTarget> ReaderConnection<T> {
         }
     }
 
+    pub fn transport_failed(&mut self, code: Code) {
+        let code = match code {
+            Code::VersionMismatch
+            | Code::InvalidMessage
+            | Code::ContextMismatch
+            | Code::TerminationUnconfirmed => code,
+            _ => Code::TerminationUnconfirmed,
+        };
+        self.fail(code);
+    }
+
+    pub fn cancel_and_join_until(
+        &mut self,
+        deadline: Instant,
+    ) -> Result<ConnectionObservation, Code> {
+        self.cancel();
+        loop {
+            let _ = self.poll();
+            if self.observation.reader_join.is_some() {
+                return Ok(self.observation);
+            }
+            if Instant::now() >= deadline {
+                return Err(Code::TerminationUnconfirmed);
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     /// Processes at most one frame. Blocking Read is always in the worker;
     /// rejected/cancelled input is discarded without invoking the target again.
-    pub fn poll(&mut self) -> ReaderProgress {
-        match self.reader.poll() {
+    pub fn poll_with_transport_fault(
+        &mut self,
+        fault: impl FnOnce(&ReaderEvent) -> Option<Code>,
+    ) -> ReaderProgress {
+        let event = self.reader.poll();
+        // The worker may publish a fault while poll acquires or joins its event.
+        // Observe it before either a queued frame or generic cancellation can
+        // seal the target with a different fault.
+        if let Some(code) = fault(&event) {
+            self.transport_failed(code);
+        }
+        match event {
             ReaderEvent::Frame(frame) => {
                 if self.observation.fault.is_some() {
                     return ReaderProgress::Discarded;
@@ -174,6 +214,10 @@ impl<T: ReaderTarget> ReaderConnection<T> {
             }
             ReaderEvent::Closed => ReaderProgress::Closed,
         }
+    }
+
+    pub fn poll(&mut self) -> ReaderProgress {
+        self.poll_with_transport_fault(|_| None)
     }
 
     pub fn target(&self) -> &T {
