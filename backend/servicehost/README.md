@@ -128,3 +128,24 @@ childjobのnativeが使うparameterとOS seamの順序/失敗保持は純粋試�
 実WinAPIでのchild起動、service/account/ACL/鍵/SSH/新listener、拒否されたP2専用/代替再現は実行しない。
 通常CIの既存fixture成功をP2証明やOS保護証明にしない。
 最後のJob handle、別guest主体の実保護、物理停止、監督hang/OS sleep、実relayとhost key信頼設定は別受入である。
+
+## 許可0のservice dispatchの接続範囲
+
+`dispatch.go`のprivate constructorは利用前の同じServiceへ一度だけ登録し、Serveが生成したissuerの実参照へ束縛する。
+実ConfirmRunningとRecheck後だけhelloを受理する。controlled経路はlegacy ReadApprovedを呼ばず、許可0を維持する。
+request/responseは既存rescue-host-service/1 codecを使い、同じboot/channel、hello後の連続sequence、有限request ID集合と単回read capabilityを照合する。
+nonceやframe hashの一致自体は認証ではない。native read capabilityの生成とprotected profileの供給は未接続で、製品入口は変えない。
+
+statusは同じownerの許可0観測だけを返し、bindingやapprovalを捏造しない。
+prepare-intent/confirm-approvalは固定UNCONFIGUREDで拒否し、issuer.Prepareやlaunchへ到達しない。
+quiesceは発行拒否・同じissuerの実Close成功からprivate receiptを作り、quiesce-acceptedだけを返す。
+workloadCleanupConfirmedは常にfalseとし、workload-quiesced・SCM STOPPED・SSH停止成功を生成しない。
+失効後の既存Service ownerによる回収は独立に進む。handlerからService.Closeを待たないため、自身のplane終了との循環を作らない。
+
+channelは1本・inflight応答は1件・requestLimitは1..1024で、IDやread ticketをevictして再利用しない。
+単一writeの実completion前は次要求を受けず、write失敗・取消・相関違反・quota終端でchannelを不可逆に閉じる。
+すでに束縛したchannelの喪失時は同issuerを失効し、自動再送・再接続・承認復元をしない。
+初回readの認証拒否から別のServiceや未束縛issuerを停止する権限は作らない。
+
+このmemory-only縦断はnative認証方式、configDigest producer、同issuer承認予約、workload/planeの二段階回収receiptを採用・実装したものではない。
+#100のinner/outer SCM cleanup proofはwire receiptへ転用しない。実Windows・OS設定・新鍵・実SSH・拒否済みP2専用試験は実行しない。
