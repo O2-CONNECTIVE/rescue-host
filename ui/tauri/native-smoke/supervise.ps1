@@ -12,6 +12,7 @@ $nodeProcess = $null
 $childHandles = @()
 $children = @()
 $app = $null
+$childWaitStartedUtc = $null
 $report = [ordered]@{ kind = 'windows-webview2-native-smoke'; nativeTestsRun = 0; nativeTestsPassed = 0; cleanupStarted = $false; normalCloseVerified = $false; failurePhase = $null }
 $phase = 'environment'
 try {
@@ -57,16 +58,21 @@ try {
     $phase = 'normal-close'
     $appProcess = Get-Process -Id $app.ProcessId -ErrorAction Stop
     $appProcess.Refresh()
-    Request-NormalClose $app $appProcess 10000
+    $appWait = [Diagnostics.Stopwatch]::StartNew()
+    try { Request-NormalClose $app $appProcess 10000 }
+    finally { $report.appWaitElapsedMs = $appWait.ElapsedMilliseconds }
     $report.appCloseObservedBeforeCleanup = $true
     $report.appExitCode = $appProcess.ExitCode
+    $childWaitStartedUtc = [DateTime]::UtcNow
     $childWait = [Diagnostics.Stopwatch]::StartNew()
     $report.childSnapshotCount = 0
     $report.childSnapshotMaxMs = 0
-    $until = [DateTime]::UtcNow.AddSeconds(10)
+    $until = $childWaitStartedUtc.AddSeconds(10)
     do {
+        $report.childSnapshotStartMs = $childWait.ElapsedMilliseconds
         $snapshotTimer = [Diagnostics.Stopwatch]::StartNew()
         $snapshot = Get-Snapshot
+        $report.childSnapshotEndMs = $childWait.ElapsedMilliseconds
         $report.childSnapshotCount += 1
         $report.childSnapshotMaxMs = [Math]::Max($report.childSnapshotMaxMs, $snapshotTimer.ElapsedMilliseconds)
         Require-Live $driver[0] $snapshot
@@ -78,8 +84,15 @@ try {
         if ($remaining.Count -gt 0) { Start-Sleep -Milliseconds 200 }
     } while ($remaining.Count -gt 0 -and [DateTime]::UtcNow -lt $until)
     $report.childWaitElapsedMs = $childWait.ElapsedMilliseconds
-    $report.childCloseFacts = Get-ChildCloseFacts $children $app $snapshot $childHandles
-    if ($remaining.Count -ne 0) { throw 'NATIVE_OBSERVED_CHILD_CLOSE_TIMEOUT' }
+    $report.childCloseFacts = Get-ChildCloseFacts $children $app $snapshot $childHandles $childWaitStartedUtc $env:NATIVE_PROFILE
+    if ($remaining.Count -ne 0) {
+        # 旧判定は既にtimeout。後続観測で消えてもこのFAILを変えない。
+        try {
+            $report.afterWaitProbeFacts = Get-ChildCloseFacts $children $app (Get-Snapshot) $childHandles $childWaitStartedUtc $env:NATIVE_PROFILE
+            $report.afterWaitProbeElapsedMs = $childWait.ElapsedMilliseconds
+        } catch { $report.afterWaitProbeObservation = 'unavailable' }
+        throw 'NATIVE_OBSERVED_CHILD_CLOSE_TIMEOUT'
+    }
     if ($report.cleanupStarted) { throw 'NATIVE_CLOSE_OBSERVED_AFTER_CLEANUP' }
     $report.closeObservedBeforeCleanup = $true
     $report.normalCloseVerified = $true
@@ -96,17 +109,7 @@ try {
     $report.failureLine = $_.InvocationInfo.ScriptLineNumber
     Write-Output $report.failureCode
 } finally {
-    # Cleanup is deliberately after the normal-close verdict. Driver Job Object also contains partial app launches.
-    $report.cleanupStarted = $true
-    if ($nodeProcess -and -not $nodeProcess.HasExited) { $nodeProcess.Kill() }
-    if ($driverProcess -and -not $driverProcess.HasExited) { $driverProcess.Kill() }
-    # ここからは合否確定後のcleanup観測。後で消えても通常close成功へ変えない。
-    if ($driverProcess) { $report.driverExitObservedAfterCleanup = $driverProcess.WaitForExit(2000) }
-    if ($children.Count -gt 0) {
-        try { $report.afterDriverCleanupFacts = Get-ChildCloseFacts $children $app (Get-Snapshot) $childHandles }
-        catch { $report.afterDriverCleanupObservation = 'unavailable' }
-    }
-    $report.childHandleDisposeFailures = Close-ChildObservationHandles $childHandles
-    $report | ConvertTo-Json -Depth 4 | Set-Content "$OutputDirectory/native-result.json" -Encoding utf8
+    # 通常closeの合否確定後にのみcleanupし、元のFAILと記録を保持する。
+    Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE
 }
-if ($report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }
+if ($report.cleanupFailures -gt 0 -or $report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }

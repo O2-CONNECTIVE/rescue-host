@@ -27,7 +27,7 @@ function Close-ChildObservationHandles($Handles) {
     foreach ($entry in $Handles) { try { if ($entry.Process) { $entry.Process.Dispose() } } catch { $failures += 1 } }
     return $failures
 }
-function Get-ChildCloseFacts($Children, $App, $Snapshot, $Handles) {
+function Get-ChildCloseFacts($Children, $App, $Snapshot, $Handles, $WaitStartedUtc = $null, $ExpectedProfile = "") {
     $childrenArray = @($Children)
     $rows = @()
     $remaining = 0
@@ -56,7 +56,61 @@ function Get-ChildCloseFacts($Children, $App, $Snapshot, $Handles) {
                 try { $handleState = if ($handle.Process.HasExited) { 'exited' } else { 'live' } } catch { $handleState = 'unavailable' }
             } elseif ($handle.Identity -eq 'different-identity') { $handleState = 'different-identity' }
         }
-        $rows += [pscustomobject]@{ slot = $slot; role = $(if ($child.Name -eq 'msedgewebview2.exe') { 'webview' } else { 'other' }); parentSlot = $parentSlot; creationKnown = $known; parentOrder = $order; snapshotState = $snapshotState; handleState = $handleState }
+        $exitRelativeMs = $null
+        if ($handleState -eq 'exited' -and $WaitStartedUtc -is [DateTime]) {
+            try { $exitRelativeMs = [Math]::Round(($handlesForSlot[0].Process.ExitTime.ToUniversalTime() - $WaitStartedUtc).TotalMilliseconds, 3) } catch { }
+        }
+        $profileMatch = $null
+        $webviewType = 'unavailable'
+        if ($ExpectedProfile -and $known -and $App.CreationDate -is [DateTime] -and $child.CreationDate -ge $App.CreationDate -and $child.Name -eq 'msedgewebview2.exe' -and $handlesForSlot.Count -eq 1 -and $handlesForSlot[0].Identity -eq 'verified') {
+            try {
+                $types = [Regex]::Matches($child.CommandLine, '(?:^|\s)--type=(?:"([^"]*)"|(\S+))')
+                if ($types.Count -eq 0) { $webviewType = 'no-type-flag' }
+                elseif ($types.Count -eq 1) {
+                    $type = if ($types[0].Groups[1].Success) { $types[0].Groups[1].Value } else { $types[0].Groups[2].Value }
+                    $webviewType = if ($type -in @('renderer', 'gpu-process', 'utility', 'crashpad-handler')) { $type } else { 'other' }
+                }
+                $profileArguments = [Regex]::Matches($child.CommandLine, '(?:^|\s)--user-data-dir=(?:"([^"]*)"|(\S+))')
+                if ($profileArguments.Count -eq 1) {
+                    $value = if ($profileArguments[0].Groups[1].Success) { $profileArguments[0].Groups[1].Value } else { $profileArguments[0].Groups[2].Value }
+                    $profileMatch = [String]::Equals($value.Replace('/', '\').TrimEnd('\'), $ExpectedProfile.Replace('/', '\').TrimEnd('\'), [StringComparison]::OrdinalIgnoreCase)
+                }
+            } catch { }
+        }
+        $role = switch ($child.Name) { 'msedgewebview2.exe' { 'webview' } 'conhost.exe' { 'console-host' } 'crashpad_handler.exe' { 'crash-reporter' } 'WerFault.exe' { 'windows-error-reporting' } default { 'other' } }
+        $rows += [pscustomobject]@{ handleIdentityVerified = ($handlesForSlot.Count -eq 1 -and $handlesForSlot[0].Identity -eq 'verified'); webviewType = $webviewType; exitRelativeMs = $exitRelativeMs; profileMatch = $profileMatch; cimCreationMatch = ($known -and $same.Count -eq 1); slot = $slot; role = $role; parentSlot = $parentSlot; creationKnown = $known; parentOrder = $order; snapshotState = $snapshotState; handleState = $handleState }
     }
     return [pscustomobject]@{ observed = $childrenArray.Count; remainingSnapshot = $remaining; omittedRows = [Math]::Max(0, $childrenArray.Count - 32); rows = @($rows) }
+}
+
+# 既存の通常close verdictを変更せず、cleanup例外と所有handle解放を分離する。
+function Complete-NativeCleanup($Node, $Driver, $Children, $App, $Handles, $Report, $OutputDirectory, $WaitStartedUtc = $null, $ExpectedProfile = "") {
+    $Report.cleanupStarted = $true
+    $Report.cleanupFailures = 0
+    $Report.cleanupCodes = @()
+    try {
+        try { if ($Node -and -not $Node.HasExited) { $Node.Kill() } }
+        catch { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'node-kill-failed' }
+        try { if ($Driver -and -not $Driver.HasExited) { $Driver.Kill() } }
+        catch { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'driver-kill-failed' }
+        try {
+            if ($Driver) {
+                $Report.driverExitObservedAfterCleanup = $Driver.WaitForExit(2000)
+                if (-not $Report.driverExitObservedAfterCleanup) { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'driver-exit-unconfirmed' }
+            }
+        } catch { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'driver-wait-failed' }
+        if (@($Children).Count -gt 0) {
+            try { $Report.afterDriverCleanupFacts = Get-ChildCloseFacts $Children $App (Get-Snapshot) $Handles $WaitStartedUtc $ExpectedProfile }
+            catch { $Report.afterDriverCleanupObservation = 'unavailable' }
+        }
+    } finally {
+        try {
+            $Report.childHandleDisposeFailures = Close-ChildObservationHandles $Handles
+            $Report.cleanupFailures += $Report.childHandleDisposeFailures
+        } catch { $Report.cleanupFailures += 1; $Report.cleanupCodes += 'handle-dispose-failed' }
+        finally {
+            try { $Report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutputDirectory 'native-result.json') -Encoding utf8 }
+            catch { throw 'NATIVE_CLEANUP_EVIDENCE_WRITE_FAILED' }
+        }
+    }
 }
