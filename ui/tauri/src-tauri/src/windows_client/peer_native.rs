@@ -93,8 +93,8 @@ fn token_user(process: HANDLE) -> Result<String, Fault> {
     }
     let mut text = String::with_capacity(80);
     text.push_str("S-1-5");
-    for part in sid[8..].chunks_exact(4) {
-        let value = u32::from_le_bytes([part[0], part[1], part[2], part[3]]);
+    for part in sid[8..].as_chunks::<4>().0 {
+        let value = u32::from_le_bytes(*part);
         text.push('-');
         text.push_str(&value.to_string());
     }
