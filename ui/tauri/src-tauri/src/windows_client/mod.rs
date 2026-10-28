@@ -1,5 +1,5 @@
-mod operation;
 mod native;
+mod operation;
 #[cfg(test)]
 mod tests;
 
