@@ -1,4 +1,5 @@
 mod operation;
+mod native;
 #[cfg(test)]
 mod tests;
 
@@ -24,7 +25,9 @@ enum Kind {
 // Private API seam only. Product code uses Native; tests never open OS objects.
 trait Calls {
     fn event(&self) -> Result<HANDLE, Fault>;
-    fn start(
+    /// Safety: data/op remain at these addresses until actual completion, or
+    /// the process aborts. No caller may access data while IO owns it.
+    unsafe fn start(
         &self,
         pipe: HANDLE,
         kind: Kind,

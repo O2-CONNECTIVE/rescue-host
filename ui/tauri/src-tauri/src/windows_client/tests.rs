@@ -10,7 +10,7 @@ impl Calls for ShortWrite {
     fn event(&self) -> Result<HANDLE, Fault> {
         Ok(std::ptr::without_provenance_mut(2))
     }
-    fn start(
+    unsafe fn start(
         &self,
         _: HANDLE,
         kind: Kind,
