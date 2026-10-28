@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(dead_code, reason = "internal process boundary is not wired while the product gate is closed")]
+mod owned_process;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusRequest {

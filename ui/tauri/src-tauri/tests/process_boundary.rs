@@ -1,6 +1,6 @@
-mod process_fixture;
 #[path = "../src/owned_process/mod.rs"]
 mod owned_process;
+mod process_fixture;
 
 use process_fixture::Mode;
 
