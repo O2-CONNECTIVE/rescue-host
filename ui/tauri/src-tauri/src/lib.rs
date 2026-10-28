@@ -1,3 +1,7 @@
+#[cfg(any(test, feature = "startup-diagnostics"))]
+#[allow(dead_code, reason = "startup diagnostics are an opt-in test variant")]
+mod startup_diagnostics;
+
 #[cfg(windows)]
 #[allow(
     dead_code,
@@ -80,9 +84,13 @@ fn commands_with_runtime<R: tauri::Runtime>(
 }
 
 pub fn run() {
+    #[cfg(any(test, feature = "startup-diagnostics"))]
+    let startup = startup_diagnostics::Trace::start();
     commands(tauri::Builder::default())
-        .setup(|app| {
-            tauri::WebviewWindowBuilder::new(
+        .setup(move |app| {
+            #[cfg(any(test, feature = "startup-diagnostics"))]
+            startup.record(startup_diagnostics::Stage::SetupEnter);
+            let builder = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
@@ -99,8 +107,28 @@ pub fn run() {
                 #[cfg(not(windows))]
                 let bundled = url.scheme() == "tauri" && url.host_str() == Some("localhost");
                 bundled
-            })
-            .build()?;
+            });
+            #[cfg(any(test, feature = "startup-diagnostics"))]
+            let builder = {
+                let page_trace = startup.clone();
+                builder.on_page_load(move |_webview, payload| {
+                    if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
+                        page_trace.record(startup_diagnostics::Stage::PageFinished);
+                    }
+                })
+            };
+            #[cfg(any(test, feature = "startup-diagnostics"))]
+            startup.record(startup_diagnostics::Stage::BuildStart);
+            let result = builder.build();
+            #[cfg(any(test, feature = "startup-diagnostics"))]
+            startup.record(if result.is_ok() {
+                startup_diagnostics::Stage::BuildOk
+            } else {
+                startup_diagnostics::Stage::BuildError
+            });
+            result?;
+            #[cfg(any(test, feature = "startup-diagnostics"))]
+            startup.record(startup_diagnostics::Stage::SetupReturn);
             Ok(())
         })
         .run(tauri::generate_context!())
