@@ -43,10 +43,11 @@ NOTICE だけの crate 拒否は修正後の回帰で、TDD とは区別しま�
 fixture bytes は Windows EXE ではなく、この試験を native 起動成功と数えません。
 既存 native smoke は後付けで再利用する回帰で、新たに TDD を行ったと改称しません。
 
-新 PC の Windows 11 Pro 22H2 x64 はユーザー申告で、互換性・既存 WebView2 版は未確認です。
+新PCでの互換性と既存WebView2版は未確認です。
 source manifest の asInvoker / uiAccess=false と、配布 EXE の実測は区別します。
 WebView2 / VC runtime の不足では自動導入せず報告します。unsigned の警告を回避しません。
-実機の画面・keyboard・profile 作用・終了後残留は本人確認待ちです。
+利用者から実機起動と表示の確認報告があります。現在の確認範囲と配布CIの失敗は[検証状況](status.md)を参照してください。
+keyboard、profileへの作用、終了後の残留は未確認で、表示確認を実SSHやOS保護の保証へ広げません。
 操作は同梱 [日本語手順](tauri-evaluation-readme.txt) に限定します。
 
 配布候補ごとに完全 source SHA、ZIP / EXE hash、CI URL、実行数と終了結果を対応付けます。
