@@ -16,9 +16,13 @@ MODULE = ROOT / 'backend'
 GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/auth': {'keys.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/control': {'coordinator.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/forward': {'policy.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/lease': {'authority.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio': {'loop.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor': {'authority.go'},
 }
 
 
@@ -110,7 +114,7 @@ def build():
         raise ValueError('Production file/package boundary changed')
     require_success(command(['vet', '-mod=readonly', './...']))
     require_success(command(['build', '-mod=readonly', '-trimpath', './...']))
-    print('Vet/build: 4 packages; 5 production Go files; no fixture files or tags', flush=True)
+    print('Vet/build: 8 packages; 9 production Go files; no fixture files or tags', flush=True)
 
 
 def test_inventory():

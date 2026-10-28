@@ -22,6 +22,7 @@ worktreeの分離は同一branchへのpush競合やremote更新を防ぐロッ�
 | 変更対象 | コマンド・前提の正本 | 実CIとの照合先 |
 | --- | --- | --- |
 | Pythonと開発tool | [開発手順](development.md)、[共通CLI](../scripts/dev.py)、[tool fixtures](../scripts/tests/) | [Python offline](../.github/workflows/python-offline.yml) |
+| Go基盤 | [Go基盤のCI](go-ci.md)、[検証入口](../scripts/go_ci.py)、[基盤の範囲](../backend/README.md) | [Go offline](../.github/workflows/go-offline.yml) |
 | tokensとsource-size | [開発手順](development.md)、[source-size方針](../.source-size-policy.json) | [Python offline](../.github/workflows/python-offline.yml) |
 | frontend型/lint/Knip/回帰 | [Tauri README](../ui/tauri/README.md)、[package scripts](../ui/tauri/package.json) | [Tauri品質・build](../.github/workflows/tauri-shell.yml) |
 | frontend notice | [notice手順](frontend-notices.md) | [notice 3OS](../.github/workflows/frontend-notices.yml) |
@@ -33,7 +34,8 @@ Pythonの`check`は既存試験と構文の入口で、`tokens`、`sizes`、開�
 frontendの`npm test`もnotice fixtureを包含しません。noticeは生成後の`--check`を独立判定します。
 コマンドの選択肢は`python scripts/dev.py --help`、frontendの入口はpackage scriptsと各手順で確認できます。
 一つの成功を「全検査済み」とせず、各コマンドの終了値と実行範囲を記録します。
-main未統合のGo基盤や実通信試験は、この表の実行済み対象に加えません。
+Go基盤はmainへ統合済みですが、Go CIとPythonで行うGo CI helperのJSON検証は、GUIからの起動・製品IPC・実通信の成功とは別です。
+P2のruntime未実証、既存44条件の未達・未検証と製品接続gate閉鎖を維持し、実通信の検証済み範囲へ広げません。
 toolchain導入、GUI/native実起動、配布build、外部接続は、各手順の実行前提と承認範囲を個別に確認します。
 
 ## 証跡と統合

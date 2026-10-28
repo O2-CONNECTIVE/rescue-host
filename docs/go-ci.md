@@ -26,7 +26,9 @@ raceはcgoと対応C compilerが必要です。
 TestMainの資源記録は残留と禁止dialの件数、loopback境界だけを確認して削除し、生の接続記録をartifactへ公開しません。
 試験が失敗した場合も資源件数と経過時間を確認してから削除し、試験失敗と資源異常を両方報告します。
 
-通常buildに選択される4package、5製品ファイルを照合します。
+通常buildに選択される8package、9実装ファイルを照合します。
+追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
+supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
 Go JSONと終了コードを両方検査し、pass、fail、skip、no-test package、未終端を区別します。
