@@ -93,7 +93,9 @@ fn wire(value: serde_json::Value) -> Vec<u8> {
 }
 
 fn next_frame(
-    connection: &mut control_coordinator::connection::ReaderConnection<control_coordinator::Conversation>,
+    connection: &mut control_coordinator::connection::ReaderConnection<
+        control_coordinator::Conversation,
+    >,
 ) {
     use control_coordinator::connection::ReaderProgress;
     let deadline = Instant::now() + Duration::from_secs(2);
@@ -205,7 +207,10 @@ fn an_actual_reader_rejects_a_different_generation_ack() {
     connection.hello().unwrap();
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        assert!(Instant::now() < deadline, "finite context rejection deadline");
+        assert!(
+            Instant::now() < deadline,
+            "finite context rejection deadline"
+        );
         match connection.poll() {
             ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
             ReaderProgress::Fault(Code::ContextMismatch) => {}

@@ -112,7 +112,9 @@ fn full_queue_stops_read_ahead_and_cancel_releases_the_same_reader() {
     observed.recv_timeout(Duration::from_secs(2)).unwrap();
     reader.cancel();
     // Do not drain the queued first frame until the input resource was released.
-    release_observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    release_observed
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap();
     assert_eq!(reads.load(Ordering::SeqCst), 6);
     assert_eq!(join(&mut reader), ReaderEnd::Cancelled);
 }
