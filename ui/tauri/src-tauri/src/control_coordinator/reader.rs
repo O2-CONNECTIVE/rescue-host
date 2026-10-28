@@ -57,7 +57,8 @@ impl ReaderTask {
         match self.thread.as_ref() {
             Some(thread) if thread.is_finished() => {
                 self.receiver = None;
-                let end = self.thread.take().unwrap().join().unwrap_or(ReaderEnd::Failed);
+                let thread = self.thread.take().unwrap();
+                let end = thread.join().unwrap_or(ReaderEnd::Failed);
                 ReaderEvent::Joined(end)
             }
             Some(_) => ReaderEvent::Pending,
@@ -70,7 +71,11 @@ impl Drop for ReaderTask {
     fn drop(&mut self) {
         self.cancel();
         self.receiver = None;
-        if self.thread.as_ref().is_some_and(|thread| thread.is_finished()) {
+        if self
+            .thread
+            .as_ref()
+            .is_some_and(|thread| thread.is_finished())
+        {
             let _ = self.thread.take().unwrap().join();
         }
     }
