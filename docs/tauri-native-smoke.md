@@ -91,3 +91,23 @@ request は最大256件、phase 履歴は最大32件に制限し、上限後も�
 request 15秒、全体60秒、readiness 10秒、worker1件と再実行なしの条件は変更しません。
 観測追加を原因修正や実 SSH の成功へ読み替えません。
 `webview-passed-awaiting-close` は UI/IPC 検査の段階結果であり、通常 close は従来どおり別の `native-result.json` で確認します。
+
+## 初期documentの有限待ち
+
+PR #60 head `f54038307716b17e1f7241d690d7fe15640543df` の配布run `40616726100` は、session作成後1回だけのorigin読取で `initial` を観測し、UI/IPC前に拒否されました。
+通常nativeの同headは成功しています。旧証跡はorigin分類だけなので、実際のhrefがabout:blankだったとは断定しません。
+同じcall siteとDriverにabout:blank→bundledのWebDriver応答を再生すると、同じ拒否を再現しました。
+
+初期遷移の待ちは、originが文字列 `null`、hrefとdocumentURIが両方とも厳密な `about:blank` の場合だけです。
+到達先は従来どおり `http://tauri.localhost` で、href/documentURIも同origin、資格情報なし、readyStateがinteractiveまたはcompleteであることを要求します。
+同originでloading中だけは待ち、bundled観測後のabout:blank逆戻り、別scheme/host/port、browser error document、型不正、driver拒否は即時に失敗します。
+HTTPSや証明書警告、security設定の変更を許可する条件は追加しません。
+
+この段階はmonotonic時計で10秒以内、最大100観測、観測間隔最大100msです。
+各WebDriver requestの期限も段階の残時間以下に縮めます。全体60秒・worker1件・試験再実行なしは維持します。
+成功するまでの試験retryや、未許可originから後で戻ることを待つ処理ではありません。
+観測は固定4分類、変化履歴最大16件と観測件数だけを追加し、生URLやdocument本文を保存しません。
+
+新しいDriver境界の初期遷移と型不正拒否はred→greenを確認し、その他の拒否・期限・観測漏えいは修正後の回帰として区別します。
+これは外部WebDriver応答fixtureを使ったharness契約試験で、Windows実起動や製品SSHの成功とは別です。
+実CIは固定headとrunをPRへ記録し、無変更rerunで以前の失敗を消しません。
