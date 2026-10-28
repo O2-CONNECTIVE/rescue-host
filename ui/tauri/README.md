@@ -40,6 +40,26 @@ CI の controller/build/browser は同一 step 内で順に実行し、各非0�
 `SHELL_SCREENSHOT_DIR` の指定時だけ実描画を保存します。
 IPC fixture は表示と操作の検証であり、Rust や実通信の成功証拠ではありません。
 
+## 内部 reader と状態表示の境界
+
+`ReaderTask` は既に渡された byte stream を別 worker で読み、最大16KiBの JSONL frame を既存 codec / coordinator に渡します。
+queue は1 frame、worker が保持する frame と4096 byteの読取 buffer は別に有限です。
+不正 frame・世代相関違反・I/O失敗・panic・cancel は閉鎖し、後から届く入力や EOF で最初の fault を消しません。
+EOF の通知は queued frame の処理と worker の実 join 後です。
+所有子 adapter は既存 `ChildOwner` の実回収を別に観測し、停止 receipt、peer の終了主張、reader EOF、process 回収を同一視しません。
+
+cancel は協調停止で、blocking `Read` を中断しません。
+poll の予算切れは `Pending` と所有 handle を残し、OS scheduling や最終 join の実時間上限を保証しません。
+未完了 reader を Drop すると detach し得るため、実 endpoint の取消完了と owner 寿命を確立するまで製品配線は禁止です（[Rust JoinHandle](https://doc.rust-lang.org/stable/std/thread/struct.JoinHandle.html)）。
+この変更に Windows pipe client / writer、server identity 検証、認証済み bootstrap、Go 起動はありません。
+Go localcontrol は1 pipe message = 1 JSONL frameを要求するので、byte stream reader だけで接続可能とは扱いません（[localcontrol 境界](../../docs/windows-local-control.md)）。
+
+shell は [Tauri managed state](https://v2.tauri.app/develop/state-management/) に reader の所有者を保持する入口を用意しますが、既定は endpoint なしです。
+GUI の5 field応答は未接続・開始不可・停止不可・終了未確認を維持し、peer の active / terminated 主張では解除しません。
+reader fault は4種類の固定 code だけ診断へ渡し、生 error / HTML / 未知の object を表示しません。
+試験は有限 memory IO、既存の無害な自己子の実 stdout・回収、Tauri IPC、browser fixture を分けます。
+自己子の試験v1応答は製品 control/1として拒否し、実 Go / SSH の成功証拠へ流用しません。
+
 ## 固定した依存と由来
 
 | 直接依存 | 版 | license / 用途 |

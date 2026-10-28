@@ -1,5 +1,6 @@
 mod decoder;
 mod owned;
+mod reader;
 
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -72,4 +73,8 @@ pub fn child(mode: Mode) {
 
 pub fn run(mode: Mode) -> Result<(), &'static str> {
     owned::run(mode)
+}
+
+pub fn run_reader_boundary() {
+    reader::run();
 }
