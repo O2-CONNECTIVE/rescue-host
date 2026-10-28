@@ -8,40 +8,60 @@ export function createOperatorController({ adapter, onChange }: {
   let state = initialState();
   let flow = 0;
   let disposed = false;
-  function live() { return ['waiting', 'connecting', 'connected', 'stopping'].includes(state.phase); }
+  function live() { return ['waiting', 'connecting', 'ready', 'connected', 'stopping'].includes(state.phase); }
   function publish(next: Partial<OperatorState>) {
-    state = Object.freeze({ ...state, ...next });
+    const important = next.phase && next.phase !== state.phase && ['connecting', 'ready', 'connected', 'stopped', 'expired', 'failed', 'unconfirmed'].includes(next.phase);
+    state = Object.freeze({ ...state, ...next, ...(important ? { notice: next.phase } : {}) });
     onChange(state);
   }
   const unsubscribe = adapter.subscribe(value => {
-    if (disposed || !live()) return;
+    if (disposed || state.termination !== 'unconfirmed') return;
     let observation;
     try { observation = readObservation(value); } catch { /* Fixed diagnostic only. */ }
     if (!observation) {
-      publish({ phase: 'unconfirmed', diagnostic: 'DEMO_INVALID_OBSERVATION' });
+      publish({ phase: 'unconfirmed', validSession: false, checkingStatus: false, diagnostic: 'DEMO_INVALID_OBSERVATION' });
       return;
     }
     if (observation.flow !== flow) return;
     switch (observation.event) {
       case 'approved':
-        if (state.phase === 'waiting') publish({ phase: 'connecting', diagnostic: 'DEMO_APPROVED' });
+        if (state.phase === 'waiting') publish({ phase: 'connecting', validSession: true, diagnostic: 'DEMO_APPROVED' });
+        break;
+      case 'prepared':
+        if (state.phase === 'connecting') publish({ phase: 'ready', diagnostic: 'DEMO_PREPARED' });
         break;
       case 'connected':
-        if (state.phase === 'connecting') publish({ phase: 'connected', diagnostic: 'DEMO_CONNECTED' });
+        if (state.phase === 'ready') publish({ phase: 'connected', diagnostic: 'DEMO_CONNECTED' });
         break;
       case 'stop_confirmed':
-        if (state.phase === 'stopping') publish({ phase: 'stopped', termination: 'confirmed', diagnostic: 'DEMO_STOP_CONFIRMED' });
+        if (['stopping', 'unconfirmed', 'expired', 'failed'].includes(state.phase)) publish({ phase: 'stopped', termination: 'confirmed', validSession: false, checkingStatus: false, diagnostic: 'DEMO_STOP_CONFIRMED' });
         break;
-      case 'expired': publish({ phase: 'expired', diagnostic: 'DEMO_EXPIRED' }); break;
+      case 'expired':
+        if (live() || state.phase === 'unconfirmed') publish({ phase: 'expired', validSession: false, checkingStatus: false, diagnostic: 'DEMO_EXPIRED' });
+        break;
       case 'denied':
-      case 'failed': publish({ phase: 'failed', diagnostic: 'DEMO_FAILED' }); break;
-      case 'lost': publish({ phase: 'unconfirmed', diagnostic: 'DEMO_TERMINATION_UNCONFIRMED' }); break;
+        if (state.phase === 'waiting') publish({ phase: 'failed', termination: 'not_started', validSession: false, diagnostic: 'DEMO_DENIED' });
+        break;
+      case 'failed':
+        if (live()) publish({ phase: 'failed', checkingStatus: false, diagnostic: 'DEMO_FAILED' });
+        break;
+      case 'lost':
+        if (live() || state.checkingStatus) publish({ phase: 'unconfirmed', checkingStatus: false, diagnostic: 'DEMO_TERMINATION_UNCONFIRMED' });
+        break;
+      case 'status_active':
+        if (state.checkingStatus && state.validSession && state.phase === 'unconfirmed') publish({
+          phase: state.stopRequested ? 'unconfirmed' : 'connected', checkingStatus: false,
+          diagnostic: state.stopRequested ? 'DEMO_STOP_STILL_UNCONFIRMED' : 'DEMO_STATUS_ACTIVE'
+        });
+        break;
     }
   });
   async function request(operation: 'approval' | 'stop', confirmed = true) {
-    if (disposed || !confirmed || state.phase !== (operation === 'approval' ? 'review' : 'connected')) return;
+    const canStop = !state.stopRequested && state.validSession && ['ready', 'connected', 'unconfirmed'].includes(state.phase);
+    if (disposed || !confirmed || (operation === 'approval' ? state.phase !== 'review' : !canStop)) return;
     const current = flow;
     publish({ phase: operation === 'approval' ? 'waiting' : 'stopping', termination: 'unconfirmed',
+      reviewed: true, stopRequested: operation === 'stop', checkingStatus: false,
       diagnostic: operation === 'approval' ? 'DEMO_APPROVAL_REQUESTED' : 'DEMO_STOP_REQUESTED' });
     if (disposed || flow !== current) return;
     try {
@@ -62,11 +82,20 @@ export function createOperatorController({ adapter, onChange }: {
     },
     requestApproval(confirmed: boolean) { return request('approval', confirmed); },
     requestStop() { return request('stop'); },
-    retryStatus() { return Promise.resolve(); },
-    minimizeToTray() {},
-    restoreWindow() {},
+    async retryStatus() {
+      if (disposed || !state.validSession || state.phase !== 'unconfirmed' || state.checkingStatus) return;
+      const current = flow;
+      publish({ checkingStatus: true, diagnostic: 'DEMO_STATUS_REQUESTED' });
+      try { await adapter.queryStatus(current); }
+      catch {
+        if (!disposed && flow === current && state.checkingStatus) publish({ checkingStatus: false, diagnostic: 'DEMO_STATUS_UNAVAILABLE' });
+      }
+    },
+    minimizeToTray() { if (!disposed) publish({ visibility: 'tray' }); },
+    restoreWindow() { if (!disposed) publish({ visibility: 'window' }); },
     reset() {
-      if (disposed) return;
+      // History deletion, window closing and display reset cannot unlock this.
+      if (disposed || state.termination === 'unconfirmed') return;
       flow += 1;
       state = initialState();
       onChange(state);
