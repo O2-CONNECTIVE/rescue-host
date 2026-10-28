@@ -121,3 +121,7 @@ ReadFile/WriteFileはasync時の転送countをNULLで渡し、GetOverlappedResul
 [ReadFile](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile)、[WriteFile](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile)、[GetOverlappedResult](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-getoverlappedresult)
 
 所有Adapter cleanupの欠落は独立レビューで発見し、read失敗時にfresh deadline付きCloseが必要な試験の実行RED→最小修正→GREENを確認しました。
+
+認証に失敗したframeを要求としてHandle/dispatchへ渡すことはありません。
+一方、その所有channelは異常終了となり、failclosed cleanupで同じSessionを失効させます。
+「未認証peerがSessionに一切影響できない」またはguestからのDoS耐性を保証するものではありません。

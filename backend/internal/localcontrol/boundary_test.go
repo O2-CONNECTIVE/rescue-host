@@ -1,6 +1,7 @@
 package localcontrol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -78,7 +79,7 @@ type Command struct {
 	Operation  control.Operation
 }
 
-func execute(e *Endpoint, ctx context.Context, command Command) (backend.Snapshot, error) {
+func execute(e *Endpoint, ctx context.Context, command Command) error {
 	kind := "snapshot"
 	payload := json.RawMessage(`{}`)
 	if command.Operation == control.Stop {
@@ -90,11 +91,10 @@ func execute(e *Endpoint, ctx context.Context, command Command) (backend.Snapsho
 	}
 	frame, err := control.Encode(control.Message{Protocol: control.Protocol, Kind: kind, Generation: strconv.FormatUint(command.Generation, 10), Sequence: "1", RequestID: "1", Identity: control.WireIdentity{LaunchID: command.Identity.LaunchID, Epoch: command.Identity.Epoch, PolicyDigest: command.Identity.PolicyDigest}, Payload: payload})
 	if err != nil {
-		return backend.Snapshot{}, err
+		return err
 	}
 	e.boundary.api.(*fakeKernel).frame = frame
-	err = e.Exchange(ctx)
-	return backend.Snapshot{Identity: command.Identity, State: "terminated"}, err
+	return e.Exchange(ctx)
 }
 
 type fakeDispatcher struct {
@@ -118,6 +118,9 @@ func (d *fakeDispatcher) Handle(_ context.Context, frame []byte) ([]byte, error)
 	}
 	if message.Kind == "hello" {
 		message.Kind = "hello_ack"
+	} else if message.Kind == "stop" {
+		message.Kind = "receipt"
+		message.Payload = json.RawMessage(`{"operation":"stop","accepted":true}`)
 	} else {
 		message.Kind = "snapshot_result"
 		message.Payload = json.RawMessage(`{"goState":"terminated","pending":"0","active":"0","owned":"0","goCloseConfirmed":false}`)
@@ -146,9 +149,13 @@ func TestVerifiedOperatorCanStopOnlyBoundSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	snapshot, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
-	if err != nil || snapshot.Identity != config.Identity || dispatch.calls != 1 {
+	err = execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+	if err != nil || dispatch.calls != 1 {
 		t.Fatal("kernel-verified operator stop rejected")
+	}
+	response, err := control.Decode(api.output)
+	if err != nil || response.Kind != "receipt" || response.Identity != (control.WireIdentity{LaunchID: config.Identity.LaunchID, Epoch: config.Identity.Epoch, PolicyDigest: config.Identity.PolicyDigest}) || !bytes.Contains(response.Payload, []byte(`"accepted":true`)) {
+		t.Fatal("bound stop response missing")
 	}
 }
 
@@ -160,7 +167,7 @@ func TestAuthorizedStopFailureRemainsUnconfirmed(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e, _ := b.open(ctx)
-	if _, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop}); err != ErrUnconfirmed || dispatch.calls != 1 {
+	if err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop}); err != ErrUnconfirmed || dispatch.calls != 1 {
 		t.Fatal("authorized stop failure lost its unconfirmed status")
 	}
 }
@@ -198,7 +205,7 @@ func TestPeerAndImpersonationFailuresNeverDispatch(t *testing.T) {
 			if name == "preexisting-thread" {
 				api.thread = true
 			}
-			_, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+			err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
 			if err != ErrDenied && err != ErrFatal {
 				t.Fatal("native error escaped fixed result")
 			}
@@ -233,7 +240,7 @@ func TestKernelRestorationPrecedesPrivilegedDispatch(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e, _ := b.open(ctx)
-	if _, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.ReadSnapshot}); err != nil {
+	if err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.ReadSnapshot}); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(api.events, []string{"pin", "thread-check", "create", "unpin", "read", "inspect", "pin", "thread-check", "impersonate", "token", "revert", "unpin", "dispatch"}) {
@@ -260,7 +267,7 @@ func TestGenerationIdentityAndStartCannotEscapeScope(t *testing.T) {
 			case "start":
 				command.Operation = control.Start
 			}
-			if _, err := execute(e, ctx, command); err != ErrDenied || dispatch.calls != 0 {
+			if err := execute(e, ctx, command); err != ErrDenied || dispatch.calls != 0 {
 				t.Fatal("scope escape accepted")
 			}
 		})
@@ -309,7 +316,7 @@ func TestCloseCannotInterleaveClientTokenScope(t *testing.T) {
 	defer unblock()
 	done := make(chan error, 1)
 	go func() {
-		_, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+		err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
 		done <- err
 	}()
 	select {

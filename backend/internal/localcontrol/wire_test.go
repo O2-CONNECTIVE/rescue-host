@@ -224,7 +224,7 @@ func TestResponseWriteFailureClosesAdapterWithoutRetry(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	e, _ := b.open(ctx)
-	_, err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
+	err := execute(e, ctx, Command{Generation: config.Generation, Identity: config.Identity, Operation: control.Stop})
 	if err != ErrUnconfirmed || handler.calls != 1 || handler.closes != 1 {
 		t.Fatal("response loss retried dispatch or omitted cleanup")
 	}
