@@ -35,8 +35,8 @@ hosted runner廃棄の独立確認、driver内部forwardingやappの過去の起
 ## session失敗時のdriver log hint
 
 app/WebViewが存在してもsession応答が返らない実例をrun40648334716で観測した。
-driver内部の待ち箇所を絞るため、session作成失敗時だけ自己所有の固定2ログを読む。
-`driver.stdout.log`と`driver.stderr.log`を各64KiBまで一回読み、固定phraseの存在booleanと読取bytes/打切りだけを別JSONへ保存する。
+driver内部の待ち箇所を絞るため、自己所有の固定2ログを読む。現在の採取回数・時点は後述の前後観測節へ統合する。
+各sampleで`driver.stdout.log`と`driver.stderr.log`を各64KiBまで一回読み、固定phraseの存在booleanと読取bytes/打切りだけをJSONへ保存する。
 監督下の自己所有CI一時領域を使い、他worker・攻撃者によるファイル差替えがないことを前提とする。
 取得時に検出した非通常file・symlinkと取得不能はunavailable/null。
 lstatからopenまでの競合、敵対的filesystemへのno-follow・所有隔離は保証しない。
