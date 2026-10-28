@@ -120,7 +120,7 @@ UI・実Rust IPC・keyboardは通過し、失敗phaseはnormal-close、WebView�
 この成功で通常nativeの失敗を取り消しません。初期originの失敗とは別件です。
 
 コードの到達経路ではapp本人のhandleによる通常close・exit code 0の確認を通過した後、元の観測子と同じPID/CreationDateを持つsnapshot行が10秒以内に消えなかったと判定しています。
-ただし失敗JSONへappのexit codeや残存子の件数・役割・同一性の内訳は保存されません。
+ただし当該失敗runのJSONには、appのexit codeや残存子の件数・役割・同一性の内訳が保存されていません。
 `cleanupStarted=true` はfinallyへ入った証拠であり、通常close成功やcleanup完了の証明ではありません。
 
 現証跡からは、次の候補を区別できません。
@@ -129,8 +129,8 @@ UI・実Rust IPC・keyboardは通過し、失敗phaseはnormal-close、WebView�
 - PPIDだけによる子孫探索で、PID再利用後の古い親子関係を所有子へ誤帰属した。
 - CIMの残存観測と実process handleの状態が異なった、またはsnapshot取得が遅れた。
 
-現在の子孫探索は親子の生成時刻の順序を検査していません。
-またSame-ProcessはCreationDateの有効な取得値を必須にしていません。
+当該失敗runで用いた子孫探索は親子の生成時刻の順序を検査していませんでした。
+その時点のSame-ProcessもCreationDateの有効な取得値を必須にしていませんでした。
 いずれも確認すべき条件ですが、この失敗で欠測やPID再利用が発生した証拠はなく、原因と断定しません。
 実行中のdriverが残存へ影響した可能性も、現在の記録からは確定できません。
 製品の所有process基盤はGUIに未配線であり、この失敗をGoやcodecの起動・失効失敗と同一視しません。

@@ -9,7 +9,7 @@ function Require-Live($Expected, $Snapshot) {
 function Test-LineageCreation($Entry) {
     return $null -ne $Entry -and $null -ne $Entry.PSObject.Properties['CreationDate'] -and $Entry.CreationDate -is [DateTime]
 }
-function Stop-UnconfirmedLineage([ref]$Evidence, [string]$Reason, $Parent, $Child) {
+function Stop-UnconfirmedLineage($Evidence, [string]$Reason, $Parent, $Child) {
     if ($null -ne $Evidence) {
         $parentKnown = Test-LineageCreation $Parent
         $childKnown = Test-LineageCreation $Child
@@ -22,7 +22,7 @@ function Stop-UnconfirmedLineage([ref]$Evidence, [string]$Reason, $Parent, $Chil
     }
     throw 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
 }
-function Get-Descendants([int]$RootId, $Snapshot, [ref]$LineageEvidence = $null) {
+function Get-Descendants([int]$RootId, $Snapshot, $LineageEvidence = $null) {
     $roots = @($Snapshot | Where-Object ProcessId -eq $RootId)
     if ($roots.Count -ne 1) { Stop-UnconfirmedLineage $LineageEvidence 'parent-row-ambiguous' $null $null }
     if (-not (Test-LineageCreation $roots[0])) { Stop-UnconfirmedLineage $LineageEvidence 'parent-creation-unavailable' $roots[0] $null }
