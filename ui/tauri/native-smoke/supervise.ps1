@@ -1,5 +1,5 @@
 param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [string]$ApplicationPath,
-    [switch]$StartupDiagnostic, [string]$StartupManifest, [string]$StartupSource)
+    [switch]$StartupDiagnostic, [string]$StartupManifest, [string]$StartupSource, [switch]$WryDiagnostic)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
@@ -22,8 +22,10 @@ $previousDriverTrace = $env:RESCUE_DRIVER_TRACE
 $previousAppTrace = $env:RESCUE_HOST_STARTUP_TRACE_DIR
 $appTraceDirectory = $null
 $appTraceCollected = $false
+$wryTraceCollected = $false
 $diagnosticBudget = [Diagnostics.Stopwatch]::new()
 try {
+    if ($WryDiagnostic -and -not $StartupDiagnostic) { throw 'NATIVE_WRY_DIAGNOSTIC_REQUIRES_APP_TRACE' }
     $env:RESCUE_HOST_STARTUP_TRACE_DIR = $null
     if ($StartupDiagnostic) {
         & node "$PSScriptRoot/inspect-app-startup.ts" --manifest $StartupManifest --exe $appPath --source $StartupSource --build-only
@@ -74,6 +76,10 @@ try {
         # Node成功後かつ通常close前に回収する。native合否とは別の観測。
         $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
         $appTraceCollected = $true
+        if ($WryDiagnostic) {
+            $report.wryStartupFileClosed = Wait-WryStartupTrace $appTraceDirectory $diagnosticBudget
+            $wryTraceCollected = $true
+        }
     }
     $snapshot = Get-Snapshot
     $phase = 'ownership-confirmation'
@@ -151,6 +157,9 @@ try {
 } finally {
     if ($null -ne $appTraceDirectory -and -not $appTraceCollected) {
         $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
+    }
+    if ($WryDiagnostic -and $null -ne $appTraceDirectory -and -not $wryTraceCollected) {
+        $report.wryStartupFileClosed = Wait-WryStartupTrace $appTraceDirectory $diagnosticBudget
     }
     # 合否確定後の診断cutoff。新requestは送らず、自己所有workerを最大1秒だけ待つ。
     try {

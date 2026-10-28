@@ -1,0 +1,52 @@
+[
+  {
+    "file": "src/lib.rs",
+    "old": "mod error;",
+    "new": "#[cfg(target_os = \"windows\")]\nmod startup_probe;\nmod error;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::WebviewEnter);\n    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    let env = if let Some(env) = &pl_attrs.environment {\n      env.clone()",
+    "new": "    let env = if let Some(env) = &pl_attrs.environment {\n      crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentReused);\n      env.clone()"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "      CreateCoreWebView2EnvironmentWithOptions(",
+    "new": "      crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiStart);\n      CreateCoreWebView2EnvironmentWithOptions("
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "          move |error_code, environment| {",
+    "new": "          move |error_code, environment| {\n            crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentCallback);"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[inline]\n  fn create_controller(",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiReturn);\n    let result = webview2_com::wait_with_pump(rx)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentWaitReturn);\n    result\n  }\n\n  #[inline]\n  fn create_controller("
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "      move |error_code, controller| {",
+    "new": "      move |error_code, controller| {\n        crate::startup_probe::record(crate::startup_probe::Stage::ControllerCallback);"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "          env10.CreateCoreWebView2ControllerWithOptions(hwnd, &controller_opts, &handler)?;",
+    "new": "          crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiStart);\n          env10.CreateCoreWebView2ControllerWithOptions(hwnd, &controller_opts, &handler)?;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "        _ => env.CreateCoreWebView2Controller(hwnd, &handler)?,",
+    "new": "        _ => {\n          crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiStart);\n          env.CreateCoreWebView2Controller(hwnd, &handler)?;\n        }"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[allow(clippy::too_many_arguments)]",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiReturn);\n    let result = webview2_com::wait_with_pump(rx)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::ControllerWaitReturn);\n    result\n  }\n\n  #[allow(clippy::too_many_arguments)]"
+  }
+]
