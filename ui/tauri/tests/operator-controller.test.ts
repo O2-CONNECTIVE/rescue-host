@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createOperatorController } from '../src/operator/controller.ts';
 import type { OperatorAdapter, OperatorState } from '../src/operator/model.ts';
+import { createMemoryHistory } from '../src/operator/history.ts';
 
-function setup(overrides: Partial<OperatorAdapter> = {}) {
+function setup(overrides: Partial<OperatorAdapter> = {}, history?: ReturnType<typeof createMemoryHistory>) {
   let state: OperatorState | undefined;
   let listener: (event: unknown) => void = () => {};
   let flow = 0;
@@ -14,7 +15,7 @@ function setup(overrides: Partial<OperatorAdapter> = {}) {
     queryStatus: () => { requests.push('status'); return Promise.resolve(); },
     subscribe: value => { listener = value; return () => { listener = () => {}; }; }, ...overrides
   };
-  const controller = createOperatorController({ adapter, onChange: value => { state = value; } });
+  const controller = createOperatorController({ adapter, history, onChange: value => { state = value; } });
   return { controller, state: () => state, requests, raw: (value: unknown) => { listener(value); },
     emit: (event: string) => { listener({ flow, event }); } };
 }
@@ -25,6 +26,23 @@ void test('サンプルの受取りだけでは依頼や接続を始めず、確
   assert.equal(state()?.phase, 'review');
   assert.equal(state()?.sample, 'code');
   assert.equal(state()?.termination, 'not_started');
+});
+
+void test('履歴削除は終了未確認を解除せず、遅い終了応答で削除済み履歴を復活させない', async () => {
+  const history = createMemoryHistory({ now: () => Date.UTC(2026, 9, 28) });
+  const { controller, emit, requests } = setup({}, history);
+  controller.acceptSample('code'); await controller.requestApproval(true);
+  emit('approved'); emit('prepared'); emit('connected');
+  await controller.requestStop(); emit('lost');
+  assert.equal(history.entries().length, 1);
+  assert.deepEqual(Object.keys(history.entries()[0] ?? {}).sort(), ['displayName', 'occurredAt', 'result']);
+  history.clear();
+  controller.reset(); controller.acceptSample('definition'); await controller.requestApproval(true);
+  assert.equal(controller.snapshot().phase, 'unconfirmed');
+  assert.deepEqual(requests, ['approval', 'stop']);
+  emit('stop_confirmed');
+  assert.equal(controller.snapshot().termination, 'confirmed');
+  assert.equal(history.entries().length, 0);
 });
 
 void test('初期化した体験へ古い観測や遅延した要求失敗を適用しない', async () => {

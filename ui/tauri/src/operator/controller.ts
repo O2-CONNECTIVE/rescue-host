@@ -1,8 +1,9 @@
 import { initialState, readObservation, type OperatorAdapter, type OperatorState, type SampleId } from './model.ts';
+import type { createMemoryHistory } from './history.ts';
 
 // UI-only mock contract. No native command, raw code, authority or wire protocol.
 export function createOperatorController({ adapter, onChange }: {
-  adapter: OperatorAdapter; onChange: (state: OperatorState) => void;
+  adapter: OperatorAdapter; onChange: (state: OperatorState) => void; history?: ReturnType<typeof createMemoryHistory>;
 }) {
   if (adapter.mode !== 'mock') throw new Error('MOCK_ADAPTER_REQUIRED');
   let state = initialState();
