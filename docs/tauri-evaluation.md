@@ -35,6 +35,10 @@ ZIP 自体を新しい runner temp へ展開し、全 file hash と未接続境�
 通常終了判定後に自己所有 driver を回収し、結果が成功した時だけ評価 ZIP を artifact 保存します。
 hosted runner 自体は使い捨てで、既存 CI ホストや新 PC へ接続しません。
 
+展開前の共通CLIは[配布整合性とbackend同梱の引継ぎ](tauri-evaluation-integrity.md)を参照してください。
+固定source/build済みEXE hashとZIPを照合し、余剰memberやlicense本文欠落を拒否します。
+現行はbackendを含む構成自体を拒否し、埋込みsource版・署名の信頼根や実backend動作を保証しません。
+
 `scripts/tests/test_tauri_evaluation_package.py` は CLI から生成 ZIP を読む配布ファイル境界です。
 最初の未実装の非0から source 対応・閉じた gate・hash を含む ZIP の green、
 次に入力外 license symlink の受理 red から拒否 green を確認しました。
