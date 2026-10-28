@@ -97,9 +97,9 @@ impl Recorder {
                 && seen & (1 << Stage::PageFinished as u8) != 0)
     }
     fn snapshot(&self, requested: bool) -> String {
-        self.enabled.store(false, SeqCst);
-        // 同じappの単調時計。ここより遅いeventがあればconsumerは不完全とする。
+        // 無効化前の保守的cutoff。間に記録された後着eventはconsumerで不完全にする。
         let window_end_us = self.start.elapsed().as_micros();
+        self.enabled.store(false, SeqCst);
         // workerだけの有限settlement待ち。UI hookは待たない。
         for _ in 0..100 {
             if self.in_flight.load(SeqCst) == 0 {
