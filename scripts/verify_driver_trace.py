@@ -47,6 +47,7 @@ def inspect(data):
                 and summary['dropped'] == 0)
     connections, requests = {}, {}
     observed, sequence = set(), []
+    last_elapsed = 0
     for row in events:
         need(isinstance(row, dict) and set(row) == {'type', 'seq', 'connection', 'request',
                                                   'stage', 'state', 'elapsedUs', 'error'})
@@ -54,6 +55,8 @@ def inspect(data):
              and row['error'] in ERRORS
              and all(integer(row[k]) for k in ['seq', 'connection', 'request', 'elapsedUs']))
         need(row['seq'] > 0 and 1 <= row['connection'] <= 32 and row['request'] <= 32)
+        need(row['elapsedUs'] >= last_elapsed)
+        last_elapsed = row['elapsedUs']
         sequence.append(row['seq'])
         observed.add(row['stage'])
         conn, req, stage = row['connection'], row['request'], row['stage']
