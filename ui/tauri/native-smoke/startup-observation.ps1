@@ -29,7 +29,7 @@ function Get-StartupFacts($Driver, $Edge, [string]$AppPath, $Snapshot, $Listener
     $listenerRows = @($Listeners | Where-Object LocalPort -in @(4444, 4445))
     $listenerFacts = @($listenerRows | Select-Object -First 8 | ForEach-Object {
         $family = 'unavailable'
-        $loopback = $false
+        $loopback = $null
         try {
             $address = [Net.IPAddress]::Parse($_.LocalAddress)
             $family = if ($address.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork) { 'ipv4' } else { 'ipv6' }

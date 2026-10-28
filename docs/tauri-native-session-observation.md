@@ -37,5 +37,7 @@ hosted runner廃棄の独立確認、driver内部forwardingやappの過去の起
 既存の所有/close契約25チェックを通過後、追加module不存在のREDをrun40646275884で観測（実app未起動）。
 新しいfixture契約は、app候補数と相関数の区別、app欠測を成功にしないこと、曖昧なPID世代と匿名化を検証する。
 fixtureはprocessやportを作らず、native起動の証拠には数えない。
+独立レビューの追加保存例外と未知住所は、run40647333973で失敗を先に観測した。
+保存は既存の固定code writerを共有し、失敗しても元のFAIL/cleanup値を成功へ変えない。住所解析不能はloopback=nullとする。
 実Windows native/配布CIの結果と、#74との結合後の固定head結果は別に記録する。
 Go/runtime/Rust readerや製品gateは変更しない。

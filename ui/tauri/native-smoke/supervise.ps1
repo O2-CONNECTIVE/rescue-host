@@ -133,7 +133,7 @@ try {
             $afterListeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
             $report.startupAfterCleanupFacts = Get-StartupFacts $driver[0] $edge[0] $appPath $afterSnapshot $afterListeners
         } catch { $report.startupAfterCleanupObservation = 'unavailable' }
-        finally { $report | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $OutputDirectory 'native-result.json') -Encoding utf8 }
+        finally { Save-NativeReport $report $OutputDirectory }
     }
 }
 if ($report.cleanupFailures -gt 0 -or $report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }
