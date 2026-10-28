@@ -135,7 +135,16 @@ impl<T: ReaderTarget> ReaderConnection<T> {
         }
     }
 
-    pub fn transport_failed(&mut self, _code: Code) {}
+    pub fn transport_failed(&mut self, code: Code) {
+        let code = match code {
+            Code::VersionMismatch
+            | Code::InvalidMessage
+            | Code::ContextMismatch
+            | Code::TerminationUnconfirmed => code,
+            _ => Code::TerminationUnconfirmed,
+        };
+        self.fail(code);
+    }
 
     /// Processes at most one frame. Blocking Read is always in the worker;
     /// rejected/cancelled input is discarded without invoking the target again.

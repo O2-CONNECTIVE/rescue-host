@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod cancel_tests;
+pub(crate) mod client;
 mod endpoint;
 mod native;
 mod operation;
@@ -27,6 +28,15 @@ enum Fault {
 }
 
 impl Fault {
+    fn code(self) -> crate::control_codec::scalar::Code {
+        use crate::control_codec::scalar::Code;
+        match self {
+            Self::InvalidMessage => Code::InvalidMessage,
+            Self::VersionMismatch => Code::VersionMismatch,
+            _ => Code::TerminationUnconfirmed,
+        }
+    }
+
     fn from_code(code: crate::control_codec::scalar::Code) -> Self {
         match code {
             crate::control_codec::scalar::Code::VersionMismatch => Self::VersionMismatch,
