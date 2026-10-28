@@ -80,6 +80,13 @@ pub(crate) struct ReaderTask {
 }
 
 impl ReaderTask {
+    pub fn start_with_cancel(
+        reader: impl Read + Send + 'static,
+        _cancel: Arc<AtomicBool>,
+    ) -> io::Result<Self> {
+        Self::start(reader)
+    }
+
     pub fn start(reader: impl Read + Send + 'static) -> io::Result<Self> {
         let frame_limit =
             u16::try_from(MAX_FRAME_BYTES).map_err(|_| io::Error::other("invalid frame limit"))?;

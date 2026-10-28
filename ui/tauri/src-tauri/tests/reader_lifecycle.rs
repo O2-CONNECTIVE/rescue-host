@@ -26,6 +26,18 @@ fn join(reader: &mut ReaderTask) -> ReaderEnd {
     }
 }
 
+#[test]
+fn a_shared_cancel_token_reaches_the_same_worker_before_it_reads() {
+    use std::sync::atomic::AtomicBool;
+    let cancelled = Arc::new(AtomicBool::new(true));
+    let mut reader = ReaderTask::start_with_cancel(Cursor::new(b"{}\n"), cancelled).unwrap();
+    assert_eq!(
+        reader.poll_until(Instant::now() + Duration::from_secs(2)),
+        ReaderEvent::Joined(ReaderEnd::Cancelled)
+    );
+    assert_eq!(reader.poll(), ReaderEvent::Closed);
+}
+
 struct HeldRead {
     gate: Arc<(Mutex<bool>, Condvar)>,
     entered: Option<mpsc::SyncSender<()>>,
