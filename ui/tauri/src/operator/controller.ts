@@ -4,7 +4,11 @@ export function createOperatorController({ adapter: _adapter, onChange }: {
 }) {
   let state = initialState();
   return {
-    acceptSample(_sample: SampleId) { onChange(state); },
+    acceptSample(sample: SampleId) {
+      if (state.phase !== 'entry') return;
+      state = { phase: 'review', sample, termination: 'not_started', diagnostic: 'DEMO_REVIEW' };
+      onChange(state);
+    },
     snapshot() { return state; }
   };
 }
