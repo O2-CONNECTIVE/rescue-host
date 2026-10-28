@@ -14,9 +14,9 @@ void test('同じapp時計の記録終了で戻りmarker未観測の区間を測
 });
 
 function fixture(stages: string[]) {
-  return { schema: 1, variant: 'host-startup-stage-1', purpose: 'diagnostic-hints-only',
+  return { schema: 1, variant: 'host-startup-stage-2', purpose: 'diagnostic-hints-only',
     events: stages.map((stage, index) => ({ seq: index + 1, stage, elapsedUs: index * 100 })),
-    attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0 };
+    attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000 };
 }
 void test('同じ完全観測窓でWebView build前と初回page-load完了後を区別する', () => {
   assert.equal(classifyAppStartup(fixture(['setup-enter', 'webview-build-start'])).phase, 'webview-build-not-observed');

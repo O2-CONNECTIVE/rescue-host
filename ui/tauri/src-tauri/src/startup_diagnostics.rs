@@ -98,6 +98,8 @@ impl Recorder {
     }
     fn snapshot(&self, requested: bool) -> String {
         self.enabled.store(false, SeqCst);
+        // 同じappの単調時計。ここより遅いeventがあればconsumerは不完全とする。
+        let window_end_us = self.start.elapsed().as_micros();
         // workerだけの有限settlement待ち。UI hookは待たない。
         for _ in 0..100 {
             if self.in_flight.load(SeqCst) == 0 {
@@ -123,13 +125,14 @@ impl Recorder {
             })
             .collect();
         format!(
-            "{{\"schema\":1,\"variant\":\"host-startup-stage-1\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{}}}",
+            "{{\"schema\":1,\"variant\":\"host-startup-stage-2\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{}}}",
             rows.join(","),
             self.attempted.load(SeqCst),
             events.len(),
             self.dropped.load(SeqCst),
             requested && self.in_flight.load(SeqCst) == 0,
-            self.in_flight.load(SeqCst)
+            self.in_flight.load(SeqCst),
+            window_end_us
         )
     }
 }
