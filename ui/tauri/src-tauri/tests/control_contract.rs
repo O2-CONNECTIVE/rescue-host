@@ -25,12 +25,16 @@ fn expand(case: &Value) -> Vec<u8> {
         keys.sort_unstable();
         match keys.as_slice() {
             ["hex"] => {
-                let value = hex(part["hex"].as_str().unwrap());
+                let text = part["hex"].as_str().unwrap();
+                assert!(text.len() <= (16_385 - bytes.len()) * 2);
+                let value = hex(text);
                 assert!(bytes.len() + value.len() <= 16_385);
                 bytes.extend(value);
             }
             ["count", "repeatByteHex"] => {
-                let value = hex(part["repeatByteHex"].as_str().unwrap());
+                let text = part["repeatByteHex"].as_str().unwrap();
+                assert_eq!(text.len(), 2);
+                let value = hex(text);
                 assert_eq!(value.len(), 1);
                 let count: usize = part["count"].as_u64().unwrap().try_into().unwrap();
                 let length = bytes.len().checked_add(count).unwrap();
