@@ -9,6 +9,7 @@ export function createOperatorController({ adapter: _adapter, onChange }: {
       state = { phase: 'review', sample, termination: 'not_started', diagnostic: 'DEMO_REVIEW' };
       onChange(state);
     },
+    requestApproval(_confirmed: boolean) { return Promise.resolve(); },
     snapshot() { return state; }
   };
 }
