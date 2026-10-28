@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap"
 )
 
 var ErrConfig = errors.New("子の保護起動設定が未設定です")
@@ -25,6 +27,13 @@ type Artifact struct {
 // このmoduleは元handleやprimary tokenの所有を引き取らない。
 type Handles struct{ Stdin, Stdout, Stderr uintptr }
 
+// Bootstrap は同じ保護所有者が準備した第4read handleと非秘密の相関値です。
+// この値やlocatorの一致は認証ではなく、childのnative factoryが別に照合します。
+type Bootstrap struct {
+	ReadHandle uintptr
+	Values     bootstrap.LaunchValues
+}
+
 // Specは未決の保護provisioningからの型付き入力で、認証の証明ではない。
 // PrimaryTokenは承認済み既存primary tokenが必須。取得や昇格fallbackはしない。
 type Spec struct {
@@ -32,6 +41,7 @@ type Spec struct {
 	Handles        Handles
 	PrimaryToken   uintptr
 	CleanupTimeout time.Duration
+	Bootstrap      *Bootstrap
 }
 
 type kernel interface {
@@ -67,6 +77,9 @@ func bounded(ctx context.Context) bool {
 
 func configured(spec Spec) bool {
 	h := spec.Handles
+	if _, err := bootstrapArgs(spec); err != nil {
+		return false
+	}
 	return spec.Artifact.Path != "" && !strings.ContainsRune(spec.Artifact.Path, 0) && spec.Artifact.SHA256 != ([32]byte{}) &&
 		ordinaryHandle(spec.PrimaryToken) && spec.CleanupTimeout > 0 &&
 		ordinaryHandle(h.Stdin) && ordinaryHandle(h.Stdout) && ordinaryHandle(h.Stderr) &&
@@ -77,6 +90,7 @@ func configured(spec Spec) bool {
 func ordinaryHandle(handle uintptr) bool { return handle != 0 && handle < ^uintptr(15) }
 
 func Start(ctx context.Context, spec Spec) (*Child, error) {
+	spec = freezeSpec(spec)
 	if !bounded(ctx) || !configured(spec) {
 		return nil, ErrConfig
 	}
@@ -84,6 +98,7 @@ func Start(ctx context.Context, spec Spec) (*Child, error) {
 }
 
 func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
+	spec = freezeSpec(spec)
 	if !bounded(ctx) || !configured(spec) || api == nil {
 		return nil, ErrConfig
 	}
@@ -125,6 +140,14 @@ func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 		return fail()
 	}
 	return c, nil
+}
+
+func freezeSpec(spec Spec) Spec {
+	if spec.Bootstrap != nil {
+		snapshot := *spec.Bootstrap
+		spec.Bootstrap = &snapshot
+	}
+	return spec
 }
 
 func (c *Child) take(ctx context.Context) error {

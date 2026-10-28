@@ -3,10 +3,14 @@ package servicehost
 import (
 	"context"
 	"encoding/hex"
+	"errors"
+	"runtime"
 	"strconv"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 )
 
@@ -15,22 +19,64 @@ import (
 // 借用child-side pipe/tokenはprovisionerが所有し、startup完了/取消時に不要な複製を閉じる。
 // 識別子やhashだけを相手認証へ読み替えてはならない。
 type ChildPlan struct {
-	Spec      childjob.Spec
-	Control   *OwnedControl
-	Bootstrap func(context.Context, supervisor.Binding) error
+	Spec              childjob.Spec
+	Control           *OwnedControl
+	Stdio             *OwnedStdio
+	Bootstrap         func(context.Context, supervisor.Binding) error
+	PreparedBootstrap PreparedBootstrap
+}
+
+// PreparedBootstrap は同じAuthorityを受け取る、一回送信と所有回収の境界です。
+// native実装は認証済みserviceでのみ構成し、識別子だけを認証と扱いません。
+type PreparedBootstrap interface {
+	Publish(context.Context, *supervisor.Authority) error
+	Close(context.Context) error
+}
+
+type issuedChildProvisioning interface {
+	prepareIssued(context.Context, *supervisor.Authority, IssuedLaunch) (ChildPlan, error)
 }
 
 type ProtectedChildProvisioning interface {
 	PrepareChild(context.Context, supervisor.ProvisionedGrant) (ChildPlan, error)
 }
 
-type JobRuntime struct{ source ProtectedChildProvisioning }
+type JobRuntime struct {
+	source     ProtectedChildProvisioning
+	startChild func(context.Context, childjob.Spec) (Process, error)
+}
 
 // NewJobRuntimeはadapterを構成するだけで、OSの設定・token取得・process起動はしない。
 // default SCM/mainはsourceを設定せず、実機起動には別のaction-time承認を要する。
-func NewJobRuntime(source ProtectedChildProvisioning) *JobRuntime { return &JobRuntime{source: source} }
+func NewJobRuntime(source ProtectedChildProvisioning) *JobRuntime {
+	return &JobRuntime{source: source, startChild: func(ctx context.Context, spec childjob.Spec) (Process, error) { return childjob.Start(ctx, spec) }}
+}
 
 func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority) (Process, error) {
+	return r.start(ctx, authority, nil)
+}
+
+// StartIssued はcallerの元threadを固定し、native検査中の別threadへの移送を行いません。
+func (r *JobRuntime) StartIssued(ctx context.Context, a *supervisor.Authority, issued IssuedLaunch) (p Process, err error) {
+	return r.startIssuedWithThread(ctx, a, issued, runtime.LockOSThread, runtime.UnlockOSThread)
+}
+
+func (r *JobRuntime) startIssuedWithThread(ctx context.Context, a *supervisor.Authority, issued IssuedLaunch, lock, unlock func()) (p Process, err error) {
+	lock()
+	defer func() {
+		if owned, ok := p.(*jobProcess); ok {
+			if native, ok := owned.bootstrap.(interface{ releaseStartupThread() error }); ok {
+				err = errors.Join(err, native.releaseStartupThread())
+			}
+		}
+		if !errors.Is(err, bootstrapauth.ErrFatal) && !errors.Is(err, protectedkey.ErrFatal) {
+			unlock()
+		}
+	}()
+	return r.start(ctx, a, &issued)
+}
+
+func (r *JobRuntime) start(ctx context.Context, authority *supervisor.Authority, issued *IssuedLaunch) (Process, error) {
 	if r == nil || r.source == nil {
 		return nil, ErrProvisioningUnconfigured
 	}
@@ -44,18 +90,30 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 	if snapshot.State != supervisor.Granted {
 		return nil, ErrProvisioningRejected
 	}
-	plan, err := r.source.PrepareChild(ctx, snapshot.Grant)
+	var plan ChildPlan
+	var err error
+	if source, ok := r.source.(issuedChildProvisioning); ok {
+		if issued == nil || issued.instance == ([32]byte{}) || issued.binding != snapshot.Grant.Binding {
+			return nil, ErrProvisioningRejected
+		}
+		plan, err = source.prepareIssued(ctx, authority, *issued)
+	} else {
+		plan, err = r.source.PrepareChild(ctx, snapshot.Grant)
+	}
 	var owned *jobProcess
-	if plan.Control != nil {
-		owned = &jobProcess{control: plan.Control}
+	if plan.Control != nil || plan.PreparedBootstrap != nil || plan.Stdio != nil {
+		owned = &jobProcess{control: plan.Control, stdio: plan.Stdio, bootstrap: plan.PreparedBootstrap, authority: authority, binding: snapshot.Grant.Binding}
+		if plan.Stdio != nil {
+			plan.Stdio.attach(authority, snapshot.Grant.Binding)
+		}
 	}
 	reject := func() (Process, error) {
 		if owned != nil {
-			return owned, ErrProvisioningRejected
+			return owned, errors.Join(ErrProvisioningRejected, err)
 		}
-		return nil, ErrProvisioningRejected
+		return nil, errors.Join(ErrProvisioningRejected, err)
 	}
-	if err != nil || owned == nil || plan.Bootstrap == nil || authority.Snapshot(time.Now()).State != supervisor.Granted || ctx.Err() != nil {
+	if err != nil || owned == nil || plan.Control == nil || (plan.Bootstrap == nil) == (plan.PreparedBootstrap == nil) || authority.Snapshot(time.Now()).State != supervisor.Granted || ctx.Err() != nil {
 		return reject()
 	}
 	wire := plan.Control.config.Wire
@@ -63,7 +121,15 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 	if wire.Generation != strconv.FormatUint(snapshot.Grant.Binding.Generation, 10) || wire.Identity.LaunchID != identity.LaunchID || wire.Identity.Epoch != identity.Epoch || wire.Identity.PolicyDigest != identity.PolicyDigest || wire.Binding.ArtifactSHA256 != hex.EncodeToString(plan.Spec.Artifact.SHA256[:]) || plan.Control.config.PollInterval > snapshot.Grant.BackendLeaseCeiling {
 		return reject()
 	}
-	child, err := childjob.Start(ctx, plan.Spec)
+	if b := plan.Spec.Bootstrap; b != nil {
+		if issued == nil || b.Values.IssuerInstanceEpoch != hex.EncodeToString(issued.instance[:]) || b.Values.Wire != wire {
+			return reject()
+		}
+	}
+	if r.startChild == nil {
+		return reject()
+	}
+	child, err := r.startChild(ctx, plan.Spec)
 	if child != nil {
 		owned.child = child
 	}
@@ -74,9 +140,13 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 	if authority.Snapshot(time.Now()).State != supervisor.Granted || ctx.Err() != nil {
 		return owned, ErrRuntimeUnconfirmed
 	}
-	err = completeBootstrap(plan.Bootstrap, ctx, snapshot.Grant.Binding)
+	if plan.PreparedBootstrap != nil {
+		err = publishBootstrap(plan.PreparedBootstrap, ctx, authority)
+	} else {
+		err = completeBootstrap(plan.Bootstrap, ctx, snapshot.Grant.Binding)
+	}
 	if err != nil || authority.Snapshot(time.Now()).State != supervisor.Granted || ctx.Err() != nil {
-		return owned, ErrRuntimeUnconfirmed
+		return owned, errors.Join(ErrRuntimeUnconfirmed, err)
 	}
 	if err := plan.Control.Start(ctx); err != nil {
 		return owned, ErrRuntimeUnconfirmed
@@ -85,6 +155,15 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 		return owned, ErrRuntimeUnconfirmed
 	}
 	return owned, nil
+}
+
+func publishBootstrap(b PreparedBootstrap, ctx context.Context, a *supervisor.Authority) (err error) {
+	defer func() {
+		if recover() != nil {
+			err = ErrRuntimeUnconfirmed
+		}
+	}()
+	return b.Publish(ctx, a)
 }
 
 func completeBootstrap(bootstrap func(context.Context, supervisor.Binding) error, ctx context.Context, binding supervisor.Binding) (err error) {
@@ -97,8 +176,12 @@ func completeBootstrap(bootstrap func(context.Context, supervisor.Binding) error
 }
 
 type jobProcess struct {
-	child   Process
-	control *OwnedControl
+	child     Process
+	control   *OwnedControl
+	bootstrap PreparedBootstrap
+	stdio     *OwnedStdio
+	authority *supervisor.Authority
+	binding   supervisor.Binding
 }
 
 // OwnProcessは既に保護側が所有したOS processと同じ子の制御pipeを組み合わせる。
@@ -120,32 +203,66 @@ func (p *jobProcess) Wait(ctx context.Context) error {
 	return p.child.Wait(ctx)
 }
 
-func (p *jobProcess) Close(ctx context.Context) error {
-	if p == nil || !controlBudget(ctx) {
+func (p *jobProcess) Close(ctx context.Context) (result error) {
+	if p == nil {
 		return ErrRuntimeUnconfirmed
 	}
+	if p.authority != nil {
+		_ = p.authority.Revoke(p.binding)
+	}
+	if !controlBudget(ctx) {
+		return ErrRuntimeUnconfirmed
+	}
+	// stderrやGo停止の失敗でも、独立して所有するbootstrap/stdio回収を飛ばさない。
+	defer func() {
+		var err error
+		if p.bootstrap != nil {
+			err = p.bootstrap.Close(ctx)
+		}
+		if p.stdio != nil {
+			err = errors.Join(err, p.stdio.Close(ctx))
+		}
+		if err != nil {
+			result = runtimeFailure(result, err)
+		}
+	}()
 	if p.child == nil {
-		return p.control.Abort(ctx)
+		if p.control != nil {
+			return p.control.Abort(ctx)
+		}
+		return nil
+	}
+	if p.control == nil {
+		return runtimeFailure(p.child.Close(ctx))
 	}
 	deadline, _ := ctx.Deadline()
-	// Goの応答待ちだけで全予算を消費せず、同じ期限内にJob回収の予算を残す。
+	// Go停止とstdout実EOFには残りの半分だけを使い、Job回収を塞がない。
 	goBudget, cancel := context.WithTimeout(ctx, time.Until(deadline)/2)
 	goErr := p.control.Stop(goBudget)
 	cancel()
 	if goErr == nil {
-		// Go Closeと実EOFの後も、exit0/Job空を観測するまで正常成功にしない。
-		// その待機にも残り予算の半分を使い、失敗時の強制回収を残す。
+		// exit0/Job空を別に確認し、さらにstderr実EOFとdrain joinを待つ。
 		graceful, end := context.WithTimeout(ctx, time.Until(deadline)/2)
 		waitErr := p.child.Wait(graceful)
 		end()
 		if waitErr == nil && ctx.Err() == nil {
+			if p.stdio != nil {
+				// stderrがEOFを返さなくても、取消/資源回収の残り時間を確保する。
+				stderrBudget, finish := context.WithTimeout(ctx, time.Until(deadline)/2)
+				stderrErr := p.stdio.Wait(stderrBudget)
+				finish()
+				if stderrErr != nil {
+					return ErrRuntimeUnconfirmed
+				}
+			}
 			return nil
 		}
 	}
+	var cleanupErr error
 	if goErr != nil {
-		_ = p.control.Abort(ctx)
+		cleanupErr = p.control.Abort(ctx)
 	}
-	_ = p.child.Close(ctx)
+	cleanupErr = errors.Join(cleanupErr, p.child.Close(ctx))
 	// 強制回収が成功しても正常exit0/Go Closeの証拠へ変換しない。
-	return ErrRuntimeUnconfirmed
+	return runtimeFailure(goErr, cleanupErr)
 }
