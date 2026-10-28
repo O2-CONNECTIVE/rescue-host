@@ -48,7 +48,7 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
     <div className="operator-layout"><section aria-label="接続の操作">{state.visibility === 'tray' ? <Card><h2 id="tray-heading" tabIndex={-1}>トレイ格納中（モック）</h2>
       <p>接続状態を維持したまま、ウィンドウだけを隠す体験です。OSのトレイには格納していません。</p>
       <Button onClick={() => { focusAfterAction.current = state.sample ? 'review-heading' : 'sample-input'; controller.current?.restoreWindow(); }}>ウィンドウを戻す（モック）</Button>
-      {state.validSession && !state.stopRequested && ['ready', 'connected', 'unconfirmed'].includes(state.phase) && <Button variant="danger" onClick={() => { void controller.current?.requestStop(); }}><Square className="icon" aria-hidden="true" focusable="false" />接続を停止（サンプル）</Button>}
+      {state.validSession && !state.stopRequested && ['ready', 'connected', 'unconfirmed'].includes(state.phase) && <Button variant="danger" onClick={() => { focusAfterAction.current = 'operator-status-title'; void controller.current?.requestStop(); }}><Square className="icon" aria-hidden="true" focusable="false" />接続を停止（サンプル）</Button>}
     </Card> : state.sample ? <ConnectionPanel state={state}
       onApproval={confirmed => { void controller.current?.requestApproval(confirmed); }} onStop={() => { void controller.current?.requestStop(); }}
       onRetry={() => { void controller.current?.retryStatus(); }} copy={copy} /> : <ReceiveForm onReceive={receive} />}</section>
