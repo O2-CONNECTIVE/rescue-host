@@ -149,3 +149,81 @@ fn shared_close_conditions_remain_unconfirmed_without_protected_authority() {
         assert_eq!(observations.assess(), expected, "{}", case["id"]);
     }
 }
+
+fn ready_reply() -> Value {
+    serde_json::from_slice(&reply(
+        "snapshot_result",
+        "1",
+        "1",
+        json!({"goState": "ready", "pending": "0", "active": "0", "owned": "0", "goCloseConfirmed": false}),
+    ))
+    .unwrap()
+}
+
+#[test]
+fn wrong_envelope_identity_or_response_kind_never_updates_the_claim() {
+    let mut cases = Vec::new();
+    for field in ["generation", "sequence", "requestId"] {
+        let mut value = ready_reply();
+        value[field] = json!("2");
+        cases.push(value);
+    }
+    let mut identity = ready_reply();
+    identity["identity"]["launchId"] = json!("other-launch");
+    cases.push(identity);
+    let mut receipt = ready_reply();
+    receipt["kind"] = json!("receipt");
+    receipt["payload"] = json!({"operation": "stop", "accepted": true});
+    cases.push(receipt);
+    assert_eq!(cases.len(), 5);
+    for response in cases {
+        let mut conversation = bound();
+        conversation.request(Request::Snapshot).unwrap();
+        assert_eq!(
+            conversation.receive(&frame(response)),
+            Err(Code::ContextMismatch)
+        );
+        assert!(conversation.is_closed());
+        assert!(conversation.peer_snapshot_claim().is_none());
+    }
+}
+
+#[test]
+fn a_correlated_error_close_claim_is_not_a_snapshot_or_stop_receipt() {
+    let mut conversation = bound();
+    conversation.request(Request::Stop).unwrap();
+    let response = reply(
+        "error",
+        "1",
+        "1",
+        json!({"code": "TERMINATION_UNCONFIRMED", "retryable": false, "goCloseConfirmed": true}),
+    );
+    conversation.receive(&response).unwrap();
+    assert_eq!(
+        conversation.peer_error_claim(),
+        Some(Code::TerminationUnconfirmed)
+    );
+    assert!(conversation.peer_snapshot_claim().is_none());
+    assert!(!conversation.peer_stop_receipt());
+    assert!(!conversation.is_closed());
+}
+
+#[test]
+fn a_reader_completion_report_seals_input_without_changing_peer_state() {
+    let mut event = ready_reply();
+    event["kind"] = json!("state_changed");
+    event.as_object_mut().unwrap().remove("requestId");
+    let event = frame(event);
+    let mut open = bound();
+    open.receive(&event).unwrap();
+    let mut ended = bound();
+    ended.end_input();
+    assert!(ended.is_closed());
+    assert_eq!(ended.receive(&event), Err(Code::TerminationUnconfirmed));
+    assert_eq!(
+        ended.request(Request::Snapshot),
+        Err(Code::TerminationUnconfirmed)
+    );
+    assert!(ended.peer_snapshot_claim().is_none());
+    assert!(ended.channel_fault().is_none());
+}
