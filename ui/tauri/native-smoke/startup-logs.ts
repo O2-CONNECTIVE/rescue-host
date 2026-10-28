@@ -16,6 +16,7 @@ type Facts = {
   bytesRead: number | null;
   truncated: boolean | null;
   hints: Record<string, boolean> | null;
+  proxyErrorKinds?: string[];
 };
 async function readFacts(file: string): Promise<Facts> {
   const unavailable: Facts = { status: 'unavailable', bytesRead: null, truncated: null, hints: null };
@@ -31,16 +32,21 @@ async function readFacts(file: string): Promise<Facts> {
     const text = buffer.subarray(0, bytesRead).toString('utf8').toLowerCase();
     const hints = Object.fromEntries(Object.entries(patterns).map(([name, values]) =>
       [name, values.some(value => text.includes(value))]));
-    return { status: 'read', bytesRead, truncated: (await handle.stat()).size > bytesRead, hints };
+    const kinds = [['incomplete-message', 'hyper::error(incompletemessage'], ['canceled', 'hyper::error(canceled'], ['io', 'hyper::error(io']];
+    const proxyErrorKinds = kinds.filter(([, phrase]) => text.includes(phrase)).map(([kind]) => kind);
+    if (hints.proxyConnectionError && proxyErrorKinds.length === 0) proxyErrorKinds.push('unclassified');
+    return { status: 'read', bytesRead, truncated: (await handle.stat()).size > bytesRead, hints, proxyErrorKinds };
   } catch { return unavailable; }
   finally { await handle?.close(); }
 }
-export async function saveStartupLogFacts(directory: string, output: string): Promise<void> {
+export async function readStartupLogFacts(directory: string) {
   // 自己所有の固定2ファイルだけ。原文、filename、path、例外文はJSONへ複製しない。
   const [stdout, stderr] = await Promise.all([
     readFacts(path.join(directory, 'driver.stdout.log')),
     readFacts(path.join(directory, 'driver.stderr.log'))
   ]);
-  await writeFile(path.join(output, 'driver-startup-log-facts.json'),
-    JSON.stringify({ schema: 1, purpose: 'diagnostic-hints-only', stdout, stderr }));
+  return { schema: 1, purpose: 'diagnostic-hints-only', stdout, stderr };
+}
+export async function saveStartupLogFacts(directory: string, output: string): Promise<void> {
+  await writeFile(path.join(output, 'driver-startup-log-facts.json'), JSON.stringify(await readStartupLogFacts(directory)));
 }
