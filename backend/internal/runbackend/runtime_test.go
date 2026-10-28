@@ -206,7 +206,9 @@ func TestRuntimeRejectsUnboundOrExtendedInputs(t *testing.T) {
 			case "guest":
 				c.Grant.GuestBoundary = 2
 			case "maximum":
-				c.Grant.HardDeadline = time.Now().Add(c.Backend.MaximumDuration)
+				// 等号は許可されるため、時計の進行に頼らず1秒の超過を入力で確定する。
+				c.Backend.MaximumDuration = 3 * time.Second
+				c.Grant.HardDeadline = time.Now().Add(2 * time.Second)
 			case "lease":
 				c.Backend.LeaseDuration = c.Grant.BackendLeaseCeiling + time.Millisecond
 			case "frame-budget":
