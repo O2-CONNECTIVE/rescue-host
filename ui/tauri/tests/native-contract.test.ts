@@ -153,3 +153,24 @@ void test('headers受信後もbodyの期限切れ・通信断・JSON不正を分
     assert.equal(JSON.stringify(traces).includes('PRIVATE_BODY_'), false);
   }
 });
+
+void test('session失敗のdriverログを固定分類だけで保存し原文を複製しない', async t => {
+  const { mkdtemp, writeFile, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'startup-log-fixture-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(path.join(directory, 'driver.stderr.log'), 'session not created: PRIVATE_TOKEN /private/profile\nDevToolsActivePort file doesn\'t exist');
+  const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
+  await saveStartupLogFacts(directory, directory);
+  const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
+  const record = JSON.parse(raw);
+  assert.equal(record.stderr.status, 'read');
+  assert.equal(record.stderr.hints.sessionNotCreated, true);
+  assert.equal(record.stderr.hints.devtoolsPortMissing, true);
+  assert.equal(record.stdout.status, 'unavailable');
+  assert.equal(record.stdout.hints, null);
+  assert.equal(raw.includes('PRIVATE_TOKEN'), false);
+  assert.equal(raw.includes('/private/profile'), false);
+  assert.equal(raw.includes(directory), false);
+});
