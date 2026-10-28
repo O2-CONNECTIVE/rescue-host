@@ -7,6 +7,7 @@ import { armRefresh, disarmRefresh, waitForRefresh } from './refresh-observer.ts
 import { checkKeyboard } from './keyboard.ts';
 import { checkUnwired } from './assert-unwired.ts';
 import { saveStartupLogFacts } from './startup-logs.ts';
+import { observeSessionStartup } from './session-observation.ts';
 
 const output = process.env.NATIVE_OUTPUT_DIR;
 const application = process.env.NATIVE_APP_EXE;
@@ -24,7 +25,9 @@ try {
   }, 60000);
   const driver = new Driver('http://127.0.0.1:4444', fetch, value => { observation?.request(value); });
   observation.phase('session-create');
-  const browserVersion = await driver.create(application, profile);
+  const browserVersion = logs
+    ? await observeSessionStartup(() => driver.create(application, profile), logs, output)
+    : await driver.create(application, profile);
   sessionCreated = true;
   observation.phase('origin-check');
   await driver.waitForBundledDocument((origin, state) => { observation?.origin(origin); observation?.documentState(state); });
