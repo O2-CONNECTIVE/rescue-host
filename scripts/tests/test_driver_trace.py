@@ -37,6 +37,21 @@ class DriverTraceTests(unittest.TestCase):
             self.assertNotIn(str(file), result.stdout)
             return result
 
+    def test_terminal_connection_assignment_is_distinct_from_native_headers(self):
+        rows = trace()
+        rows[0]['variant'] = 'tauri-driver-2.1.0-stage-2'
+        rows.insert(4, {'type': 'event', 'seq': 4, 'connection': 1, 'request': 1,
+                        'stage': 'native-connection-assigned', 'state': 'forward-pending',
+                        'elapsedUs': 400, 'error': 'none'})
+        for index, event in enumerate(rows[1:-1], 1):
+            event.update(seq=index, elapsedUs=index * 100)
+        rows[-1].update(lastSequence=6, attempted=6, enqueued=6, written=6)
+        result = self.verify(encode(rows))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report['requestStage'], 'dropped-before-headers')
+        self.assertEqual(report['nativeConnection'], 'assigned')
+
     def test_same_post_forward_drop_and_connection_eof_are_correlated(self):
         result = self.verify(encode(trace()))
         self.assertEqual(result.returncode, 0, result.stderr)
