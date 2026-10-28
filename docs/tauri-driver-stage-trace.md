@@ -75,5 +75,5 @@ CLI相関と厳密patch適用はmodule/CLI未実装のREDを先に観測した�
 EOF後のfuture drop、schema型と単調時刻の不整合もCLIでRED→GREENを確認した。
 Rust fixtureは固定sourceのproducer未実装によるcompile REDを既存Windows CIで確認し、同じfixtureを実装へ残す。
 追加のheader/error/overflow/未終了request・秘密field・未知差分・pin driftは実装後回帰で、TDD先行件数とは区別する。
-fixtureはmemoryと固定JSONだけで、追加listener/OS保護/実SSHの証明ではない。
+従来fixtureはmemoryと固定JSONで、新しいstage-2には[自己所有loopbackの単一要求fixture](native-timeout-connection-boundary.md)も含む。OS保護や実SSHの証明ではない。
 最終独立security/規約review、固定headのtool fixtureと通常native/展開EXEの結果を別々に保存する。

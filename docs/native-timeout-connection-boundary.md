@@ -57,7 +57,7 @@ patch/source/postimageの新hashはapply_driver_trace.pyに固定し、source前
 
 診断CLIの新分類は499b59eでRED→a02ad19でGREEN（Python7件）。
 Rustの単一loopback fixtureはe4866d3のCI run40774301920/job123119417251で、pin検証後capture未実装のE0599だけによるREDを確認した。
-fixtureは自己所有IPv4 loopbackで1要求だけ受信しheaderを返さず、取消後にassignedを確認する。全体2秒deadline、所有server taskをabort/awaitする。
+fixtureは自己所有IPv4 loopbackの単一要求で最初のbytesを観測しheaderを返さず、取消後にassignedを確認する。全体2秒deadline、timeout/panicを再通知する前にも共通経路で所有server taskをabort/awaitする。
 これは元Windows GUI timeoutの再現ではなく、接続観測と取消の相関を確かめる試験用境界のTDDである。
 既存fixtureのindex更新は新snapshotの版に合わせた回帰で、旧合格条件を緩めない。
 Mac既存Rust1.93はeditionを明示したformatter用途だけ。実build/RED/GREENは既存固定WindowsCI Rust1.99.1で確認する。
