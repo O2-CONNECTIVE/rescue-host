@@ -42,8 +42,8 @@ PR内の検証済みコードを、main実装や製品接続の成功として�
 | --- | --- |
 | [Rust codec #60](https://github.com/O2-CONNECTIVE/rescue-host/pull/60)、[Rust coordinator #64](https://github.com/O2-CONNECTIVE/rescue-host/pull/64) | 限定CIと独立レビューを確認済み。実Goとの制御交換や製品配線は未確認 |
 | [Windows service host #61](https://github.com/O2-CONNECTIVE/rescue-host/pull/61) | 未設定時の起動拒否と模擬制御を確認済み。実SCM登録、サービス稼働、tokenやACLの証明ではない |
-| [Go codec #62](https://github.com/O2-CONNECTIVE/rescue-host/pull/62) | [fixture修正 #68](https://github.com/O2-CONNECTIVE/rescue-host/pull/68)の取り込みと最終CIを確認中 |
-| [再起動後に許可を復元しないissuer #69](https://github.com/O2-CONNECTIVE/rescue-host/pull/69) | 単回発行の候補。取消競合の修正と最終検証を確認中 |
+| [Go codec #62](https://github.com/O2-CONNECTIVE/rescue-host/pull/62) | head `8087c942` は[fixture修正 #68](https://github.com/O2-CONNECTIVE/rescue-host/pull/68)を取り込み、[3 OSの通常/race CI](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40625636120)成功。main未統合で、実Go起動や製品接続の証拠ではない |
+| [再起動後に許可を復元しないissuer #69](https://github.com/O2-CONNECTIVE/rescue-host/pull/69) | head `1286e398` は取消競合を修正し、[3 OSの通常/race CI](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40626031570)成功。main未統合で、OS上の承認・保護・実停止は未実証 |
 
 ## OSと役割ごとの範囲
 
