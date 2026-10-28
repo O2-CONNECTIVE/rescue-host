@@ -38,8 +38,11 @@ Runtime.Serveは受理済みtransportだけを本体Sessionへ渡し、listener�
 
 ## 保護bootstrapの具体的な残件
 
-現在の`ChildPlan.Bootstrap`とcommand側の`protectedBootstrap`は型付き接続点であり、Configや鍵を実際に別processへ配送する実装ではない。
-以下を曖昧な「設定」へまとめず、実装・承認の対象として残す。
+旧`ChildPlan.Bootstrap`は型付き接続点として残す。
+native経路は`NewNativeChildProvisioning`と`PreparedBootstrap`を使い、同じAuthority/issuer相関から非秘密記録を専用pipeへ一回送るsourceへ接続した。
+child側は`bootstrap.NativeReceiver`がpayload前のnative認証、messageと実EOF、独立argv相関、保護上限、固定key catalogを照合し、同じ保護主体の鍵scopeからConfigを返す。
+秘密鍵そのものは配送しない。pure codecの`Expected`へpayloadを自己コピーする経路も使わない。
+具体的なプロフィール値の供給と実OS成立は未確認であり、以下を曖昧な「設定」へまとめない。
 
 | 入力 | 生成者・信頼根 | 必須の照合 |
 | --- | --- | --- |
@@ -49,28 +52,33 @@ Runtime.Serveは受理済みtransportだけを本体Sessionへ渡し、listener�
 | channel nonceと所有pipe | serviceが今回の子用に新規発行・所有 | nonceは識別子で認証ではない。childjobの限定handle継承と同じ起動へ束縛 |
 | grant snapshot、backend Config上限、WireContext、stdio予算 | 同じservice Authorityから導出した一回限りのbootstrap | generation/Identity/鍵digest/方針/絶対deadline/短leaseの一致。UI/env/helloを認可源にしない |
 | 許可公開鍵 | 承認済みの最大8個のraw `ssh-ed25519` 公開鍵 | certificate/鍵options/追加認証源を認めず、runbackendのcanonical KeySetDigest候補と照合 |
-| host signer | 保護された固定key referenceから読む既存Ed25519秘密鍵 | 最小候補は既存の非暗号化OpenSSH PEM Ed25519のみをparseし、別形式/未設定/暗号化鍵は拒否。生成fallback、秘密値のwire/log保存なし |
+| host signer | 保護された固定key referenceから読む既存Ed25519秘密鍵 | sourceのstrict readerは既存の非暗号化OpenSSH PEM Ed25519だけを扱い、別形式/未設定/暗号化鍵を拒否。生成fallback、秘密値のwire/log保存なし |
 
 host key referenceは固定保護場所への参照であり、UIから渡す任意pathではない。
 その配置・ACL・host公開鍵の確認先を実機評価前に承認する必要がある。
 このPRは実鍵の作成・読取・記録をしていない。
 
-配送の最小候補は、標準control/1と分けた一回限りの継承bootstrap pipeである。
+配送は標準control/1と分けた`rescue-host-bootstrap/1`の一回限りの継承pipeである。
 immutable grant snapshotと非秘密のConfig/公開鍵/host key referenceを上限付きで復号し、host秘密鍵そのものをcontrol/1へ載せない。
-現childjobは標準3handleだけを継承する。
-専用bootstrap handleを追加する場合のhandle識別方法、単回codecの版・field・長さ/深さ上限、鍵referenceの解決規則は共有契約ownerの確認前で、追加していない。
+native childjobは標準3handleと専用server-read handleだけを明示継承する。
+16KiB/depth8、固定順の非秘密locator/相関引数を使う。locator/nonceは認証ではなく、SCM RUNNING/PIDと保持peerのtoken/image等を別に照合する。
+OVERLAPPEDの取消後は実completion前にbuffer/event/handleを解放せず、不明時は同じ所有参照を保持して回収を再試行する。
+EOF後にもpipe client PIDを再照会できるかは実Windowsで未実証であり、失敗を可用性のために受理しない。
 既存control/1へapprove/renewや未知fieldを追加する案ではない。
 初回承認の認証済み入口も、既存Identityを前提にしたlocalcontrolのhello/snapshot/stopとは別に必要である。
 
-provisionerは借用するchild側pipe/tokenの元handleを所有し続け、起動完了/取消時に不要な親側複製を閉じる責務を持つ。
+legacy provisionerは借用するchild側pipe/tokenの元handleを所有し続ける。
+native adapterへ渡すbase provisionerは、返したchild-side stdio複製の所有を移し、adapterが継承後または失敗時に閉じる。primary tokenは借用のままである。
+専用bootstrap writerはserviceのみが所有し、書込完了後に全writer copyを閉じる。
 親側control pipeはOwnedControlが閉じる。
 stderrの有限drain/診断の選別と、承認済み受理transportをRuntime.Serveへ渡す実入口も、未設定のbootstrap/transport factoryの責務として残る。
 それらを実装済みと見せるfake childや常時成功callbackは製品sourceに追加しない。
 
 ## sourceで閉じられる作業と実機の別承認
 
-共有契約が決まれば、専用bootstrap codec/reader/writer、固定key-referenceのstrict reader、追加handleのnative parameter、初回承認入口への接続はsourceとmemory fixtureで準備できる。
-現在の型付き接続点だけで、保護bootstrapが完成したとは扱わない。
+専用codec、native reader/writer、固定key-reference reader、第4handleの生成/継承/closeはsourceで接続した。
+固定provisioning値の読取、保護stdioの生成、stderrの有限drain、SCM grant0 ready、正規operatorの初回承認入口と受理transportの供給は未設定である。
+既定mainのreceiverとSCMのHostはnilのままで、RUNNINGやSSH activeを自己申告しない。
 Session/lease内部へ絶対hard deadlineを直接渡すinterfaceも後続の担当module変更で、現runtimeは元のdeadlineを保持し、相対時間の生成前後照合とcontextで保守的に拒否する。
 
 実行前の別承認が必要なのは、対象Windows VM、実service/guest主体と権限、固定artifact/保護root、service登録/起動、ACL、既存key配置または不足時のkey作成、pipe作成、Go process/Job起動、SSH受理入口・port/relay/接続先である。

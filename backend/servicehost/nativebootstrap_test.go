@@ -191,3 +191,64 @@ func TestNativeProvisionerConnectsSameAuthorityRecordToOwnedPipe(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativePublicationFailureBurnsAndRevokesWithoutResend(t *testing.T) {
+	n, a, i, pair, _ := nativeSourceFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	plan, err := n.prepareIssued(ctx, a, i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pair.failure = ErrRuntimeUnconfirmed
+	if err := plan.PreparedBootstrap.Publish(ctx, a); err == nil {
+		t.Fatal("不確定な書込を成功にした")
+	}
+	if a.Snapshot(time.Now()).State != supervisor.Revoked {
+		t.Fatal("書込失敗で元のAuthorityを失効していない")
+	}
+	if err := plan.PreparedBootstrap.Publish(ctx, a); !errors.Is(err, ErrAlreadyUsed) || pair.writes != 1 {
+		t.Fatal("同じgrantの送信を再試行した")
+	}
+	if _, err := n.prepareIssued(ctx, a, i); !errors.Is(err, ErrAlreadyUsed) {
+		t.Fatal("同じprovisionerを再利用した")
+	}
+	if err := plan.PreparedBootstrap.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestNativePublicationRejectsDifferentAuthorityPointerAndCanceledSend(t *testing.T) {
+	for _, mode := range []string{"clone", "cancel"} {
+		t.Run(mode, func(t *testing.T) {
+			n, a, i, pair, _ := nativeSourceFixture(t)
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			plan, err := n.prepareIssued(ctx, a, i)
+			if err != nil {
+				t.Fatal(err)
+			}
+			other := a
+			if mode == "clone" {
+				other, err = supervisor.New(a.Snapshot(time.Now()).Grant, time.Now())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer other.Revoke(i.binding)
+			} else {
+				cancel()
+			}
+			if err := plan.PreparedBootstrap.Publish(ctx, other); err == nil || pair.writes != 0 {
+				t.Fatal("別Authorityまたは取消済みの送信を許可")
+			}
+			if a.Snapshot(time.Now()).State != supervisor.Revoked {
+				t.Fatal("消費済みの元grantが残った")
+			}
+			cleanup, end := context.WithTimeout(context.Background(), time.Second)
+			defer end()
+			if err := plan.PreparedBootstrap.Close(cleanup); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
