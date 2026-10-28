@@ -17,6 +17,7 @@ GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/auth': {'keys.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/control': {'coordinator.go', 'codec.go', 'adapter.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/forward': {'policy.go'},
@@ -41,6 +42,9 @@ PRODUCT_FILES = {
         'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready': {
         'config.go', 'operation.go', 'plane.go', 'security.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
+        'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
+        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go'},
 }
 
 
@@ -113,16 +117,25 @@ SCM_READY_FILES = {
 }
 
 
+SERVICE_PROVISION_FILES = {
+    'linux': {'root_other.go'},
+    'darwin': {'root_other.go'},
+    'windows': {'root_windows.go', 'root_windows_io.go'},
+}
+
+
 def product_files_for(goos):
     if (goos not in SCM_FILES or goos not in LOCALCONTROL_FILES
             or goos not in CHILDJOB_FILES or goos not in PROTECTEDKEY_FILES
-            or goos not in NATIVE_BOOTSTRAP_FILES or goos not in SCM_READY_FILES):
+            or goos not in NATIVE_BOOTSTRAP_FILES or goos not in SCM_READY_FILES
+            or goos not in SERVICE_PROVISION_FILES):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].update(LOCALCONTROL_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob'].update(CHILDJOB_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey'].add(PROTECTEDKEY_FILES[goos])
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision'].update(SERVICE_PROVISION_FILES[goos])
     for suffix, files in NATIVE_BOOTSTRAP_FILES[goos].items():
         expected['github.com/O2-CONNECTIVE/rescue-host/backend/' + suffix].update(files)
     for suffix, files in SCM_READY_FILES[goos].items():
