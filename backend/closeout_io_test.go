@@ -187,8 +187,9 @@ type tcpWriteOutcome struct {
 
 // 各呼出しの完了値を別に保持し、後続Writeの値で観測を置き換えない。
 type tcpWriteCall struct {
-	bytes  int
-	result atomic.Pointer[tcpWriteOutcome]
+	bytes    int
+	sequence int64
+	result   atomic.Pointer[tcpWriteOutcome]
 }
 type pendingTCPWrite struct {
 	call atomic.Pointer[tcpWriteCall]
@@ -199,8 +200,7 @@ type pendingTCPWrite struct {
 }
 
 func (c *pendingTCPWrite) Write(p []byte) (int, error) {
-	call := &tcpWriteCall{bytes: len(p)}
-	c.started.Add(1)
+	call := &tcpWriteCall{bytes: len(p), sequence: c.started.Add(1)}
 	c.call.Store(call)
 	n, err := c.Conn.Write(p)
 	outcome := &tcpWriteOutcome{n, err}
@@ -223,7 +223,19 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 				control = smallFixtureReceiveBuffer
 			}
 			peerRead := make(chan error, 1)
+			peerProgress := make(chan error, 1)
 			f := oneShotFixture(t, control, func(peer net.Conn) {
+				if kind == "tcp-backpressure" {
+					var first [1]byte
+					_, err := io.ReadFull(peer, first[:])
+					if err == nil && first[0] != 'p' {
+						err = errors.New("自己fixtureの先頭byteが不一致")
+					}
+					peerProgress <- err
+					if err != nil {
+						return
+					}
+				}
 				if kind != "no-write" {
 					<-release
 				}
@@ -283,9 +295,13 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 			}
 			var blocked *tcpWriteCall
 			if kind == "tcp-backpressure" {
-				deadline := time.Now().Add(200 * time.Millisecond)
-				for writer.Load().started.Load() == 0 && time.Now().Before(deadline) {
-					time.Sleep(time.Millisecond)
+				select {
+				case err := <-peerProgress:
+					if err != nil {
+						t.Fatal(err)
+					}
+				case <-time.After(200 * time.Millisecond):
+					t.Fatal("同一TCPの先頭byteを到達予算内に受信できない。背圧は未達")
 				}
 				sendSize, _, socketErr := ownedSocketBuffers(targetRaw.Load())
 				if socketErr != nil {
@@ -302,7 +318,7 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 				observeUntil := time.Now().Add(700 * time.Millisecond)
 				for time.Now().Before(observeUntil) {
 					call := writer.Load().call.Load()
-					if call != nil && call.result.Load() == nil {
+					if call != nil && call.sequence == 1 && call.result.Load() == nil {
 						time.Sleep(50 * time.Millisecond)
 						if call.result.Load() == nil {
 							time.Sleep(50 * time.Millisecond)
@@ -331,10 +347,16 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 			}
 			if blocked != nil {
 				result := blocked.result.Load()
-				if result == nil || result.n <= 0 || result.n >= blocked.bytes || !errors.Is(result.err, net.ErrClosed) {
-					t.Fatalf("観測した同一実TCP Writeの失効による中断を確認できない。背圧は未達: submitted=%d result=%+v", blocked.bytes, result)
+				if result != nil {
+					t.Logf("peer_first_byte_received_before_revoke=true same_write_sequence=1 write_return_bytes=%d write_error=%v local_close=%t", result.n, result.err, errors.Is(result.err, net.ErrClosed))
 				}
-				t.Logf("stable_pending_write_samples=2 interval_ms=50 same_write_submitted=%d interrupted_bytes=%d local_close=true", blocked.bytes, result.n)
+				if result == nil || result.n <= 0 || result.n >= blocked.bytes || !errors.Is(result.err, net.ErrClosed) {
+					if result == nil {
+						t.Fatal("観測した同一実TCP Writeが失効後も未完了。背圧は未達")
+					}
+					t.Fatalf("観測した同一実TCP Writeの失効による中断を確認できない。背圧は未達: submitted=%d n=%d error=%v local_close=%t", blocked.bytes, result.n, result.err, errors.Is(result.err, net.ErrClosed))
+				}
+				t.Logf("peer_first_byte_received=true same_write_sequence=1 stable_pending_write_samples=2 interval_ms=50 same_write_submitted=%d write_return_bytes=%d local_close=true", blocked.bytes, result.n)
 			}
 			onceRelease(release)
 			select {
