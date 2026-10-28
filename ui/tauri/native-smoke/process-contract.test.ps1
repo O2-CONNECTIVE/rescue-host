@@ -86,3 +86,10 @@ try {
     if (($saved | ConvertTo-Json -Depth 6).Contains('PRIVATE_')) { throw 'CLEANUP_PRIVATE_EXCEPTION_LEAK' }
 } finally { Remove-Item -LiteralPath $cleanupFolder -Recurse -Force }
 Write-Output 'CLEANUP_FAILURE_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'
+
+$profileHandle = [pscustomobject]@{ Slot = 1; Identity = 'verified'; Process = [pscustomobject]@{ HasExited = $false } }
+$webview | Add-Member NoteProperty CommandLine 'fixture --type="renderer"suffix --user-data-dir="SAFE_PROFILE"suffix PRIVATE_ARGUMENT_DETAIL' -Force
+$profileFacts = Get-ChildCloseFacts @($webview) $app $valid @($profileHandle) $null 'SAFE_PROFILE'
+if ($profileFacts.rows[0].profileMatch -eq $true -or $profileFacts.rows[0].webviewType -eq 'renderer') { throw 'CLOSE_FACTS_QUOTED_SUFFIX_FALSE_MATCH' }
+if (($profileFacts | ConvertTo-Json -Depth 5).Contains('PRIVATE_ARGUMENT_DETAIL')) { throw 'CLOSE_FACTS_ARGUMENT_LEAK' }
+Write-Output 'PROFILE_TOKEN_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'
