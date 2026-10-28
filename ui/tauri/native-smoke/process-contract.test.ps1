@@ -93,3 +93,22 @@ $profileFacts = Get-ChildCloseFacts @($webview) $app $valid @($profileHandle) $n
 if ($profileFacts.rows[0].profileMatch -eq $true -or $profileFacts.rows[0].webviewType -eq 'renderer') { throw 'CLOSE_FACTS_QUOTED_SUFFIX_FALSE_MATCH' }
 if (($profileFacts | ConvertTo-Json -Depth 5).Contains('PRIVATE_ARGUMENT_DETAIL')) { throw 'CLOSE_FACTS_ARGUMENT_LEAK' }
 Write-Output 'PROFILE_TOKEN_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'
+
+# 初回所有が不確定な候補を後から除外して成功にしない。
+$legitimate = Entry 16 13 'legitimate-other.exe' 'other.exe'
+$legitimate.CreationDate = $webview.CreationDate.AddSeconds(1)
+$lineageGraph = @($driver, $edge, $app, $webview, $legitimate)
+$ownedWithOther = Get-OwnedApp $driver $edge 'app.exe' $lineageGraph
+if ($ownedWithOther.Children.Count -ne 2 -or @($ownedWithOther.Children | Where-Object Name -eq 'other.exe').Count -ne 1) { throw 'LINEAGE_LEGITIMATE_OTHER_WAS_FILTERED' }
+$legitimate.CreationDate = $webview.CreationDate.AddSeconds(-1)
+$lineageEvidence = @()
+Reject { Get-OwnedApp $driver $edge 'app.exe' $lineageGraph ([ref]$lineageEvidence) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+if ($lineageEvidence.Count -ne 1 -or $lineageEvidence[0].reason -ne 'child-older') { throw 'LINEAGE_UNCERTAINTY_EVIDENCE_MISSING' }
+$legitimate.CreationDate = $null
+Reject { Get-OwnedApp $driver $edge 'app.exe' $lineageGraph } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+$legitimate.CreationDate = $webview.CreationDate.AddSeconds(1)
+$duplicateGeneration = Entry 16 13 'legitimate-other.exe' 'other.exe'
+$duplicateGeneration.CreationDate = $legitimate.CreationDate.AddSeconds(1)
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($lineageGraph + $duplicateGeneration) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+if (($lineageEvidence | ConvertTo-Json -Depth 5).Contains('ProcessId')) { throw 'LINEAGE_IDENTITY_LEAK' }
+Write-Output 'LINEAGE_CONTRACT_PASS checks=4 (fixtures only; not native evidence)'
