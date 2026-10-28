@@ -1,7 +1,7 @@
 export type SampleId = 'code' | 'definition';
 export type Phase = 'entry' | 'review' | 'waiting' | 'connecting' | 'ready' | 'connected' | 'stopping' | 'stopped' | 'expired' | 'failed' | 'unconfirmed';
 export type Observation = 'approved' | 'denied' | 'prepared' | 'connected' | 'stop_confirmed' | 'expired' | 'failed' | 'lost' | 'status_active';
-export type Termination = 'not_started' | 'unconfirmed' | 'confirmed';
+type Termination = 'not_started' | 'unconfirmed' | 'confirmed';
 export interface OperatorState {
   readonly phase: Phase;
   readonly sample: SampleId | undefined;

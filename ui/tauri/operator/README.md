@@ -18,9 +18,7 @@
 入力はサンプルの allowlist に照合し、確定時に欄を消します。controller / adapter へ生入力を渡さず、保存・ログ・URLへ残しません。
 コピーする場合も固定サンプルの確認内容だけとし、コードや接続定義は含めません。
 
-## 検証境界
-
-### 2026-10-28 の仕様更新
+## 2026-10-28 の仕様更新
 
 初期は1接続に限定し、接続準備後に秘密鍵・passwordを含まないサンプル接続情報をコピーして外部エージェントへ渡します。
 実SSHをこのGUIから起動しません。コピーの前には接続先・許可範囲・期限を確認します。
@@ -31,11 +29,52 @@
 履歴の製品仕様は表示名・日時・終了結果だけのローカル保存と30日削除です。今回の実装は注入時計を使うメモリmockで、永続化と実機通知は未実装です。
 履歴削除はこのmockが作る項目だけに作用し、ユーザーPCの既存データを削除しません。
 
+## 検証境界
+
 controller の公開操作→表示状態と、browser の利用者操作→画面を確認します。
 停止要求と確認の分離、承認と接続の分離、期限切れ、失敗、確認不能、古い応答、破棄後の応答を扱います。
 keyboard、focus、名前・状態通知、診断開閉、狭幅、200%文字拡大、reduced motion / forced colors の模擬表示を確認します。
 native、screen reader 実機、他 OS の WebView、WCAG AA 達成は検証済みとしません。
 
-`src/operator` とこの入口だけを所有し、共有 workflow と package scripts、Rust / Go は変更しません。
+変更範囲は `src/operator`、この入口、operator試験、既存 lint / TypeScript / Knip の対象入口設定です。
+共有 workflow と package scripts、Rust / Go は変更しません。
 build 出力は `operator/dist/` に分離し、ホストの `dist/` と Tauri 配布へ混ぜません。
 共有 CI の接続は task-3 / 統合担当に引き継ぎます。正式 PR approve と main merge は担当外です。
+
+## 起動と検証
+
+既存の固定 lock 依存、Node 24以上、導入済みChromeを使い、`ui/tauri` で実行します。
+
+```sh
+npm run typecheck
+npm run lint
+npm run knip
+npm run knip:production
+node --test tests/operator-controller.test.ts tests/operator-history.test.ts
+npm run build
+node operator/build.mjs
+node --test tests/operator-browser.test.ts
+```
+
+`operator/build.mjs` は既存のhost buildが生成したnoticeを正本CLIで `--check` し、operatorの別buildへコピーします。
+notice CLI / lock の仕様を複製・変更しません。Tauriの `frontendDist` は既存 `dist/` のままです。
+ブラウザー試験は自己所有の一時loopback serverと既存Chromeで描画し、終了時に両方を閉じます。
+`OPERATOR_SCREENSHOT_DIR` を指定した時だけ、実描画の確認・終了未確認・トレイのモックを保存します。
+ホストの回帰は既存 `npm test` / `npm run test:browser` で別に確認します。
+
+共有CIへの追加候補は、既存host buildの後にoperatorの2種のunit試験、`node operator/build.mjs`、operator browser試験を順に実行することです。
+現行の `npm test` とhost browser試験だけではoperatorの振る舞い試験を包含しません。
+この追加はtask-3の担当で、接続されるまではoperatorの実行結果をローカル検証として報告します。
+
+## 画面の確認項目
+
+- `OP-01`: 固定サンプルのみ受理し、生入力をcontroller / adapter / storage / URLへ渡さない。
+- `OP-02`: 確認→承認→準備完了→コピー→外部接続の観測を分離する。
+- `OP-03`: 停止受付と終了証拠を分離し、終了未確認・履歴削除では新規接続を許可しない。
+- `OP-04`: トレイのモックで状態を維持し、重要な変化だけ通知モックへ表示する。
+- `OP-05`: 同じ有効接続だけ状態を再確認し、失効後の復活・自動再承認・コマンド実行をしない。
+- `OP-06`: 履歴3項目、30日削除、個別／一括削除と、削除済み項目の復活防止を確認する。
+- `OP-07`: keyboard・focus・診断開閉・狭幅・200%文字拡大・模擬reduced motion / forced colorsを確認する。
+
+これらはプロトタイプ内の検証参照名で、既存44条件や実SSHの合格IDを追加するものではありません。
+自動検査・実描画・native実機・支援技術を分け、AA達成や製品有効化とは扱いません。
