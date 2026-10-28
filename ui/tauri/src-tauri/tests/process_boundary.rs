@@ -14,7 +14,7 @@ fn main() {
     assert!(arguments.is_empty(), "unexpected test argument");
     let mut bytes = std::io::Cursor::new(b"{}\n");
     assert_eq!(
-        owned_process::read_frame(&mut bytes, 3).unwrap(),
+        owned_process::frame::read_frame(&mut bytes, 3).unwrap(),
         Some(b"{}\n".to_vec())
     );
     println!("owned-pipe: byte-frame checks=1 passed=1");

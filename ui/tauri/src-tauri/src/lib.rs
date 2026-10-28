@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-#[allow(dead_code, reason = "internal process boundary is not wired while the product gate is closed")]
+#[allow(
+    dead_code,
+    reason = "internal process boundary is not wired while the product gate is closed"
+)]
 mod owned_process;
 
 #[derive(Deserialize)]

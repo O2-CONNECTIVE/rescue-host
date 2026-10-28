@@ -1,3 +1,1 @@
-mod frame;
-
-pub use frame::read_frame;
+pub(crate) mod frame;
