@@ -103,6 +103,7 @@ func (h *Host) Run(ctx context.Context) (result error) {
 	if err != nil {
 		return ErrProvisioningRejected
 	}
+	issued := IssuedLaunch{instance: issuer.Snapshot().InstanceEpoch, binding: challenge.Binding()}
 	runCtx, cancel := context.WithDeadline(ctx, policy.HardDeadline)
 	defer cancel()
 	var owned Process
@@ -133,7 +134,11 @@ func (h *Host) Run(ctx context.Context) (result error) {
 		}
 		startup, end := context.WithTimeout(runCtx, h.budgets.Startup)
 		defer end()
-		owned, launchErr = h.launcher.Start(startup, authority)
+		if target, ok := h.launcher.(IssuedLauncher); ok {
+			owned, launchErr = target.StartIssued(startup, authority, issued)
+		} else {
+			owned, launchErr = h.launcher.Start(startup, authority)
+		}
 		h.mu.Lock()
 		h.process = owned
 		h.mu.Unlock()
