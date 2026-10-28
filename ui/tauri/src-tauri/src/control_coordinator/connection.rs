@@ -135,6 +135,8 @@ impl<T: ReaderTarget> ReaderConnection<T> {
         }
     }
 
+    pub fn transport_failed(&mut self, _code: Code) {}
+
     /// Processes at most one frame. Blocking Read is always in the worker;
     /// rejected/cancelled input is discarded without invoking the target again.
     pub fn poll(&mut self) -> ReaderProgress {

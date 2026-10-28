@@ -224,3 +224,31 @@ fn an_actual_reader_rejects_a_different_generation_ack() {
     assert!(!connection.target().context_matched());
     assert!(connection.target().is_closed());
 }
+
+#[test]
+fn a_typed_transport_fault_seals_before_an_already_queued_ack() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::{Conversation, Request};
+    let mut ack = serde_json::to_value(expected_context()).unwrap();
+    ack["kind"] = serde_json::json!("hello_ack");
+    let reader = ReaderTask::start(Cursor::new(wire(ack))).unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    connection.transport_failed(Code::VersionMismatch);
+    assert_eq!(connection.request(Request::Stop), Err(Code::VersionMismatch));
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite typed fault join deadline");
+        match connection.poll() {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            ReaderProgress::Discarded => {}
+            ReaderProgress::Joined { fault, .. } => {
+                assert_eq!(fault, Some(Code::VersionMismatch));
+                break;
+            }
+            event => panic!("queued input crossed a sealed transport: {event:?}"),
+        }
+    }
+    assert!(!connection.target().context_matched());
+}
