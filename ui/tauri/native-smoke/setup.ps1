@@ -30,4 +30,6 @@ if ($LASTEXITCODE -ne 0) { throw 'NATIVE_DIAGNOSTIC_PATCH_REJECTED' }
 if ($LASTEXITCODE -ne 0) { throw 'NATIVE_DIAGNOSTIC_FIXTURE_FAILED' }
 & cargo +1.99.1 install --path "$ToolsDirectory/tauri-driver-$($tools.tauriDriverVersion)" --locked --root "$ToolsDirectory/tauri" --target-dir "$ToolsDirectory/target"
 if ($LASTEXITCODE -ne 0) { throw 'NATIVE_TOOL_BUILD_FAILED' }
-Write-Output 'NATIVE_PINNED_TOOLS_READY_IN_RUNNER_TEMP'
+& python "$root/scripts/apply_driver_trace.py" --archive $crate --source "$ToolsDirectory/tauri-driver-$($tools.tauriDriverVersion)" --patch-folder "$root/tools/native-driver-trace" --provenance "$ToolsDirectory/driver-provenance.json" --verify-patched --binary "$ToolsDirectory/tauri/bin/tauri-driver.exe"
+if ($LASTEXITCODE -ne 0) { throw 'NATIVE_DIAGNOSTIC_POSTIMAGE_REJECTED' }
+Write-Output 'NATIVE_PINNED_DIAGNOSTIC_VARIANT_READY'

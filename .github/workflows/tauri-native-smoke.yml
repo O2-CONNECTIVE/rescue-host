@@ -2,10 +2,10 @@ name: Tauri Windows native smoke
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', '.github/workflows/tauri-native-smoke.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', '.github/workflows/tauri-native-smoke.yml']
 permissions:
   contents: read
 concurrency:
@@ -19,6 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Test ownership and close rejection contract
         run: ./ui/tauri/native-smoke/process-contract.test.ps1
@@ -57,6 +58,10 @@ jobs:
       - name: One native smoke with bounded owned-process cleanup
         timeout-minutes: 3
         run: ./ui/tauri/native-smoke/supervise.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -OutputDirectory "$env:RUNNER_TEMP/native-evidence"
+      - name: Validate anonymous driver stages and provenance
+        if: always()
+        timeout-minutes: 1
+        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -OutputDirectory "$env:RUNNER_TEMP/native-evidence"
       - name: Save sanitized native evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6

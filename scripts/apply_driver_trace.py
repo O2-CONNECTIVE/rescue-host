@@ -9,9 +9,10 @@ import sys
 import tarfile
 
 UPSTREAM = '2f2e29bd6900fb718dfdc06f2e7a371d6087c085daaf83709847ef3e6b0c1953'
-PATCH_SHA256 = '35f4f12a913603ebb6a201f40d20530827d54f94e64a359a618526d490609ae5'
-CODE_SHA256 = {'diagnostic.rs': '5a0d00a4032ef5dd7f75b6cba10b75fe07f29a9448035497720c449fd562cf6e', 'diagnostic_tests.rs': 'ccce02206e54296cd2407b60ebbbdf11df1a2c72f7b0086b9c7771b9c77f3bb4'}
+PATCH_SHA256 = 'df8dd46174fc2b8aa4df4aed0c382713d7a3cadb5accda5f62aef74a960b5b9e'
+CODE_SHA256 = {'diagnostic.rs': '495dc2a0a469a3a981d316571b91a6a1e775850058f7fee6c467a2929e2a6f54', 'diagnostic_tests.rs': '2807c3dfd7773ee1dbda590ca0c458c7d1e26f60af5f6f9d5fb2583415dbe86e'}
 PREFIX = 'tauri-driver-2.1.0/'
+POSTIMAGE_SHA256 = '9aa32c62f4f93dd8cef07b4103e7373a227ae1077ee4d016d72b1d29f50bd8c5'
 ALLOWED = {'src/main.rs', 'src/server.rs', 'src/diagnostic.rs', 'src/diagnostic_tests.rs'}
 
 
@@ -97,38 +98,69 @@ def snapshot(folder):
     return {path.relative_to(folder).as_posix(): path for path in paths if path.is_file()}
 
 
-def apply(archive, folder, patch_folder, report):
+def bundle(patch_folder):
+    need(patch_folder.is_dir() and not patch_folder.is_symlink())
+    need({path.name for path in patch_folder.iterdir()} ==
+         {'driver.patch', 'diagnostic.rs', 'diagnostic_tests.rs', 'postimage.json'},
+         'DRIVER_BUNDLE_SET_MISMATCH')
+    def read(name, limit):
+        path = patch_folder / name
+        need(path.is_file() and not path.is_symlink())
+        with path.open('rb') as stream:
+            data = stream.read(limit + 1)
+        need(len(data) <= limit)
+        return data
+    patch = read('driver.patch', 65536)
+    need(sha(patch) == PATCH_SHA256, 'DRIVER_PATCH_HASH_MISMATCH')
+    code = {name: read(name, 65536) for name in CODE_SHA256}
+    need(all(sha(data) == CODE_SHA256[name] for name, data in code.items()),
+         'DRIVER_CODE_HASH_MISMATCH')
+    metadata = read('postimage.json', 4096)
+    need(sha(metadata) == POSTIMAGE_SHA256, 'DRIVER_POSTIMAGE_HASH_MISMATCH')
+    expected = json.loads(metadata)
+    return patch, code, expected
+
+
+def check_tree(folder, expected):
+    current = snapshot(folder)
+    need(set(current) == set(expected), 'DRIVER_SOURCE_SET_MISMATCH')
+    for name, path in current.items():
+        need(path.stat().st_size == len(expected[name]) and sha(path.read_bytes()) == sha(expected[name]),
+             'DRIVER_SOURCE_HASH_MISMATCH')
+
+
+def apply(archive, folder, patch_folder, report, verify_only=False, binary=None):
+    patch, code, expected = bundle(patch_folder)
     need(archive.is_file() and not archive.is_symlink())
     with archive.open('rb') as stream:
         before = upstream_files(stream.read(1024 * 1024 + 1))
-    patch = (patch_folder / 'driver.patch').read_bytes()
-    need(sha(patch) == PATCH_SHA256, 'DRIVER_PATCH_HASH_MISMATCH')
     after = apply_exact(before, patch)
-    for name, digest in CODE_SHA256.items():
-        data = (patch_folder / name).read_bytes()
-        need(sha(data) == digest, 'DRIVER_CODE_HASH_MISMATCH')
+    for name, data in code.items():
         after['src/' + name] = data
-    expected = json.loads((patch_folder / 'postimage.json').read_text(encoding='utf-8'))
     changed = {name for name in after if after[name] != before.get(name)}
     need(changed == set(expected) and changed <= ALLOWED
          and all(sha(after[name]) == digest for name, digest in expected.items()),
          'DRIVER_POSTIMAGE_MISMATCH')
-    current = snapshot(folder)
-    need(set(current) == set(before), 'DRIVER_SOURCE_SET_MISMATCH')
-    for name, path in current.items():
-        need(path.stat().st_size == len(before[name]) and sha(path.read_bytes()) == sha(before[name]),
-             'DRIVER_SOURCE_HASH_MISMATCH')
-    # 全検査後だけ書込む。対象は自己所有CI一時領域、敵対的filesystem競合は保証しない。
-    for name in sorted(changed):
-        target = folder / name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(after[name])
-    current = snapshot(folder)
-    need(set(current) == set(after) and all(sha(path.read_bytes()) == sha(after[name])
-                                          for name, path in current.items()), 'DRIVER_POSTIMAGE_MISMATCH')
+    check_tree(folder, after if verify_only else before)
+    if not verify_only:
+        # 自己所有CI一時領域。敵対的filesystem競合は保証しない。
+        for name in sorted(changed):
+            target = folder / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(after[name])
+        check_tree(folder, after)
     result = {'variant': 'tauri-driver-2.1.0-stage-1', 'upstreamSha256': UPSTREAM,
-              'patchSha256': PATCH_SHA256, 'diagnosticCodeSha256': CODE_SHA256, 'postimage': expected,
-              'upstreamFileCount': len(before), 'cargoLockSha256': sha(before['Cargo.lock'])}
+              'patchSha256': PATCH_SHA256, 'diagnosticCodeSha256': CODE_SHA256,
+              'preimage': {name: sha(before[name]) if name in before else None for name in changed},
+              'postimage': expected, 'postimageManifestSha256': POSTIMAGE_SHA256,
+              'upstreamFileCount': len(before),
+              'cargoLockSha256': sha(before['Cargo.lock'])}
+    if binary is not None:
+        need(verify_only and binary.is_file() and not binary.is_symlink())
+        with binary.open('rb') as stream:
+            data = stream.read(32 * 1024 * 1024 + 1)
+        need(len(data) <= 32 * 1024 * 1024)
+        result['binarySha256'] = sha(data)
     report.write_text(json.dumps(result, sort_keys=True), encoding='utf-8')
 
 
@@ -139,9 +171,11 @@ def main():
     parser = Parser(description=__doc__)
     for arg in ['archive', 'source', 'patch-folder', 'provenance']:
         parser.add_argument('--' + arg, type=Path, required=True)
+    parser.add_argument('--verify-patched', action='store_true')
+    parser.add_argument('--binary', type=Path)
     try:
         args = parser.parse_args()
-        apply(args.archive, args.source, args.patch_folder, args.provenance)
+        apply(args.archive, args.source, args.patch_folder, args.provenance, args.verify_patched, args.binary)
     except Exception as error:
         print(json.dumps({'status': 'fail', 'code': str(error) if isinstance(error, PatchError)
                           else 'DRIVER_PATCH_INVALID'}))

@@ -34,6 +34,7 @@ def inspect(data):
     need(2 <= len(lines) <= 34 and all(len(line) <= 256 for line in lines))
     rows = [json.loads(line, object_pairs_hook=unique) for line in lines]
     need(rows[0] == {'type': 'header', 'schema': 1, 'variant': VARIANT})
+    need(type(rows[0]['schema']) is int)
     summary = rows[-1]
     need(isinstance(summary, dict) and set(summary) == {'type', 'lastSequence', 'attempted',
          'enqueued', 'written', 'dropped', 'sealed', 'pendingRequests'})
@@ -59,9 +60,11 @@ def inspect(data):
         if stage == 'connection-open':
             need(conn not in connections and req == 0 and row['state'] == 'idle'
                  and row['error'] == 'none')
-            connections[conn] = {'ended': False, 'last': 0}
+            connections[conn] = {'ended': False, 'last': 0, 'elapsed': row['elapsedUs']}
             continue
         need(conn in connections)
+        need(row['elapsedUs'] >= connections[conn]['elapsed'])
+        connections[conn]['elapsed'] = row['elapsedUs']
         if stage == 'session-received':
             need(not connections[conn]['ended'] and req > 0 and req not in requests
                  and row['state'] == 'received')

@@ -1,6 +1,5 @@
 """試験専用traceの固定schemaと完全性。実driver/OSの証拠ではない。"""
 import json
-import copy
 from pathlib import Path
 import subprocess
 import sys
@@ -67,6 +66,60 @@ class DriverTraceTests(unittest.TestCase):
                                          '--trace', str(file)], capture_output=True, text=True, timeout=10)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(json.loads(result.stdout)['diagnostic'], 'incomplete')
+
+    def test_missing_overflow_inconsistent_or_secret_trace_is_incomplete(self):
+        # 実装後の完全性/非開示回帰。
+        cases = []
+        cases.append(trace()[:-1])
+        for update in [{'attempted': 6, 'lastSequence': 6, 'dropped': 1},
+                       {'written': 4}, {'sealed': False, 'pendingRequests': 1}]:
+            rows = trace()
+            rows[-1].update(update)
+            cases.append(rows)
+        rows = trace()
+        rows[3]['authorization'] = 'PRIVATE_AUTH_MARKER'
+        cases.append(rows)
+        rows = trace()
+        rows[5]['request'] = 2
+        cases.append(rows)
+        rows = trace()
+        rows[4]['seq'] = 3
+        cases.append(rows)
+        rows = trace()
+        rows[3]['stage'] = 'PRIVATE_STAGE_MARKER'
+        cases.append(rows)
+        cases.append([*trace(), trace()[1]])
+        raw_cases = ['\n'.join(json.dumps(row) for row in rows) for rows in cases]
+        raw_cases.extend(['PRIVATE_TOO_BIG_' + 'x' * 8193,
+                          json.dumps(trace()[0]).replace('"schema": 1', '"schema":1,"schema":1')])
+        for raw in raw_cases:
+            with self.subTest(case=raw_cases.index(raw)), tempfile.TemporaryDirectory() as folder:
+                file = Path(folder) / 'trace.jsonl'
+                file.write_text(raw, encoding='utf-8')
+                result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/verify_driver_trace.py'),
+                                         '--trace', str(file)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 1)
+                record = json.loads(result.stdout)
+                self.assertEqual(record['diagnostic'], 'incomplete')
+                self.assertEqual(record['requestStage'], 'unconfirmed')
+                self.assertEqual(result.stderr, '')
+                self.assertNotIn('PRIVATE_', result.stdout)
+                self.assertNotIn(str(file), result.stdout)
+
+    def test_header_and_native_error_are_distinct_from_drop(self):
+        # 実装後のstage分類回帰。
+        for stage, state, expected in [('native-headers', 'headers-returned', 'native-headers'),
+                                       ('native-error', 'native-error', 'native-error')]:
+            rows = trace()
+            rows[4].update(stage=stage, state=state)
+            rows[5].update(state=state, error='none')
+            with tempfile.TemporaryDirectory() as folder:
+                file = Path(folder) / 'trace.jsonl'
+                file.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
+                result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/verify_driver_trace.py'),
+                                         '--trace', str(file)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)['requestStage'], expected)
 
 
 if __name__ == '__main__':
