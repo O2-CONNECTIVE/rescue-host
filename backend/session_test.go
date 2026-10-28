@@ -433,6 +433,21 @@ func TestPolicyAndRequestRejections(t *testing.T) {
 	}
 }
 
+func fixtureRequestErrorClass(err error) string {
+	switch {
+	case errors.Is(err, io.EOF):
+		return "eof"
+	case errors.Is(err, net.ErrClosed), errors.Is(err, io.ErrClosedPipe):
+		return "closed"
+	default:
+		var networkError net.Error
+		if errors.As(err, &networkError) && networkError.Timeout() {
+			return "timeout"
+		}
+		return "other"
+	}
+}
+
 func TestFixtureForwardAndExpiry(t *testing.T) {
 	for _, mode := range []string{"restricted", "full"} {
 		for _, cause := range []string{"explicit", "lease", "maximum"} {
@@ -446,11 +461,41 @@ func TestFixtureForwardAndExpiry(t *testing.T) {
 					c.MaximumDuration = 450 * time.Millisecond
 					c.LeaseDuration = 200 * time.Millisecond
 				}
+				fixtureStart := time.Now()
 				s, e := newSession(c, func(ctx context.Context) (net.Conn, error) { return testDial(ctx, f.l.Addr().String()) })
 				if e != nil {
 					t.Fatal(e)
 				}
 				address := start(t, s, c)
+				var renewals atomic.Int64
+				if cause == "maximum" {
+					stop, joined := make(chan struct{}), make(chan struct{})
+					t.Cleanup(func() {
+						close(stop)
+						select {
+						case <-joined:
+						case <-time.After(time.Second):
+							t.Error("maximum fixtureの更新worker終了未確認")
+						}
+					})
+					// 認証や要求確認の間も短leaseを維持し、最大期限だけを観測する。
+					go func() {
+						defer close(joined)
+						ticker := time.NewTicker(50 * time.Millisecond)
+						defer ticker.Stop()
+						for n := uint64(1); ; n++ {
+							select {
+							case <-stop:
+								return
+							case <-ticker.C:
+							}
+							if s.Renew(c.Identity, n) != nil {
+								return
+							}
+							renewals.Add(1)
+						}
+					}()
+				}
 				cl, e := client(address, c, a, "key")
 				if e != nil {
 					t.Fatal(e)
@@ -485,22 +530,18 @@ func TestFixtureForwardAndExpiry(t *testing.T) {
 						}{false, "MIT-MAGIC-COOKIE-1", "00", 0})
 					}
 					ok, e := ch.SendRequest(kind, true, payload)
-					if e != nil || ok {
-						t.Fatal("TCP 上の要求を許可")
+					if e != nil {
+						snap := s.Snapshot()
+						t.Fatalf("TCP要求の拒否応答を確認できない: phase=policy kind=%s elapsed_ns=%d error_class=%s allowed=%t renewal_successes=%d state=%s reason=%s", kind, time.Since(fixtureStart).Nanoseconds(), fixtureRequestErrorClass(e), ok, renewals.Load(), snap.State, snap.Reason)
+					}
+					if ok {
+						snap := s.Snapshot()
+						t.Fatalf("TCP上の要求を許可: phase=policy kind=%s elapsed_ns=%d allowed=true renewal_successes=%d state=%s reason=%s", kind, time.Since(fixtureStart).Nanoseconds(), renewals.Load(), snap.State, snap.Reason)
 					}
 				}
 				echo(t, ch)
 				if cause == "explicit" {
 					s.Revoke(c.Identity)
-				} else if cause == "maximum" {
-					go func() {
-						for n := uint64(1); ; n++ {
-							time.Sleep(50 * time.Millisecond)
-							if s.Renew(c.Identity, n) != nil {
-								return
-							}
-						}
-					}()
 				}
 				done := make(chan error, 1)
 				go func() { var b [1]byte; _, e := ch.Read(b[:]); done <- e }()
@@ -519,6 +560,11 @@ func TestFixtureForwardAndExpiry(t *testing.T) {
 					}
 				case <-time.After(time.Second):
 					t.Fatal("転送先側の EOF がない")
+				}
+				snap := s.Snapshot()
+				t.Logf("phase=expired cause=%s elapsed_ns=%d renewal_successes=%d state=%s reason=%s", cause, time.Since(fixtureStart).Nanoseconds(), renewals.Load(), snap.State, snap.Reason)
+				if cause == "maximum" && (renewals.Load() == 0 || snap.Reason != "maximum-deadline") {
+					t.Fatal("更新成功後の最大期限失効を確認できない")
 				}
 				if s.Renew(c.Identity, ^uint64(0)) == nil {
 					t.Fatal("失効後に復活")
