@@ -236,10 +236,16 @@ fn a_typed_transport_fault_seals_before_an_already_queued_ack() {
     let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
     connection.hello().unwrap();
     connection.transport_failed(Code::VersionMismatch);
-    assert_eq!(connection.request(Request::Stop), Err(Code::VersionMismatch));
+    assert_eq!(
+        connection.request(Request::Stop),
+        Err(Code::VersionMismatch)
+    );
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        assert!(Instant::now() < deadline, "finite typed fault join deadline");
+        assert!(
+            Instant::now() < deadline,
+            "finite typed fault join deadline"
+        );
         match connection.poll() {
             ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
             ReaderProgress::Discarded => {}

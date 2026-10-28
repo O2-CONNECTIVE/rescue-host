@@ -10,7 +10,8 @@ use std::time::Instant;
 use windows_sys::Win32::Foundation::{GetLastError, ERROR_NO_TOKEN, HANDLE, INVALID_HANDLE_VALUE};
 use windows_sys::Win32::Security::TOKEN_QUERY;
 use windows_sys::Win32::Storage::FileSystem::{
-    CreateFileW, FILE_FLAG_OVERLAPPED, OPEN_EXISTING, SECURITY_IDENTIFICATION, SECURITY_SQOS_PRESENT,
+    CreateFileW, FILE_FLAG_OVERLAPPED, OPEN_EXISTING, SECURITY_IDENTIFICATION,
+    SECURITY_SQOS_PRESENT,
 };
 use windows_sys::Win32::System::Pipes::{
     GetNamedPipeInfo, SetNamedPipeHandleState, PIPE_READMODE_MESSAGE, PIPE_SERVER_END,
@@ -116,7 +117,8 @@ impl<A: Calls + PeerCalls> Read for MessageReader<A> {
 impl<A: Calls + PeerCalls> MessageWriter<A> {
     pub fn send_frame(&mut self, frame: &[u8], deadline: Instant) -> Result<(), Fault> {
         self.owner.check()?;
-        let message = decode_frame(frame).map_err(|code| self.owner.fail(Fault::from_code(code)))?;
+        let message =
+            decode_frame(frame).map_err(|code| self.owner.fail(Fault::from_code(code)))?;
         if !matches!(
             message,
             Message::Hello(_) | Message::Snapshot(_) | Message::Stop(_)
@@ -131,7 +133,7 @@ impl<A: Calls + PeerCalls> MessageWriter<A> {
             &self.owner.cancel,
             deadline.min(self.deadline),
         )
-            .map_err(|error| self.owner.fail(error))?;
+        .map_err(|error| self.owner.fail(error))?;
         self.owner.check()
     }
 
@@ -176,8 +178,8 @@ pub(super) fn open(
     }
     expected.validate()?;
     clean_thread()?;
-    let value =
-        serde_json::to_value(&context.binding.0.channel_nonce).map_err(|_| Fault::InvalidMessage)?;
+    let value = serde_json::to_value(&context.binding.0.channel_nonce)
+        .map_err(|_| Fault::InvalidMessage)?;
     let nonce = value.as_str().ok_or(Fault::InvalidMessage)?;
     let name = format!(
         r"\\.\pipe\rescue-host-control-{}-{}",

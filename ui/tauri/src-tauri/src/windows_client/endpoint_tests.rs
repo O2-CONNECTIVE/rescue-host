@@ -4,8 +4,10 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrder};
 use std::sync::Mutex;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::ERROR_BROKEN_PIPE;
+use windows_sys::Win32::System::Threading::{
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+};
 use windows_sys::Win32::System::IO::OVERLAPPED;
-use windows_sys::Win32::System::Threading::{PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE};
 
 const SERVICE_SID: &str = "S-1-5-80-11-22-33-44-55";
 
@@ -119,7 +121,10 @@ impl PeerCalls for FakeApi {
     fn open_process(&self, pid: u32, access: u32, inherit: bool) -> Result<HANDLE, Fault> {
         self.touch();
         assert_eq!(pid, 42);
-        assert_eq!(access, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE);
+        assert_eq!(
+            access,
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE
+        );
         assert!(!inherit);
         Ok(std::ptr::without_provenance_mut(7))
     }
@@ -171,7 +176,9 @@ fn frame(protocol: &str, kind: &str) -> Vec<u8> {
     bytes
 }
 
-fn bound_halves(payload: Vec<u8>) -> (MessageReader<FakeApi>, MessageWriter<FakeApi>, Arc<FakeApi>) {
+fn bound_halves(
+    payload: Vec<u8>,
+) -> (MessageReader<FakeApi>, MessageWriter<FakeApi>, Arc<FakeApi>) {
     let api = Arc::new(FakeApi::new(payload));
     let pipe = std::ptr::without_provenance_mut(1);
     let peer = bind(
