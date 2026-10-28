@@ -444,6 +444,7 @@ func (w *ownerPanicInput) Write(frame []byte) (int, error) {
 }
 func (w *ownerPanicInput) Close() error {
 	if w.closePanic {
+		w.closes.Add(1)
 		panic("SECRET_SYNTHETIC_CLOSE")
 	}
 	return w.ownerMemoryInput.Close()
@@ -470,5 +471,215 @@ func TestOwnerControlIOPanicKeepsCleanupFailureInsideTheOwnedBoundary(t *testing
 				t.Fatal("IO失敗が所有者へpanic流出、または後続pipe回収を省略しました")
 			}
 		})
+	}
+}
+
+type ownerEOFOutput struct {
+	script     *bytes.Reader
+	readEOF    chan struct{}
+	peerEOF    chan struct{}
+	closed     chan struct{}
+	readOnce   sync.Once
+	closeOnce  sync.Once
+	closes     atomic.Int32
+	readPanic  bool
+	closePanic bool
+	closedEOF  bool
+}
+
+func (r *ownerEOFOutput) Read(buffer []byte) (int, error) {
+	if r.script.Len() != 0 {
+		return r.script.Read(buffer)
+	}
+	r.readOnce.Do(func() { close(r.readEOF) })
+	if r.readPanic {
+		panic("SECRET_SYNTHETIC_EOF_READ")
+	}
+	select {
+	case <-r.peerEOF:
+		return 0, io.EOF
+	case <-r.closed:
+		if r.closedEOF {
+			return 0, io.EOF
+		}
+		return 0, io.ErrClosedPipe
+	}
+}
+
+func (r *ownerEOFOutput) Close() error {
+	if r.closes.Add(1) != 1 {
+		return errors.New("synthetic double stdout Close")
+	}
+	if r.closePanic {
+		panic("SECRET_SYNTHETIC_STDOUT_CLOSE")
+	}
+	r.closeOnce.Do(func() { close(r.closed) })
+	return nil
+}
+
+func ownerNormalResponses(t *testing.T, wire control.WireContext) []byte {
+	return ownerResponseBytes(t,
+		ownerResponse(wire, "hello_ack", "", "", ""),
+		ownerResponse(wire, "receipt", "1", "1", `{"operation":"start","accepted":true}`),
+		ownerResponse(wire, "receipt", "2", "2", `{"operation":"stop","accepted":true}`),
+		ownerResponse(wire, "snapshot_result", "3", "3", `{"goState":"terminated","pending":"0","active":"0","owned":"0","goCloseConfirmed":true}`))
+}
+
+func TestOwnerControlStopWaitsForPeerEOFAfterClosingStdin(t *testing.T) {
+	wire := ownerApprovedConfig(t).Wire
+	input := &ownerMemoryInput{}
+	output := &ownerEOFOutput{script: bytes.NewReader(ownerNormalResponses(t, wire)), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{})}
+	client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- client.Stop(ctx) }()
+	consumed := false
+	t.Cleanup(func() {
+		output.closeOnce.Do(func() { close(output.closed) })
+		if !consumed {
+			select {
+			case <-done:
+			case <-ctx.Done():
+				t.Error("EOF読取workerの終了を確認できません")
+			}
+		}
+	})
+	select {
+	case err := <-done:
+		consumed = true
+		t.Fatalf("実stdout EOFを読む前にStopが返りました: %v", err)
+	case <-output.readEOF:
+	case <-ctx.Done():
+		t.Fatal("終端snapshot後にstdout EOFを読みません")
+	}
+	if input.closes.Load() != 1 || output.closes.Load() != 0 {
+		t.Fatal("stdin閉鎖と実stdout EOF確認の順序が不正です")
+	}
+	close(output.peerEOF)
+	select {
+	case err := <-done:
+		consumed = true
+		if err != nil || input.closes.Load() != 1 || output.closes.Load() != 1 {
+			t.Fatalf("EOF確認後の所有pipe回収が不正です: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("実EOF後にStopが完了しません")
+	}
+	if err := client.Stop(ctx); err != nil || input.closes.Load() != 1 || output.closes.Load() != 1 {
+		t.Fatal("確認済み終了でpipeを二重閉鎖しました")
+	}
+}
+
+func TestOwnerControlEOFStageRejectsTailTimeoutAndPanic(t *testing.T) {
+	wire := ownerApprovedConfig(t).Wire
+	for _, fault := range []string{"tail", "missing-eof", "read-panic", "stdin-close-panic", "stdout-close-panic"} {
+		t.Run(fault, func(t *testing.T) {
+			input := &ownerPanicInput{closePanic: fault == "stdin-close-panic"}
+			data := ownerNormalResponses(t, wire)
+			if fault == "tail" {
+				data = append(data, 'x')
+			}
+			output := &ownerEOFOutput{script: bytes.NewReader(data), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{}), readPanic: fault == "read-panic", closePanic: fault == "stdout-close-panic"}
+			if fault != "missing-eof" {
+				close(output.peerEOF)
+			}
+			client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: 30 * time.Millisecond})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := client.Start(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := client.Stop(ctx); !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) {
+				t.Fatalf("EOF/IO未確認を成功へ変換しました: %v", err)
+			}
+			if input.closes.Load() != 1 || output.closes.Load() != 1 {
+				t.Fatalf("失敗回収でpipeを二重閉鎖しました: stdin=%d stdout=%d", input.closes.Load(), output.closes.Load())
+			}
+		})
+	}
+}
+
+func TestOwnerControlEOFCancellationCannotBecomeAConfirmedStop(t *testing.T) {
+	wire := ownerApprovedConfig(t).Wire
+	input := &ownerMemoryInput{}
+	output := &ownerEOFOutput{script: bytes.NewReader(ownerNormalResponses(t, wire)), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{})}
+	client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer, cancelOuter := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelOuter()
+	if err := client.Start(outer); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(outer)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- client.Stop(ctx) }()
+	select {
+	case <-output.readEOF:
+		cancel()
+	case err := <-done:
+		t.Fatalf("EOF待機前に返りました: %v", err)
+	case <-outer.Done():
+		output.closeOnce.Do(func() { close(output.closed) })
+		t.Fatal("EOF待機に達しません")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) || input.closes.Load() != 1 || output.closes.Load() != 1 {
+			t.Fatalf("取消またはpipe回収を誤認しました: %v", err)
+		}
+	case <-outer.Done():
+		output.closeOnce.Do(func() { close(output.closed) })
+		t.Fatal("EOF待機を取消できません")
+	}
+}
+
+func TestOwnerControlAbortEOFIsNotPeerEOF(t *testing.T) {
+	wire := ownerApprovedConfig(t).Wire
+	input := &ownerMemoryInput{}
+	output := &ownerEOFOutput{script: bytes.NewReader(ownerNormalResponses(t, wire)), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{}), closedEOF: true}
+	client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := client.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- client.Stop(ctx) }()
+	select {
+	case <-output.readEOF:
+	case err := <-done:
+		t.Fatalf("EOF待機前に返りました: %v", err)
+	case <-ctx.Done():
+		t.Fatal("EOF待機に達しません")
+	}
+	if err := client.Abort(ctx); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) {
+			t.Fatalf("自分のstdout Closeをpeer EOFへ変えました: %v", err)
+		}
+	case <-ctx.Done():
+		t.Fatal("Abortでreaderを解除できません")
+	}
+	if input.closes.Load() != 1 || output.closes.Load() != 1 {
+		t.Fatal("AbortとStopでpipeを二重閉鎖しました")
 	}
 }

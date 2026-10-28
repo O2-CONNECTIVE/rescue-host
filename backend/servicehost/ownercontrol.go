@@ -37,8 +37,8 @@ type OwnedControl struct {
 	request                               uint64
 	attempted, started, stopped, poisoned bool
 	stopRequested                         atomic.Bool
-	closed, closeFailed                   atomic.Bool
-	closeOnce                             sync.Once
+	closed, closeFailed, outputClosed     atomic.Bool
+	inputOnce, outputOnce                 sync.Once
 }
 
 func NewOwnedControl(config OwnedControlConfig) (*OwnedControl, error) {
@@ -79,14 +79,36 @@ func (c *OwnedControl) take(ctx context.Context) error {
 }
 
 func (c *OwnedControl) closePipes() error {
-	c.closeOnce.Do(func() {
+	inputErr := c.closeInput()
+	outputErr := c.closeOutput()
+	if inputErr != nil || outputErr != nil {
+		return ErrRuntimeUnconfirmed
+	}
+	return nil
+}
+
+func (c *OwnedControl) closeInput() error {
+	c.inputOnce.Do(func() {
 		c.closed.Store(true)
-		inputErr := controlCall(c.config.Input.Close)
-		outputErr := controlCall(c.config.Output.Close)
-		if inputErr != nil || outputErr != nil {
+		if err := controlCall(c.config.Input.Close); err != nil {
 			c.closeFailed.Store(true)
 		}
 	})
+	return c.closeResult()
+}
+
+func (c *OwnedControl) closeOutput() error {
+	c.outputOnce.Do(func() {
+		c.closed.Store(true)
+		c.outputClosed.Store(true)
+		if err := controlCall(c.config.Output.Close); err != nil {
+			c.closeFailed.Store(true)
+		}
+	})
+	return c.closeResult()
+}
+
+func (c *OwnedControl) closeResult() error {
 	if c.closeFailed.Load() {
 		// 失敗したpipeの参照をconfigに保持する。確認不能を成功へ変換しない。
 		return ErrRuntimeUnconfirmed
@@ -230,7 +252,8 @@ func (c *OwnedControl) snapshot(ctx context.Context) (controlSnapshot, error) {
 	return snapshot, nil
 }
 
-// Stop成功はGoのreceiptだけでなく、同じIdentityの終端snapshotとpipe閉鎖までを確認する。
+// Stop成功は同じIdentityの終端snapshot、stdin閉鎖後の実stdout EOF、reader完了と
+// stdout閉鎖までを確認する。自分のstdout Closeをpeer EOFへ読み替えない。
 func (c *OwnedControl) Stop(ctx context.Context) error {
 	if c == nil || !controlBudget(ctx) {
 		return ErrRuntimeUnconfirmed
@@ -254,7 +277,15 @@ func (c *OwnedControl) Stop(ctx context.Context) error {
 		if err != nil || snapshot.GoState != "terminated" || !snapshot.GoCloseConfirmed || snapshot.Pending != "0" || snapshot.Active != "0" || snapshot.Owned != "0" {
 			return ErrRuntimeUnconfirmed
 		}
-		if err := c.closePipes(); err != nil || budget.Err() != nil {
+		if err := c.closeInput(); err != nil || budget.Err() != nil {
+			return ErrRuntimeUnconfirmed
+		}
+		// 余分なtail byteも拒否する。同期読取完了がowner readerの完了である。
+		// watchdog/Abortが先にstdoutを閉じた場合や取消・読取失敗は未確認のまま返す。
+		if _, err := c.reader.ReadByte(); err != io.EOF || c.outputClosed.Load() || budget.Err() != nil {
+			return ErrRuntimeUnconfirmed
+		}
+		if err := c.closeOutput(); err != nil || budget.Err() != nil {
 			return ErrRuntimeUnconfirmed
 		}
 		c.stopped = true

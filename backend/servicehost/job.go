@@ -64,7 +64,9 @@ func (r *JobRuntime) Start(ctx context.Context, authority *supervisor.Authority)
 		return reject()
 	}
 	child, err := childjob.Start(ctx, plan.Spec)
-	owned.child = child
+	if child != nil {
+		owned.child = child
+	}
 	if err != nil || child == nil {
 		return owned, ErrRuntimeUnconfirmed
 	}
@@ -95,8 +97,17 @@ func completeBootstrap(bootstrap func(context.Context, supervisor.Binding) error
 }
 
 type jobProcess struct {
-	child   *childjob.Child
+	child   Process
 	control *OwnedControl
+}
+
+// OwnProcessは既に保護側が所有したOS processと同じ子の制御pipeを組み合わせる。
+// process/pipeを新規作成せず、認可・相手認証・Go準備完了を自己申告しない。
+func OwnProcess(child Process, control *OwnedControl) (Process, error) {
+	if child == nil || control == nil {
+		return nil, ErrProvisioningRejected
+	}
+	return &jobProcess{child: child, control: control}, nil
 }
 
 func (p *jobProcess) Wait(ctx context.Context) error {
@@ -121,12 +132,20 @@ func (p *jobProcess) Close(ctx context.Context) error {
 	goBudget, cancel := context.WithTimeout(ctx, time.Until(deadline)/2)
 	goErr := p.control.Stop(goBudget)
 	cancel()
+	if goErr == nil {
+		// Go Closeと実EOFの後も、exit0/Job空を観測するまで正常成功にしない。
+		// その待機にも残り予算の半分を使い、失敗時の強制回収を残す。
+		graceful, end := context.WithTimeout(ctx, time.Until(deadline)/2)
+		waitErr := p.child.Wait(graceful)
+		end()
+		if waitErr == nil && ctx.Err() == nil {
+			return nil
+		}
+	}
 	if goErr != nil {
 		_ = p.control.Abort(ctx)
 	}
-	jobErr := p.child.Close(ctx)
-	if goErr != nil || jobErr != nil || ctx.Err() != nil {
-		return ErrRuntimeUnconfirmed
-	}
-	return nil
+	_ = p.child.Close(ctx)
+	// 強制回収が成功しても正常exit0/Go Closeの証拠へ変換しない。
+	return ErrRuntimeUnconfirmed
 }

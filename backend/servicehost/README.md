@@ -17,8 +17,9 @@ childjobはsuspended start→Job割当→resumeを実装し、Go準備完了と�
 OwnedControlは既存control/1のhello/ack、start/receipt、snapshot、stop/receipt/終端snapshotを照合する。
 pollはrenewや再承認ではない。
 IPC喪失/予期しない状態/期限でHostがcoreを失効し、Go停止の確認とJob回収を別々に行う。
-Goの停止応答だけでcleanup予算を消費しないよう、残り予算の半分までをGo終了要求に使い、同じ元の期限内にJob回収へ進む。
-Go CloseやJob回収が未確認なら正常成功としない。
+Goの停止応答だけでcleanup予算を消費しないよう、残り予算の半分までをGo終了要求と実EOFに使う。
+その後の残り予算の半分までを正常exit0/Job空のWaitへ使い、失敗時だけ元の期限内で強制回収へ進む。
+強制回収が成功しても、正常終了の証拠へ変換せず未確認とする。
 
 `runbackend.ApprovedConfig`は保護側が渡したgrant snapshotとConfig/鍵集合/wire binding/短lease/期限を照合し、本体Session.New→Ready→Activate→既存stdioへ接続する。
 子は新しいsupervisor Authorityを作らない。

@@ -91,3 +91,57 @@ func TestJobPlanMismatchPreservesPipeCleanupWithoutStartingAChild(t *testing.T) 
 		})
 	}
 }
+
+func TestOwnedProcessWaitsForNormalExitInsteadOfKillingAfterGoClose(t *testing.T) {
+	client, runtime, done, _ := ownerAndRuntime(t, ownerApprovedConfig(t))
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := client.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waits, kills := 0, 0
+	process, err := servicehost.OwnProcess(&processAPI{wait: func(ctx context.Context) error {
+		waits++
+		select {
+		case err := <-done:
+			return err
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}, close: func(context.Context) error { kills++; return nil }}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := process.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if waits != 1 || kills != 0 || runtime.Snapshot().State != "terminated" {
+		t.Fatalf("normal close skipped exit confirmation: waits=%d forced=%d state=%s", waits, kills, runtime.Snapshot().State)
+	}
+}
+
+func TestOwnedProcessRetainsBudgetForForcedCleanupAfterExitTimeout(t *testing.T) {
+	client, _, _, _ := ownerAndRuntime(t, ownerApprovedConfig(t))
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := client.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waits, kills := 0, 0
+	process, err := servicehost.OwnProcess(&processAPI{wait: func(ctx context.Context) error { waits++; <-ctx.Done(); return ctx.Err() }, close: func(ctx context.Context) error {
+		kills++
+		if ctx.Err() != nil {
+			t.Error("no budget remained for forced cleanup")
+		}
+		return nil
+	}}, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := process.Close(ctx); !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) {
+		t.Fatalf("exit failure did not remain unconfirmed: %v", err)
+	}
+	if waits != 1 || kills != 1 {
+		t.Fatalf("exit failure lost owned cleanup: waits=%d forced=%d", waits, kills)
+	}
+}

@@ -15,7 +15,9 @@ nonce/hashはbinding識別子であって認証ではない。
 
 `New`はlistener、relay、SSH接続を開始しない。
 `Runtime.Serve`は将来の保護された受理済みtransportを本体Sessionへ渡す入口だけで、待受/dial先/接続設定を追加しない。
-この変更の試験ではServe、SSH handshake、listener、child processを実行していない。
+runbackend packageのmemory試験ではServe、SSH handshake、listener、child processを実行していない。
+PR全体では既存の閉鎖command process試験を別に実行し、未設定の実commandが拒否することを確認する。
+これは保護childjobの実WinAPI起動やservice/SSHの実証ではない。
 
 ## 不変値と期限
 
