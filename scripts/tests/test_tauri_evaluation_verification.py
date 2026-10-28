@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import tempfile
 import unittest
@@ -29,7 +30,8 @@ class EvaluationVerificationTests(unittest.TestCase):
         texts = {"FRONTEND_THIRD_PARTY_NOTICES.txt": b"fixture frontend",
                  "rust-toolchain/COPYRIGHT.html": b"fixture compiler",
                  "rust-toolchain/COPYRIGHT-library.html": b"fixture runtime",
-                 "rust/fixture-1.0.0/LICENSE": b"fixture license"}
+                 "rust/fixture-1.0.0/LICENSE": b"fixture license",
+                 "rust/fixture-1.0.0/LICENSE-APACHE-2.0": b"fixture apache license"}
         for name, data in texts.items():
             file = licenses / name
             file.parent.mkdir(parents=True, exist_ok=True)
@@ -38,7 +40,8 @@ class EvaluationVerificationTests(unittest.TestCase):
             {"name": "fixture", "version": "1.0.0",
              "source": "registry+https://github.com/rust-lang/crates.io-index",
              "crateChecksum": "a" * 64,
-             "texts": {"LICENSE": hashlib.sha256(b"fixture license").hexdigest()}}],
+             "texts": {"LICENSE": hashlib.sha256(b"fixture license").hexdigest(),
+                       "LICENSE-APACHE-2.0": hashlib.sha256(b"fixture apache license").hexdigest()}}],
             "rustToolchainNotices": {
                 name.removeprefix("rust-toolchain/"): hashlib.sha256(data).hexdigest()
                 for name, data in texts.items() if name.startswith("rust-toolchain/")}}
@@ -69,6 +72,60 @@ class EvaluationVerificationTests(unittest.TestCase):
         with zipfile.ZipFile(self.archive, "w") as bundle:
             for name, data in entries.items():
                 bundle.writestr(name, data)
+
+    def test_nested_runtime_cannot_hide_in_license_files_or_inventory(self):
+        original = self.archive.read_bytes()
+        for referenced in [False, True]:
+            with self.subTest(referenced=referenced):
+                def inject(entries):
+                    path = "licenses/rust/fixture-1.0.0/backend.exe"
+                    digest = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                    entries[PREFIX + path] = b"abc"
+                    manifest = json.loads(entries[PREFIX + "MANIFEST.json"])
+                    manifest["files"][path] = digest
+                    if referenced:
+                        inv_path = PREFIX + "licenses/DEPENDENCIES.json"
+                        inventory = json.loads(entries[inv_path])
+                        inventory["packages"][0]["texts"]["backend.exe"] = digest
+                        entries[inv_path] = json.dumps(inventory).encode()
+                        manifest["files"]["licenses/DEPENDENCIES.json"] = hashlib.sha256(entries[inv_path]).hexdigest()
+                    entries[PREFIX + "MANIFEST.json"] = json.dumps(manifest).encode()
+                self.rewrite(inject)
+                refused = self.verify()
+                self.assertNotEqual(refused.returncode, 0)
+                self.assertEqual(json.loads(refused.stdout)["code"], "PACKAGE_COMPONENT_SET_UNSUPPORTED")
+                self.archive.write_bytes(original)
+
+    def test_broken_deflate_reports_only_a_fixed_code(self):
+        with zipfile.ZipFile(self.archive) as bundle:
+            entries = {name: bundle.read(name) for name in bundle.namelist()}
+        with zipfile.ZipFile(self.archive, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for name, data in entries.items():
+                bundle.writestr(name, data)
+        with zipfile.ZipFile(self.archive) as bundle:
+            info = bundle.getinfo(PREFIX + "MANIFEST.json")
+        data = bytearray(self.archive.read_bytes())
+        name_size, extra_size = struct.unpack_from("<HH", data, info.header_offset + 26)
+        # DEFLATEの予約block type(3)。圧縮データ以外のZIP構造は保持する。
+        data[info.header_offset + 30 + name_size + extra_size] = 7
+        self.archive.write_bytes(data)
+        result = self.verify()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(json.loads(result.stdout)["code"], "PACKAGE_INVALID")
+
+    def test_cli_argument_errors_do_not_repeat_private_values(self):
+        marker = "PRIVATE_FIXTURE_ARGUMENT"
+        result = subprocess.run(
+            [sys.executable, "-B", str(VERIFY), "--archive", str(self.archive), "--source", SOURCE,
+             "--archive-sha256", "a" * 64, "--exe-sha256", "b" * 64, "--unexpected", marker],
+            capture_output=True, text=True, timeout=15)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn(marker, result.stderr)
+        self.assertEqual(json.loads(result.stdout), {"check": "tauri-unwired-package", "status": "fail",
+                                                    "code": "PACKAGE_ARGUMENT_INVALID"})
+        self.assertEqual(result.stderr, "")
+        self.assertNotIn(marker, result.stdout)
 
     def test_external_source_archive_and_exe_expectations_are_enforced(self):
         # 実装後の回帰。先行した6つの赤→緑とは区別する。

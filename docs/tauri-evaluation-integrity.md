@@ -14,11 +14,15 @@ Go/runtime/Rust reader、製品gate、既存の接続条件を変更しない。
 - `--exe-sha256`: 固定sourceからbuildしたGUI EXEのSHA256
 
 CLIは正常なら0、不整合なら非0で終了し、stdoutに1件のJSONを出す。
+明示的な\`--help\`だけは通常のhelpを表示する。
 source、ZIP、EXEの対応、manifestの未接続・gate閉・release・unsignedという宣言、
 正確なmember集合、ファイルhash、GUIと必須ファイル、dependency一覧が参照するlicense本文、
 Rust compiler/library noticeとfrontend noticeを確認する。
 現行で許可していないbackendをmanifestへ追記しても拒否する。
 backend欠落を許す将来の接続版モードは追加していない。
+license集合もinventory参照と固定noticeに限定し、現行の本文拡張子・UTF-8テキストだけを許可する。
+inventoryで追認したEXE等も拒否し、PEのMZ headerをlicense本文として受理しない。
+新しい正当なlicense形式が必要なら、原本と用途を確認して配布契約と試験を更新する。
 
 展開前に重複名、大文字小文字の衝突、symlink等の非通常member、暗号化member、
 親参照・予約名・末尾dot等のWindowsで曖昧になる名前を拒否する。
@@ -46,6 +50,7 @@ PE import、WebView2/VC runtimeの実在と互換性、既存profileへの作用
 検証JSONは固定check/status/code、正常時のsource/hash/件数と閉鎖境界だけを出力する。
 ZIPの未知フィールド、license本文、ファイル名、ローカルpath、環境変数、credential、原ログや例外原文を転記しない。
 未知のmanifest診断fieldは拒否する。
+未知CLI引数や破損DEFLATEも原文やtracebackを表示せず固定codeで拒否する。
 これは製品の診断bundle生成器ではなく、任意のファイル・license本文に秘密がないと証明するscannerでもない。
 製品diagnosticsのallowlistや保持期限は別契約で、ユーザーprofileやstateを丸ごと収集しない。
 
@@ -72,5 +77,6 @@ CLIからpackagerで作ったfixture ZIPを検証する。
 余剰backend、manifestで承認されたbackend、license本文欠落、未知診断field、
 Windows曖昧path、重複/別名/symlink拒否は、それぞれ失敗を先に観測して最小修正した。
 外部source/ZIP/EXE期待値、gate閉鎖とGUI欠落は実装後の回帰であり、TDDと改称しない。
+独立レビューのCLI引数・破損DEFLATE・license配下のruntime混入指摘も、負例を先に観測して修正した。
 fixture bytesは実行物ではなく、実EXE/backend試験の件数に加算しない。
 既存評価ZIPのread-only検証とCIの実native起動結果も分けて記録する。

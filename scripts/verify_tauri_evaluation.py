@@ -8,12 +8,18 @@ from pathlib import Path
 import re
 import sys
 import zipfile
+import zlib
 
 from package_tauri_evaluation import NAME
 
 
 class VerificationError(Exception):
     """入力内容を診断へ複製しない固定コード。"""
+
+
+class SafeParser(argparse.ArgumentParser):
+    def error(self, message):
+        raise VerificationError("PACKAGE_ARGUMENT_INVALID")
 
 
 def require(condition, code):
@@ -36,6 +42,18 @@ def check_licenses(bundle, prefix, files):
     required = {"licenses/DEPENDENCIES.json", "licenses/FRONTEND_THIRD_PARTY_NOTICES.txt",
                 "licenses/rust-toolchain/COPYRIGHT.html", "licenses/rust-toolchain/COPYRIGHT-library.html"}
     require(required <= set(files), code)
+    license_files = {name for name in files if name.startswith("licenses/")}
+    # 現行本文の形式のみ許可。inventoryへの追記だけでは実行物を許可しない。
+    for name in license_files - required:
+        file = Path(name)
+        require(name.startswith("licenses/rust/") and
+                (file.suffix.lower() in {"", ".txt", ".md", ".spdx", ".nuspec"}
+                 or file.name.lower() in {"license.mit", "license.bsd-3-clause", "license-apache-2.0"}),
+                "PACKAGE_COMPONENT_SET_UNSUPPORTED")
+    for name in license_files:
+        data = bundle.read(prefix + name)
+        require(not data.startswith(b"MZ"), "PACKAGE_COMPONENT_SET_UNSUPPORTED")
+        require(bool(data.decode("utf-8-sig").strip()), code)
     inventory = json.loads(bundle.read(prefix + "licenses/DEPENDENCIES.json"))
     require(inventory["tools"]["profile"] == "release" and bool(inventory["packages"]), code)
     notices = inventory["rustToolchainNotices"]
@@ -50,6 +68,7 @@ def check_licenses(bundle, prefix, files):
             references["licenses/rust/" + name + "/" + file] = digest
     for file, digest in references.items():
         require(files.get(file) == digest and bool(bundle.read(prefix + file).strip()), code)
+    require(license_files == required | set(references), "PACKAGE_COMPONENT_SET_UNSUPPORTED")
     require(bool(bundle.read(prefix + "licenses/FRONTEND_THIRD_PARTY_NOTICES.txt").strip()), code)
 
 
@@ -105,18 +124,18 @@ def verify(archive, source, archive_sha256, exe_sha256):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = SafeParser(description=__doc__)
     parser.add_argument("--archive", type=Path, required=True)
     parser.add_argument("--source", required=True)
     parser.add_argument("--archive-sha256", required=True)
     parser.add_argument("--exe-sha256", required=True)
-    args = parser.parse_args()
     try:
+        args = parser.parse_args()
         report = verify(args.archive, args.source, args.archive_sha256, args.exe_sha256)
     except VerificationError as error:
         report = {"check": "tauri-unwired-package", "status": "fail", "code": str(error)}
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
-            NotImplementedError, zipfile.BadZipFile):
+            NotImplementedError, zipfile.BadZipFile, zlib.error):
         report = {"check": "tauri-unwired-package", "status": "fail", "code": "PACKAGE_INVALID"}
     print(json.dumps(report, ensure_ascii=True, sort_keys=True))
     return 0 if report["status"] == "pass" else 1
