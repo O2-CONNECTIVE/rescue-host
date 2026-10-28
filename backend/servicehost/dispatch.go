@@ -103,6 +103,7 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 	}
 	issuer := s.issuer
 	phase, stopping := s.state, s.stopping
+	unprojected := s.ownerIntent != nil || s.reservation != nil
 	owner := issuer.Snapshot()
 	s.mu.Unlock()
 	if owner.Generation != 0 || owner.InstanceEpoch == ([32]byte{}) {
@@ -127,7 +128,11 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 			return d.rejectLocked()
 		}
 		response.Type = "response"
-		if request.Command == servicecontrol.Status {
+		if request.Command == servicecontrol.Status && unprojected {
+			// 所有ticketを承認ID/binding/launchPhaseへ合成するproducerは未接続。
+			response.Result = "error"
+			response.Error = &servicecontrol.UntrustedServiceError{Code: "SERVICE_NOT_READY"}
+		} else if request.Command == servicecontrol.Status {
 			response.Result = "snapshot"
 			response.Snapshot = &servicecontrol.UntrustedSnapshot{ServicePhase: string(phase), LaunchPhase: "none"}
 			if stopping {

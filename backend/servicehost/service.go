@@ -45,6 +45,8 @@ type Service struct {
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
 	dispatch                                  *serviceDispatcher
+	ownerIntent                               *serviceOwnerIntent
+	reservation                               *serviceReservation
 	host                                      *Host
 	plane                                     servicePlane
 	cancel                                    context.CancelFunc
@@ -139,6 +141,14 @@ func (s *Service) stopFor(cause error) bool {
 	} else if !s.cleanupConfirmed {
 		s.state = StopPending
 	}
+	if s.ownerIntent != nil {
+		s.ownerIntent.burned = true
+	}
+	var reservationCancel context.CancelFunc
+	if r := s.reservation; r != nil && !r.finished {
+		r.canceled = true
+		reservationCancel = r.cancel
+	}
 	i, cancel := s.issuer, s.cancel
 	s.mu.Unlock()
 	if unusedDone != nil {
@@ -146,6 +156,10 @@ func (s *Service) stopFor(cause error) bool {
 	}
 	if i != nil {
 		_ = i.Close()
+	}
+	// 同issuerの失効より先にworker取消callbackを走らせない。
+	if reservationCancel != nil {
+		reservationCancel()
 	}
 	if cancel != nil {
 		cancel()
@@ -190,7 +204,13 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	cfg := s.cfg
 	stopping := s.stopping
 	s.mu.Unlock()
-	defer func() { s.mu.Lock(); s.serveErr = result; s.mu.Unlock(); s.finish.Do(func() { close(s.done) }) }()
+	defer func() {
+		s.awaitOwnerReservationBeforeReturn()
+		s.mu.Lock()
+		s.serveErr = result
+		s.mu.Unlock()
+		s.finish.Do(func() { close(s.done) })
+	}()
 	defer cancel()
 	if stopping {
 		cancel()
@@ -265,21 +285,23 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(cleanup, min(cfg.Budgets.Observe, cfg.Budgets.Cleanup/8))
 			_ = publish(report, StopPending)
 			finish()
-			var closeErr error
-			if host != nil {
-				closeErr = errors.Join(closeErr, host.Close(cleanup))
-			}
-			if approvalDone != nil {
-				select {
-				case <-approvalDone:
-				case <-cleanup.Done():
-					closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
+			closeErr := s.waitOwnerReservation(cleanup)
+			if closeErr == nil {
+				if host != nil {
+					closeErr = errors.Join(closeErr, host.Close(cleanup))
 				}
+				if approvalDone != nil {
+					select {
+					case <-approvalDone:
+					case <-cleanup.Done():
+						closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
+					}
+				}
+				if plane != nil {
+					closeErr = errors.Join(closeErr, plane.Close(cleanup))
+				}
+				closeErr = errors.Join(closeErr, issuer.Close())
 			}
-			if plane != nil {
-				closeErr = errors.Join(closeErr, plane.Close(cleanup))
-			}
-			closeErr = errors.Join(closeErr, issuer.Close())
 			if cleanup.Err() != nil {
 				closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
 			}

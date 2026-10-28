@@ -149,3 +149,24 @@ channelは1本・inflight応答は1件・requestLimitは1..1024で、IDやread t
 
 このmemory-only縦断はnative認証方式、configDigest producer、同issuer承認予約、workload/planeの二段階回収receiptを採用・実装したものではない。
 #100のinner/outer SCM cleanup proofはwire receiptへ転用しない。実Windows・OS設定・新鍵・実SSH・拒否済みP2専用試験は実行しない。
+
+## 承認予約に先立つ所有順序のprivate境界
+
+`reservation.go`は、将来の同Service予約をstopと同じmutexで順序付ける所有ticketだけを扱う。
+intentをburnして同Service/issuerへ予約を保存してから受渡し、consumeとworker終了ackはそれぞれ単回である。
+stopが先なら予約を拒否する。予約が先なら同issuerを失効してからlock外でworkerを取り消す。
+ctx取消やquota/失敗でburnを戻さず、完了後も記録を再利用しない。
+
+Serviceの回収は、未claimの将来配送をstop後に排除してabandonするか、claim済みworkerの明示終了ackを待つ。
+予算切れなら参照とStopPendingを維持し、plane.Close・inner cleanup proof・Serve完了へ先に進まない。
+fatal分類でnative回収の再試行を止める場合も、Serve完了前には未ack workerのmemory待機を残す。ack後のreturnはfatal分類と回収未確認を保持し、native処理を再開しない。これはprocess全体のfatal処置を採用・実装したものではない。
+worker終了ackは、同じworker/配送ownerが全所有処理の終了と追加処理の不在を確認した後にだけ渡す内部契約である。
+取消やContext.Doneだけから作らず、wireから送れるboolやcleanup成功receiptにも変換しない。
+
+productionのintent作成口、認証済み主体、candidate/configDigest、policy、issuer.Prepare/launch、実Host workerへの配送・終了join adapterは未接続である。
+private intentの同owner登録はmemory試験のfixtureだけが行い、正規承認を模擬して実行権限を作るものではない。
+cutoff/配送budgetの実値と供給源、現在の認証・candidateの照合を行うconfirm producerは未決のまま、この所有ticketだけを承認済みと扱わない。
+既存controlled経路のprepare/confirmはSERVICE_UNCONFIGUREDを維持する。
+所有intent/予約がある間は、未実装の承認ID/binding/phaseをstatusへ合成せず、SERVICE_NOT_READYを返す。
+実Hostの部分起動失敗/Job/IO回収をこのackへ結ぶ際は、Service.Closeから自身の終了を待つ循環を作らず、同ownerの実joinを別途検証する必要がある。
+このlocal変更は実worker・OS保護・実SSHの成立を保証しない。
