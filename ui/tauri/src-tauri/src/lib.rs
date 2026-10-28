@@ -1,4 +1,6 @@
 use serde::{Deserialize, Serialize};
+mod shell_runtime;
+use shell_runtime::ShellRuntime;
 
 #[allow(
     dead_code,
@@ -34,22 +36,40 @@ struct ShellStatus {
     termination: &'static str,
 }
 
+impl ShellStatus {
+    fn unwired() -> Self {
+        Self {
+            protocol_version: 1,
+            integration: "not_connected",
+            can_start: false,
+            can_stop: false,
+            termination: "unconfirmed",
+        }
+    }
+}
+
 #[tauri::command]
-fn get_shell_status(request: StatusRequest) -> Result<ShellStatus, &'static str> {
+fn get_shell_status(
+    request: StatusRequest,
+    runtime: tauri::State<'_, ShellRuntime>,
+) -> Result<ShellStatus, &'static str> {
     if request.protocol_version != 1 {
         return Err("UNSUPPORTED_SHELL_VERSION");
     }
-    Ok(ShellStatus {
-        protocol_version: 1,
-        integration: "not_connected",
-        can_start: false,
-        can_stop: false,
-        termination: "unconfirmed",
-    })
+    runtime.status()
 }
 
 fn commands<R: tauri::Runtime>(builder: tauri::Builder<R>) -> tauri::Builder<R> {
-    builder.invoke_handler(tauri::generate_handler![get_shell_status])
+    commands_with_runtime(builder, ShellRuntime::default())
+}
+
+fn commands_with_runtime<R: tauri::Runtime>(
+    builder: tauri::Builder<R>,
+    runtime: ShellRuntime,
+) -> tauri::Builder<R> {
+    builder
+        .manage(runtime)
+        .invoke_handler(tauri::generate_handler![get_shell_status])
 }
 
 pub fn run() {
@@ -91,7 +111,17 @@ mod tests {
         command: &str,
         body: serde_json::Value,
     ) -> Result<serde_json::Value, serde_json::Value> {
-        let app = commands(tauri::test::mock_builder())
+        ipc_with_runtime(ShellRuntime::default(), label, origin, command, body)
+    }
+
+    fn ipc_with_runtime(
+        runtime: ShellRuntime,
+        label: &str,
+        origin: &str,
+        command: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        let app = commands_with_runtime(tauri::test::mock_builder(), runtime)
             .build(tauri::generate_context!())
             .unwrap();
         let window = tauri::WebviewWindowBuilder::new(&app, label, Default::default())
@@ -110,6 +140,109 @@ mod tests {
             },
         )
         .map(|response| response.deserialize::<serde_json::Value>().unwrap())
+    }
+
+    fn expected_control_context() -> control_codec::model::Bootstrap {
+        serde_json::from_value(json!({
+            "protocol": "rescue-host-control/1", "generation": "1",
+            "identity": {"launchId": "launch-001", "epoch": "1", "policyDigest": "a".repeat(64)},
+            "binding": {"artifactSha256": "b".repeat(64), "channelNonce": "c".repeat(64)}
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn active_peer_claim_and_reader_eof_do_not_enable_gui_operations() {
+        use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+        use control_coordinator::reader::{ReaderEnd, ReaderTask};
+        use control_coordinator::Conversation;
+        use std::io::Cursor;
+        use std::thread;
+        use std::time::{Duration, Instant};
+        let expected = expected_control_context();
+        let mut ack = serde_json::to_value(&expected).unwrap();
+        ack["kind"] = json!("hello_ack");
+        let active = json!({
+            "protocol": "rescue-host-control/1", "kind": "state_changed", "generation": "1",
+            "identity": ack["identity"], "sequence": "1",
+            "payload": {"goState": "active", "pending": "0", "active": "1", "owned": "1", "goCloseConfirmed": false}
+        });
+        // Finite memory claims are not an authenticated service or Go activation.
+        let mut bytes = serde_json::to_vec(&ack).unwrap();
+        bytes.push(b'\n');
+        bytes.extend(serde_json::to_vec(&active).unwrap());
+        bytes.push(b'\n');
+        let reader = ReaderTask::start(Cursor::new(bytes)).unwrap();
+        let mut connection = ReaderConnection::new(Conversation::new(expected), reader);
+        connection.hello().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            assert!(Instant::now() < deadline, "finite peer claim deadline");
+            match connection.poll() {
+                ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+                ReaderProgress::Frame => {}
+                ReaderProgress::Joined { end, fault } => {
+                    assert_eq!(end, ReaderEnd::Eof);
+                    assert_eq!(fault, None);
+                    break;
+                }
+                event => panic!("unexpected claim event: {event:?}"),
+            }
+        }
+        assert_eq!(
+            connection.target().peer_snapshot_claim().unwrap().go_state,
+            control_codec::scalar::GoState::Active
+        );
+        let response = ipc_with_runtime(
+            ShellRuntime::monitoring(connection),
+            "main",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}}),
+        )
+        .unwrap();
+        assert_eq!(
+            response,
+            json!({
+                "protocolVersion": 1, "integration": "not_connected",
+                "canStart": false, "canStop": false, "termination": "unconfirmed"
+            })
+        );
+    }
+
+    #[test]
+    fn public_ipc_preserves_a_joined_reader_fault_instead_of_hiding_it() {
+        use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+        use control_coordinator::reader::ReaderTask;
+        use control_coordinator::Conversation;
+        use std::io::Cursor;
+        use std::thread;
+        use std::time::{Duration, Instant};
+        let expected = expected_control_context();
+        let reader = ReaderTask::start(Cursor::new(b"not-json\n")).unwrap();
+        let mut connection = ReaderConnection::new(Conversation::new(expected), reader);
+        connection.hello().unwrap();
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            assert!(Instant::now() < deadline, "finite IPC worker deadline");
+            match connection.poll() {
+                ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+                ReaderProgress::Fault(control_codec::scalar::Code::InvalidMessage) => {}
+                ReaderProgress::Joined { fault, .. } => {
+                    assert_eq!(fault, Some(control_codec::scalar::Code::InvalidMessage));
+                    break;
+                }
+                event => panic!("unexpected reader event: {event:?}"),
+            }
+        }
+        let response = ipc_with_runtime(
+            ShellRuntime::monitoring(connection),
+            "main",
+            "http://tauri.localhost",
+            "get_shell_status",
+            json!({"request": {"protocolVersion": 1}}),
+        );
+        assert_eq!(response, Err(json!("INVALID_MESSAGE")));
     }
 
     #[test]

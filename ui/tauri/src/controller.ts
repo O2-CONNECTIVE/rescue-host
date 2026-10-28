@@ -9,10 +9,16 @@ function acceptsStatus(status: unknown) {
     && status.canStart === false && status.canStop === false && status.termination === 'unconfirmed';
 }
 
+type ReaderFault = 'VERSION_MISMATCH' | 'INVALID_MESSAGE' | 'CONTEXT_MISMATCH' | 'TERMINATION_UNCONFIRMED';
+function isReaderFault(value: unknown): value is ReaderFault {
+  return value === 'VERSION_MISMATCH' || value === 'INVALID_MESSAGE'
+    || value === 'CONTEXT_MISMATCH' || value === 'TERMINATION_UNCONFIRMED';
+}
+
 export type ShellState =
   | { kind: 'checking'; diagnostic: 'CHECKING' }
   | { kind: 'not_connected'; diagnostic: 'SHELL_UNWIRED' }
-  | { kind: 'unavailable'; diagnostic: 'BRIDGE_MISSING' | 'IPC_TIMEOUT' | 'INVALID_RESPONSE' | 'IPC_ERROR' };
+  | { kind: 'unavailable'; diagnostic: 'BRIDGE_MISSING' | 'IPC_TIMEOUT' | 'INVALID_RESPONSE' | 'IPC_ERROR' | ReaderFault };
 export type ShellInvoke = (command: 'get_shell_status', args: { request: { protocolVersion: 1 } }) => Promise<unknown>;
 interface Options { invoke: ShellInvoke | undefined; onChange: (state: ShellState) => void; timeoutMs?: number }
 
@@ -44,8 +50,8 @@ export function createShellController({ invoke, onChange, timeoutMs = 2000 }: Op
             ? { kind: 'not_connected', diagnostic: 'SHELL_UNWIRED' }
             : { kind: 'unavailable', diagnostic: 'INVALID_RESPONSE' });
         }
-      } catch {
-        if (!disposed) onChange({ kind: 'unavailable', diagnostic: 'IPC_ERROR' });
+      } catch (error) {
+        if (!disposed) onChange({ kind: 'unavailable', diagnostic: isReaderFault(error) ? error : 'IPC_ERROR' });
       } finally {
         clearTimeout(timer);
         pending = false;

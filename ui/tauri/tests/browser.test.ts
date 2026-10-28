@@ -194,3 +194,33 @@ void test('browserの取得失敗後もfocusを失わずkeyboardで再確認し�
   assert.equal(await page.getByRole('button', { name: '接続を停止' }).isDisabled(), true);
   await page.close();
 });
+
+void test('readerの終了未確認コードは狭い拡大表示でも診断内で読める', async () => {
+  const page = await browser.newPage({ viewport: { width: 320, height: 1000 } });
+  await page.addInitScript(() => {
+    window.__TAURI__ = { core: {
+      // Native Tauri Err(&str) is serialized as a string rejection.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      invoke: () => Promise.reject('TERMINATION_UNCONFIRMED')
+    } };
+  });
+  await page.goto(url);
+  await page.waitForFunction(() => document.querySelector('#status-title')?.textContent === '状態を取得できません');
+  await page.getByRole('button', { name: '診断情報', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#diagnostic')?.textContent === 'TERMINATION_UNCONFIRMED');
+  await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+  assert.equal(await page.locator('#status-title').innerText(), '状態を取得できません');
+  assert.equal(await page.getByRole('button', { name: 'サポートを開始' }).isDisabled(), true);
+  assert.equal(await page.getByRole('button', { name: '接続を停止', exact: true }).isDisabled(), true);
+  if (process.env.SHELL_SCREENSHOT_DIR) {
+    await mkdir(process.env.SHELL_SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(process.env.SHELL_SCREENSHOT_DIR, 'reader-fault-narrow200.png'), fullPage: true });
+  }
+  assert.equal(await page.locator('#diagnostic').evaluate(node => node.scrollWidth <= node.clientWidth), true);
+  if (process.env.SHELL_SCREENSHOT_DIR) {
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await page.evaluate(() => { document.documentElement.style.fontSize = '100%'; });
+    await page.screenshot({ path: path.join(process.env.SHELL_SCREENSHOT_DIR, 'reader-fault-wide.png'), fullPage: true });
+  }
+  await page.close();
+});
