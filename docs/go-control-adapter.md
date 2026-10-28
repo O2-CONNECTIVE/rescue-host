@@ -6,6 +6,16 @@
 正本6ファイルを変更せず、既存 `internal/control` にcodecとstdio.Service adapterを追加します。
 共有定義の変更は正本ownerへ戻し、Go側だけのwire field・版・error codeは追加しません。
 
+## 初期版の保証範囲（2026-10-28改訂）
+
+初期版は、遠隔作業を行う非管理者guestから監督serviceと停止処理を守る範囲へ限定します。
+ホスト操作ユーザーや管理者が既に侵害されている場合、および管理者guestへの対応は保証対象外です。
+別保護service、guest SID、immutable grant、hard TTL、固定宛先と許可鍵、不可逆revokeの要件は維持します。
+正規hostoperatorの承認操作、guestからのIPC拒否、ACLとpeer identityの確認は必要です。
+毎回の別admin sign-inを初期版の必須条件として追加しません。
+これは保証範囲の改訂記録であり、OS設定・認証・実機受入の成功や、既存全受入条件の達成を示しません。
+受入定義の正本改訂と未検証の状態は別に管理し、P2専用再現やOS変更の実行承認へ読み替えません。
+
 ## 検証する境界
 
 codecはLF込み16KiB、深さ8、UTF-8、単一object、復号後の重複key、exact field/kind/payloadと正規uint64文字列を検査します。

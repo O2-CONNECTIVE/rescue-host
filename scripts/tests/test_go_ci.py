@@ -23,7 +23,7 @@ class GoEventTests(unittest.TestCase):
             {'Package': module, 'Action': 'pass'},
         ]
         for suffix in ('internal/auth', 'internal/control', 'internal/forward',
-                       'internal/lease', 'internal/stdio', 'cmd/rescue-backend'):
+                       'internal/lease', 'internal/stdio', 'cmd/rescue-backend', 'supervisor', 'servicehost'):
             result.append({'Package': module + '/' + suffix, 'Action': 'skip'})
         return result
 
@@ -141,6 +141,26 @@ class GoResourceRecordTests(unittest.TestCase):
                     record[key] = value
                     with self.assertRaises(ValueError):
                         self.check(record)
+
+
+class GoProductionInventoryTests(unittest.TestCase):
+    def test_scm_sources_follow_selected_go_target(self):
+        package = 'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'
+        for target, selected, excluded in (
+                ('linux', 'scm_other.go', 'scm_windows.go'),
+                ('darwin', 'scm_other.go', 'scm_windows.go'),
+                ('windows', 'scm_windows.go', 'scm_other.go')):
+            with self.subTest(target=target):
+                inventory = go_ci.product_files_for(target)
+                self.assertEqual(inventory[package], {'control.go', 'host.go', selected})
+                self.assertNotIn(excluded, inventory[package])
+                self.assertEqual(len(inventory), 9)
+                self.assertEqual(sum(map(len, inventory.values())), 14)
+
+    def test_unknown_go_target_is_rejected(self):
+        for target in ('', 'plan9', 'windows/../linux'):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                go_ci.product_files_for(target)
 
 
 if __name__ == '__main__':
