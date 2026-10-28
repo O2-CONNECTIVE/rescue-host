@@ -61,14 +61,15 @@ def inspect(data):
                  and row['error'] == 'none')
             connections[conn] = {'ended': False, 'last': 0}
             continue
-        need(conn in connections and not connections[conn]['ended'])
+        need(conn in connections)
         if stage == 'session-received':
-            need(req > 0 and req not in requests and row['state'] == 'received')
+            need(not connections[conn]['ended'] and req > 0 and req not in requests
+                 and row['state'] == 'received')
             requests[req] = {'connection': conn, 'state': 'received', 'forward': False,
                              'end': 'unobserved'}
             connections[conn]['last'] = req
         elif stage == 'connection-end':
-            need(req == connections[conn]['last'])
+            need(not connections[conn]['ended'] and req == connections[conn]['last'])
             need(row['state'] == (requests[req]['state'] if req else 'idle'))
             connections[conn]['ended'] = True
             if req:
@@ -94,7 +95,7 @@ def inspect(data):
     result = {'check': 'native-driver-stage', 'diagnostic': 'complete' if complete else 'incomplete',
               'code': 'TRACE_COMPLETE' if complete else 'TRACE_INCOMPLETE',
               'observedStages': sorted(observed), 'requestStage': 'unconfirmed',
-              'connectionEnd': 'unconfirmed'}
+              'connectionEnd': 'unconfirmed', 'events': events, 'summary': summary}
     if complete:
         result['requestStage'] = {'headers-returned': 'native-headers', 'native-error': 'native-error',
                                   'dropped': 'dropped-before-headers' if request['forward']
@@ -114,7 +115,8 @@ def main():
     except Exception:
         # 診断専用。原例外・filename・入力値は出さず、既存native判定にも接続しない。
         report = {'check': 'native-driver-stage', 'diagnostic': 'incomplete', 'code': 'TRACE_INVALID',
-                  'observedStages': [], 'requestStage': 'unconfirmed', 'connectionEnd': 'unconfirmed'}
+                  'observedStages': [], 'requestStage': 'unconfirmed', 'connectionEnd': 'unconfirmed',
+                  'events': [], 'summary': None}
     print(json.dumps(report, sort_keys=True))
     return 0 if report['diagnostic'] == 'complete' else 1
 
