@@ -169,11 +169,11 @@ class GoProductionInventoryTests(unittest.TestCase):
 
     def test_service_control_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol'
-        for target, production_count in (('linux', 83), ('darwin', 83), ('windows', 89)):
+        for target, production_count in (('linux', 86), ('darwin', 86), ('windows', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertIn(package, inventory)
-                self.assertEqual(inventory[package], {'request.go', 'strict.go'})
+                self.assertEqual(inventory[package], {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'})
                 self.assertEqual(len(inventory), 22)
                 self.assertEqual(sum(map(len, inventory.values())), production_count)
 
@@ -183,13 +183,24 @@ class GoProductionInventoryTests(unittest.TestCase):
             for fault in ('missing-package', 'missing-file', 'unknown-file'):
                 with self.subTest(target=target, fault=fault):
                     actual = go_ci.product_files_for(target)
-                    actual[package] = {'request.go', 'strict.go'}
+                    actual[package] = {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'}
                     if fault == 'missing-package':
                         del actual[package]
                     elif fault == 'missing-file':
                         actual[package].remove('strict.go')
                     else:
                         actual[package].add('future.go')
+                    self.assert_build_boundary_rejected(target, actual)
+
+    def test_build_rejects_each_missing_response_source(self):
+        package = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol'
+        for target in ('linux', 'darwin', 'windows'):
+            for missing in ('response.go', 'response_fields.go', 'response_preview.go'):
+                with self.subTest(target=target, missing=missing):
+                    actual = go_ci.product_files_for(target)
+                    actual[package] = {'request.go', 'strict.go', 'response.go',
+                                       'response_fields.go', 'response_preview.go'}
+                    actual[package].remove(missing)
                     self.assert_build_boundary_rejected(target, actual)
 
     def provision_sources(self, target):
@@ -202,7 +213,7 @@ class GoProductionInventoryTests(unittest.TestCase):
                 prefix + 'cmd/rescue-service-host': {'main.go'}}
 
     def test_service_provision_sources_follow_selected_go_target(self):
-        for target, production_count in (('linux', 83), ('darwin', 83), ('windows', 89)):
+        for target, production_count in (('linux', 86), ('darwin', 86), ('windows', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 for package, files in self.provision_sources(target).items():
@@ -239,9 +250,9 @@ class GoProductionInventoryTests(unittest.TestCase):
     def test_scm_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'
         for target, selected, excluded, production_count in (
-                ('linux', 'scm_other.go', 'scm_windows.go', 83),
-                ('darwin', 'scm_other.go', 'scm_windows.go', 83),
-                ('windows', 'scm_windows.go', 'scm_other.go', 89)):
+                ('linux', 'scm_other.go', 'scm_windows.go', 86),
+                ('darwin', 'scm_other.go', 'scm_windows.go', 86),
+                ('windows', 'scm_windows.go', 'scm_other.go', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[package], {'control.go', 'host.go', 'approved.go',
@@ -256,9 +267,9 @@ class GoProductionInventoryTests(unittest.TestCase):
     def test_localcontrol_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'
         for target, selected, excluded, production_count in (
-                ('linux', {'native_other.go'}, 'native_windows.go', 83),
-                ('darwin', {'native_other.go'}, 'native_windows.go', 83),
-                ('windows', {'native_windows.go', 'io_windows.go'}, 'native_other.go', 89)):
+                ('linux', {'native_other.go'}, 'native_windows.go', 86),
+                ('darwin', {'native_other.go'}, 'native_windows.go', 86),
+                ('windows', {'native_windows.go', 'io_windows.go'}, 'native_other.go', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[package], {'policy.go', 'boundary.go', 'wire.go'} | selected)
@@ -271,9 +282,9 @@ class GoProductionInventoryTests(unittest.TestCase):
     def test_runtime_and_childjob_sources_follow_selected_go_target(self):
         prefix = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/'
         for target, selected, excluded, production_count in (
-                ('linux', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 83),
-                ('darwin', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 83),
-                ('windows', {'native_windows.go', 'artifact_windows.go'}, {'native_other.go'}, 89)):
+                ('linux', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 86),
+                ('darwin', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 86),
+                ('windows', {'native_windows.go', 'artifact_windows.go'}, {'native_other.go'}, 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[prefix + 'runbackend'], {'runtime.go'})
@@ -287,9 +298,9 @@ class GoProductionInventoryTests(unittest.TestCase):
         common = {'acl.go', 'format.go', 'loader.go', 'profile.go', 'scope.go',
                   'source.go', 'validation.go'}
         for target, selected, excluded, production_count in (
-                ('linux', 'native_other.go', 'native_windows.go', 83),
-                ('darwin', 'native_other.go', 'native_windows.go', 83),
-                ('windows', 'native_windows.go', 'native_other.go', 89)):
+                ('linux', 'native_other.go', 'native_windows.go', 86),
+                ('darwin', 'native_other.go', 'native_windows.go', 86),
+                ('windows', 'native_windows.go', 'native_other.go', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[prefix + 'protectedkey'], common | {selected})
@@ -304,9 +315,9 @@ class GoProductionInventoryTests(unittest.TestCase):
         prefix = 'github.com/O2-CONNECTIVE/rescue-host/backend/'
         auth_common = {'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'}
         for target, auth_native, io_native, production_count in (
-                ('linux', {'native_other.go'}, 'native_other.go', 83),
-                ('darwin', {'native_other.go'}, 'native_other.go', 83),
-                ('windows', {'native_windows.go', 'image_windows.go'}, 'native_windows.go', 89)):
+                ('linux', {'native_other.go'}, 'native_other.go', 86),
+                ('darwin', {'native_other.go'}, 'native_other.go', 86),
+                ('windows', {'native_windows.go', 'image_windows.go'}, 'native_windows.go', 92)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[prefix + 'internal/bootstrapauth'], auth_common | auth_native)
@@ -330,7 +341,7 @@ class GoProductionInventoryTests(unittest.TestCase):
                 self.assertNotIn(excluded, inventory[prefix + 'internal/childstdio'])
                 self.assertTrue({'nativestdio.go', 'ownedstdio.go'} <= inventory[prefix + 'servicehost'])
                 self.assertEqual(len(inventory), 22)
-                self.assertEqual(sum(map(len, inventory.values())), 89 if target == 'windows' else 83)
+                self.assertEqual(sum(map(len, inventory.values())), 92 if target == 'windows' else 86)
 
     def test_zero_grant_ready_sources_follow_selected_go_target(self):
         prefix = 'github.com/O2-CONNECTIVE/rescue-host/backend/'
@@ -348,7 +359,7 @@ class GoProductionInventoryTests(unittest.TestCase):
                 self.assertIn('scm_ready_windows.go' if target == 'windows' else 'scm_ready_other.go',
                               inventory[prefix + 'servicehost'])
                 self.assertEqual(len(inventory), 22)
-                self.assertEqual(sum(map(len, inventory.values())), 89 if target == 'windows' else 83)
+                self.assertEqual(sum(map(len, inventory.values())), 92 if target == 'windows' else 86)
 
     def test_unknown_go_target_is_rejected(self):
         for target in ('', 'plan9', 'windows/../linux'):

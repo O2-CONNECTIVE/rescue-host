@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される22package、Linux/macOSでは83実装、Windowsでは89実装ファイルを照合します。
+通常buildに選択される22package、Linux/macOSでは86実装、Windowsでは92実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
@@ -66,7 +66,7 @@ cmd/rescue-backendはmain.go/native.goの2件です。通常buildに試験用ada
 serviceprovisionはcompose.go/errors.go/record.go/record_decode.go/record_strict.go/record_validate.go/root.go/root_doc.go/root_io.go/root_validate.go/service.goと、
 Linux/macOSのroot_other.go、Windowsのroot_windows.go/root_windows_io.goだけを厳密選択します。
 cmd/rescue-service-hostはmain.goの1件だけを許可し、未知package・未知file・対象OSと異なる実装を拒否します。
-servicecontrolは全OSでrequest.go/strict.goの2件だけを許可します。
+servicecontrolは全OSでrequest.go/strict.goと応答専用response.go/response_fields.go/response_preview.goの5件だけを許可します。応答codecの成功は認証・承認・停止の証明ではありません。
 純粋なDecodeUntrustedFrameの構造検証であり、認証・dispatch・issuer・transportへ配線せず製品gateを閉鎖したままにします。
 native receiver・認証・所有I/OのsourceとAPI seam試験を、実Windowsでの保護主体・ACL・実EOF後PID照会の成立へ広げません。
 保護stdio/stderrの所有・取消・EOF回収にはsourceとAPI seam試験がありますが、実Windowsでの保護成立や期限内回収は未実証です。
