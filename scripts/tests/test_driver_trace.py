@@ -37,6 +37,23 @@ class DriverTraceTests(unittest.TestCase):
             self.assertEqual(report['connectionEnd'], 'incomplete')
             self.assertEqual(result.stderr, '')
 
+    def test_service_future_drop_after_incoming_eof_keeps_same_request_correlation(self):
+        rows = trace()
+        dropped, ended = rows[4], rows[5]
+        rows[4], rows[5] = ended, dropped
+        rows[4].update(seq=4, elapsedUs=400, state='forward-pending')
+        rows[5].update(seq=5, elapsedUs=500)
+        with tempfile.TemporaryDirectory() as folder:
+            file = Path(folder) / 'trace.jsonl'
+            file.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
+            result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/verify_driver_trace.py'),
+                                     '--trace', str(file)], capture_output=True, text=True, timeout=10)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            report = json.loads(result.stdout)
+            self.assertEqual(report['diagnostic'], 'complete')
+            self.assertEqual(report['requestStage'], 'dropped-before-headers')
+            self.assertEqual(report['connectionEnd'], 'incomplete')
+
 
 if __name__ == '__main__':
     unittest.main()
