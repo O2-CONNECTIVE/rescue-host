@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 
+#[allow(
+    dead_code,
+    reason = "control codec is not wired while runtime activation is closed"
+)]
+mod control_codec;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusRequest {
