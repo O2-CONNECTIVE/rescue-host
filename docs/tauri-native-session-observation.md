@@ -36,8 +36,11 @@ hosted runner廃棄の独立確認、driver内部forwardingやappの過去の起
 
 app/WebViewが存在してもsession応答が返らない実例をrun40648334716で観測した。
 driver内部の待ち箇所を絞るため、session作成失敗時だけ自己所有の固定2ログを読む。
-\`driver.stdout.log\`と\`driver.stderr.log\`を各64KiBまで一回読み、固定phraseの存在booleanと読取bytes/打切りだけを別JSONへ保存する。
-取得不能・非通常file・symlinkはunavailable/null。原文・filename・path・引数・driver payloadは保存しない。
+`driver.stdout.log`と`driver.stderr.log`を各64KiBまで一回読み、固定phraseの存在booleanと読取bytes/打切りだけを別JSONへ保存する。
+監督下の自己所有CI一時領域を使い、他worker・攻撃者によるファイル差替えがないことを前提とする。
+取得時に検出した非通常file・symlinkと取得不能はunavailable/null。
+lstatからopenまでの競合、敵対的filesystemへのno-follow・所有隔離は保証しない。
+原文・filename・path・引数・driver payloadは保存しない。
 既存logを読むだけで、verbose設定や新しいdriver/session要求を追加しない。
 hintはproxy error/session未作成/DevTools port欠測/profile使用中/browser到達不能・終了/version不整合の固定分類。
 phraseが記録されたという情報であり、原因確定や正常性の判定ではない。

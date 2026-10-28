@@ -164,7 +164,11 @@ void test('session失敗のdriverログを固定分類だけで保存し原文�
   const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
   await saveStartupLogFacts(directory, directory);
   const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
-  const record = JSON.parse(raw);
+  const record: unknown = JSON.parse(raw);
+  assert.ok(record !== null && typeof record === 'object' && 'stderr' in record && 'stdout' in record);
+  assert.ok(record.stderr !== null && typeof record.stderr === 'object' && 'status' in record.stderr && 'hints' in record.stderr);
+  assert.ok(record.stderr.hints !== null && typeof record.stderr.hints === 'object' && 'sessionNotCreated' in record.stderr.hints && 'devtoolsPortMissing' in record.stderr.hints);
+  assert.ok(record.stdout !== null && typeof record.stdout === 'object' && 'status' in record.stdout && 'hints' in record.stdout);
   assert.equal(record.stderr.status, 'read');
   assert.equal(record.stderr.hints.sessionNotCreated, true);
   assert.equal(record.stderr.hints.devtoolsPortMissing, true);
@@ -187,7 +191,10 @@ void test('driverログ読取は各64KiBで打ち切り、非通常fileを未知
   const { saveStartupLogFacts } = await import('../native-smoke/startup-logs.ts');
   await saveStartupLogFacts(directory, directory);
   const raw = await readFile(path.join(directory, 'driver-startup-log-facts.json'), 'utf8');
-  const record = JSON.parse(raw);
+  const record: unknown = JSON.parse(raw);
+  assert.ok(record !== null && typeof record === 'object' && 'stderr' in record && 'stdout' in record);
+  assert.ok(record.stderr !== null && typeof record.stderr === 'object' && 'bytesRead' in record.stderr && 'truncated' in record.stderr && 'hints' in record.stderr);
+  assert.ok(record.stderr.hints !== null && typeof record.stderr.hints === 'object' && 'sessionNotCreated' in record.stderr.hints);
   assert.equal(record.stderr.bytesRead, 65536);
   assert.equal(record.stderr.truncated, true);
   assert.equal(record.stderr.hints.sessionNotCreated, false);

@@ -21,6 +21,7 @@ async function readFacts(file: string): Promise<Facts> {
   const unavailable: Facts = { status: 'unavailable', bytesRead: null, truncated: null, hints: null };
   let handle: Awaited<ReturnType<typeof open>> | undefined;
   try {
+    // 自己所有CI領域の非競合が前提。検査からopenまでの敵対的差替えは隔離しない。
     const entry = await lstat(file);
     if (!entry.isFile() || entry.isSymbolicLink()) return unavailable;
     handle = await open(file, 'r');
