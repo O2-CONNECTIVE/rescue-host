@@ -1,3 +1,15 @@
+#[allow(
+    dead_code,
+    reason = "the owned-pipe check only exercises rejection and reap"
+)]
+#[path = "../src/control_codec/mod.rs"]
+mod control_codec;
+#[allow(
+    dead_code,
+    reason = "the owned-pipe check only exercises rejection and reap"
+)]
+#[path = "../src/control_coordinator/mod.rs"]
+mod control_coordinator;
 mod frame_checks;
 #[path = "../src/owned_process/mod.rs"]
 mod owned_process;
@@ -35,4 +47,5 @@ fn main() {
     }
     assert!(checked > 0, "zero fixture checks rejected");
     println!("owned-process-fixture: checks={checked} passed={checked}");
+    process_fixture::run_reader_boundary();
 }

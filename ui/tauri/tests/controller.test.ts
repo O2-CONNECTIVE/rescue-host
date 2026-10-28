@@ -101,3 +101,33 @@ void test('待機中の再確認を重複せず、timeout後の遅延応答を�
   assert.deepEqual(states, [{ kind: 'checking', diagnostic: 'CHECKING' }, { kind: 'unavailable', diagnostic: 'IPC_TIMEOUT' }]);
   controller.dispose();
 });
+
+void test('readerの固定faultだけを診断へ渡し、終了確認不能と取得不可を保つ', async () => {
+  for (const code of ['VERSION_MISMATCH', 'INVALID_MESSAGE', 'CONTEXT_MISMATCH', 'TERMINATION_UNCONFIRMED']) {
+    const states: ShellState[] = [];
+    const controller = createShellController({
+      // Native Tauri Err(&str) is a string rejection, not a JavaScript Error.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      invoke: () => Promise.reject(code),
+      onChange: state => states.push(state)
+    });
+    await controller.refresh();
+    assert.deepEqual(states.at(-1), { kind: 'unavailable', diagnostic: code });
+    controller.dispose();
+  }
+});
+
+void test('reader fault風の未知文字列やobjectを診断へ転送しない', async () => {
+  for (const payload of ['unknown-detail', '<img src=x>', { code: 'INVALID_MESSAGE' }, new Error('INVALID_MESSAGE')]) {
+    const states: ShellState[] = [];
+    const controller = createShellController({
+      // Exercise untrusted native rejection values; only exact fixed strings are allowed.
+      // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+      invoke: () => Promise.reject(payload),
+      onChange: state => states.push(state)
+    });
+    await controller.refresh();
+    assert.deepEqual(states.at(-1), { kind: 'unavailable', diagnostic: 'IPC_ERROR' });
+    controller.dispose();
+  }
+});
