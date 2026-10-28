@@ -1,15 +1,29 @@
 import { initialState, type OperatorAdapter, type OperatorState, type SampleId } from './model.ts';
-export function createOperatorController({ adapter: _adapter, onChange }: {
+export function createOperatorController({ adapter, onChange }: {
   adapter: OperatorAdapter; onChange: (state: OperatorState) => void;
 }) {
   let state = initialState();
+  let flow = 0;
+  function publish(next: Partial<OperatorState>) {
+    state = Object.freeze({ ...state, ...next });
+    onChange(state);
+  }
+  adapter.subscribe(value => {
+    if (typeof value !== 'object' || value === null || !('flow' in value) || value.flow !== flow || !('event' in value)) return;
+    if (value.event === 'approved' && state.phase === 'waiting') publish({ phase: 'connecting', diagnostic: 'DEMO_APPROVED' });
+    if (value.event === 'connected' && state.phase === 'connecting') publish({ phase: 'connected', diagnostic: 'DEMO_CONNECTED' });
+  });
   return {
     acceptSample(sample: SampleId) {
       if (state.phase !== 'entry') return;
-      state = { phase: 'review', sample, termination: 'not_started', diagnostic: 'DEMO_REVIEW' };
-      onChange(state);
+      flow += 1;
+      publish({ phase: 'review', sample, termination: 'not_started', diagnostic: 'DEMO_REVIEW' });
     },
-    requestApproval(_confirmed: boolean) { return Promise.resolve(); },
+    async requestApproval(confirmed: boolean) {
+      if (state.phase !== 'review' || !confirmed) return;
+      publish({ phase: 'waiting', termination: 'unconfirmed', diagnostic: 'DEMO_APPROVAL_REQUESTED' });
+      await adapter.requestApproval(flow);
+    },
     snapshot() { return state; }
   };
 }
