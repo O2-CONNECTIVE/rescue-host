@@ -57,7 +57,8 @@ summaryはlastSequence/attempted/enqueued/written/dropped/sealed/pendingRequests
 sealed後に観測対象外のeventが発生し得るため、traceの無いeventを将来まで不存在とはしない。
 
 出力は1行256bytes・全体8KiBまで。自己所有のpending fileへ書いてからrenameし、半端なfileを完成物にしない。
-supervisorは既存判定の後で最大1秒だけ完成fileを待ち、元の所有driver cleanupを実行する。診断のためにdriver寿命やclose条件を延長しない。
+supervisorは既存合否・close判定の後、cleanup開始前へ最大1秒budgetの診断待機を追加し、その後に元の所有driver cleanupを実行する。
+この観測用待機でtoolのcleanup開始は後へずれるが、元の合否・close期限・node/全体上限は変更しない。OS呼出やスケジュールの非returnに対する厳密な実時間保証ではない。
 raw traceはToolsDirectory内に保持し、そのままartifactへcopyしない。
 `scripts/verify_driver_trace.py`が固定schema/enum/整数/seq/完全性と同一slotの状態遷移を検証し、安全なJSONだけを証跡へ保存する。
 不正入力・未知field・parse errorは固定codeと空eventsで拒否し、原文/pathを出さない。
