@@ -71,13 +71,48 @@ legacy provisionerは借用するchild側pipe/tokenの元handleを所有し続�
 native adapterへ渡すbase provisionerは、返したchild-side stdio複製の所有を移し、adapterが継承後または失敗時に閉じる。primary tokenは借用のままである。
 専用bootstrap writerはserviceのみが所有し、書込完了後に全writer copyを閉じる。
 親側control pipeはOwnedControlが閉じる。
-stderrの有限drain/診断の選別と、承認済み受理transportをRuntime.Serveへ渡す実入口も、未設定のbootstrap/transport factoryの責務として残る。
+stderrは以下の所有者が内容を保存せずに有限drainする。承認済み受理transportをRuntime.Serveへ渡す実入口は未設定のtransport factoryの責務として残る。
 それらを実装済みと見せるfake childや常時成功callbackは製品sourceに追加しない。
+
+## 保護stdioの明示構成
+
+`NewNativeStdioProvisioning`は同じ固定profileと借用primary token、policyRef、poll/操作/cleanup予算、正の`StderrBytes`上限を必須とする。
+このbaseを`NewNativeChildProvisioning`へ渡した場合だけ、同じservice認証scopeの再照合後に`childstdio.NewNative`で3本のbyte pipeを作る。
+裸のbaseの`PrepareChild`は拒否し、検証済みを表すboolや任意callbackを公開しない。
+生成前後の再照合、元hard deadline、grant由来のgeneration/full Identity、fresh channel nonce、固定artifactを保持する。
+pipe生成または回収に失敗しても同じbaseは再利用しない。
+
+親serverは非継承のOVERLAPPED、子clientは同期・非継承原本から作る継承複製である。
+3本の子複製はchildjobへ借用し、bootstrapの第4handleと合わせた明示HANDLE_LISTだけで継承する。
+子起動後のservice側複製はstdio所有者だけが閉じ、コピーしたraw handleとの二重closeを避ける。
+部分生成でも所有者を返し、生成失敗時はstderr Readを開始せず回収だけを許す。
+
+`OwnedStdio`はstderrを一定サイズのbufferへ読み、内容をlog、UI、errorへ保存・転送しない。
+総byte上限を超える、Readが失敗する、0byteかつerrorなしのReadの場合は失敗として同じAuthorityを失効させる。
+上限まで捨てて接続を成功扱いにする動作ではない。
+別Authorityへの付替えとClose後の再利用も両方のgrantを失効させて拒否する。
+
+正常回収は既存Go Closeとstdout実EOF、process exit0/Job空に加えて、stderr実EOFとdrain worker joinを待つ。
+資源回収の`Close`だけで実EOFを代用しない。
+stream Closeは取消と非blocking確認だけを行い、未完了なら同じPipesの参照を保持する。
+有限deadline付きの`Pipes.Close(ctx)`で同じoperationを回収し、buffer/event/handleをcompletion前に解放しない。
+このsourceは戻らないOS API、監督hang、OS sleep、実guest分離を解決済みとするものではない。
+
+## 許可0でのSCM readyに残る依存
+
+現`Host.Run`は承認読取りと単回起動を直結している。
+現localcontrolはsession Identity/generationを必須とし、公開Openも閉鎖しているため、初回承認前の制御面へそのまま転用できない。
+一方、既存native service認証はSCM RUNNINGの確認を要求する。
+この変更ではその循環をRUNNINGの自己申告、空Identity、仮のgrantで埋めない。
+
+後続では、初回承認前のservice制御面の認証/停止/ready条件を確定し、許可0でのready確認→SCM RUNNING報告→明示operator承認→今回の子起動へ分ける必要がある。
+制御面がreadyでない、承認元が未構成、初期許可が0でない場合はRUNNINGを報告しない。
+既存control/1へのapprove/renew追加や、現localcontrolの任意開放はこの変更に含めない。
 
 ## sourceで閉じられる作業と実機の別承認
 
 専用codec、native reader/writer、固定key-reference reader、第4handleの生成/継承/closeはsourceで接続した。
-固定provisioning値の読取、保護stdioの生成、stderrの有限drain、SCM grant0 ready、正規operatorの初回承認入口と受理transportの供給は未設定である。
+保護stdioの生成とstderrの有限drainは、以下の明示構成sourceへ接続した。固定provisioning値の読取、SCM grant0 ready、正規operatorの初回承認入口と受理transportの供給は未設定である。
 既定mainのreceiverとSCMのHostはnilのままで、RUNNINGやSSH activeを自己申告しない。
 Session/lease内部へ絶対hard deadlineを直接渡すinterfaceも後続の担当module変更で、現runtimeは元のdeadlineを保持し、相対時間の生成前後照合とcontextで保守的に拒否する。
 

@@ -104,8 +104,14 @@ func (n *nativeChildProvisioning) prepareIssued(ctx context.Context, a *supervis
 	if err != nil || p.probe == nil {
 		return plan, errors.Join(ErrProvisioningRejected, err)
 	}
-	base, err := n.base.PrepareChild(ctx, snapshot.Grant)
+	var base ChildPlan
+	if source, ok := n.base.(*nativeStdioProvisioning); ok {
+		base, err = source.prepareStdio(ctx, snapshot.Grant, p.probe)
+	} else {
+		base, err = n.base.PrepareChild(ctx, snapshot.Grant)
+	}
 	p.children = base.Spec.Handles
+	p.stdio = base.Stdio
 	p.extra = base.PreparedBootstrap
 	base.PreparedBootstrap = p
 	plan = base
@@ -142,6 +148,7 @@ type nativePublication struct {
 	probe        serviceProbe
 	pipe         bootstrapPair
 	children     childjob.Handles
+	stdio        *OwnedStdio
 	token        uintptr
 	api          nativeBootstrapCalls
 	budget       time.Duration
@@ -204,7 +211,12 @@ func (p *nativePublication) releaseChildren(ctx context.Context) error {
 		return ErrRuntimeUnconfirmed
 	}
 	defer func() { p.cleanup <- struct{}{} }()
-	err := p.api.closeChild(ctx, &p.children, p.token)
+	var err error
+	if p.stdio != nil {
+		err = p.stdio.releaseChild(ctx)
+	} else {
+		err = p.api.closeChild(ctx, &p.children, p.token)
+	}
 	if p.pipe != nil {
 		err = errors.Join(err, p.pipe.ReleaseChildRead(ctx))
 	}
@@ -231,7 +243,12 @@ func (p *nativePublication) Close(ctx context.Context) error {
 		return ErrRuntimeUnconfirmed
 	}
 	defer func() { p.cleanup <- struct{}{} }()
-	err := p.api.closeChild(ctx, &p.children, p.token)
+	var err error
+	if p.stdio != nil {
+		err = p.stdio.Close(ctx)
+	} else {
+		err = p.api.closeChild(ctx, &p.children, p.token)
+	}
 	if p.pipe != nil {
 		err = errors.Join(err, p.pipe.Close(ctx))
 	}
