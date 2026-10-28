@@ -33,6 +33,11 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 700ms以内に実Writeの未完了を観測できなければ失敗し、失効後1秒以内の同じWriteの中断・所有資源回収という条件は変更しません。
 この限定fixtureの成功を、製品Windows背圧や全TCP条件の保証へ広げません。
 
+準備期限の実測は、製品の単調時計・壁時計の先着判定に合わせ、少なくとも一方が5秒へ達したことと、単調時計で6秒未満の観測上限を検査します。
+待機結果・Snapshot前のContext終了・両時計の経過・失効理由を分け、Snapshot自身の期限検査を自律失効の証拠にしません。
+偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
+これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
+
 通常buildに選択される15package、Linux/macOSでは39実装、Windowsでは41実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
