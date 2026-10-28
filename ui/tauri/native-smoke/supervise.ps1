@@ -2,12 +2,17 @@ param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][stri
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
+. "$PSScriptRoot/close-observation.ps1"
 New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop | Out-Null
 $appPath = (Resolve-Path $(if ($ApplicationPath) { $ApplicationPath } else { "$PSScriptRoot/../src-tauri/target/debug/rescue-host-shell.exe" })).Path
 $edgePath = (Resolve-Path "$ToolsDirectory/edge/msedgedriver.exe").Path
 $tauriPath = (Resolve-Path "$ToolsDirectory/tauri/bin/tauri-driver.exe").Path
 $driverProcess = $null
 $nodeProcess = $null
+$childHandles = @()
+$children = @()
+$app = $null
+$childWaitStartedUtc = $null
 $report = [ordered]@{ kind = 'windows-webview2-native-smoke'; nativeTestsRun = 0; nativeTestsPassed = 0; cleanupStarted = $false; normalCloseVerified = $false; failurePhase = $null }
 $phase = 'environment'
 try {
@@ -44,17 +49,35 @@ try {
     if ($view.browserVersion -ne (Get-Content "$PSScriptRoot/tools.json" -Raw | ConvertFrom-Json).runtimeVersion) { throw 'NATIVE_ACTUAL_RUNTIME_MISMATCH' }
     if ($view.nativeTestsStarted -ne 1 -or $view.checks -ne 3 -or -not $view.actualRustIpc) { throw 'NATIVE_ZERO_OR_INCOMPLETE_TESTS' }
     $snapshot = Get-Snapshot
-    $observation = Get-OwnedApp $driver[0] $edge[0] $appPath $snapshot
+    $phase = 'ownership-confirmation'
+    $lineageEvidence = @()
+    try { $observation = Get-OwnedApp $driver[0] $edge[0] $appPath $snapshot ([ref]$lineageEvidence) }
+    finally { $report.initialLineageFacts = @($lineageEvidence) }
     $app = $observation.App
     $children = $observation.Children
+    $childHandles = @(Open-ChildObservationHandles $children)
+    $report.childHandleOwner = 'harness-read-only-before-app-close'
     $report.webviewChildrenObserved = $observation.Webviews.Count
     $phase = 'normal-close'
     $appProcess = Get-Process -Id $app.ProcessId -ErrorAction Stop
     $appProcess.Refresh()
-    Request-NormalClose $app $appProcess 10000
-    $until = [DateTime]::UtcNow.AddSeconds(10)
+    $appWait = [Diagnostics.Stopwatch]::StartNew()
+    try { Request-NormalClose $app $appProcess 10000 }
+    finally { $report.appWaitElapsedMs = $appWait.ElapsedMilliseconds }
+    $report.appCloseObservedBeforeCleanup = $true
+    $report.appExitCode = $appProcess.ExitCode
+    $childWaitStartedUtc = [DateTime]::UtcNow
+    $childWait = [Diagnostics.Stopwatch]::StartNew()
+    $report.childSnapshotCount = 0
+    $report.childSnapshotMaxMs = 0
+    $until = $childWaitStartedUtc.AddSeconds(10)
     do {
+        $report.childSnapshotStartMs = $childWait.ElapsedMilliseconds
+        $snapshotTimer = [Diagnostics.Stopwatch]::StartNew()
         $snapshot = Get-Snapshot
+        $report.childSnapshotEndMs = $childWait.ElapsedMilliseconds
+        $report.childSnapshotCount += 1
+        $report.childSnapshotMaxMs = [Math]::Max($report.childSnapshotMaxMs, $snapshotTimer.ElapsedMilliseconds)
         Require-Live $driver[0] $snapshot
         Require-Live $edge[0] $snapshot
         $remaining = @($children | Where-Object {
@@ -63,7 +86,16 @@ try {
         })
         if ($remaining.Count -gt 0) { Start-Sleep -Milliseconds 200 }
     } while ($remaining.Count -gt 0 -and [DateTime]::UtcNow -lt $until)
-    if ($remaining.Count -ne 0) { throw 'NATIVE_OBSERVED_CHILD_CLOSE_TIMEOUT' }
+    $report.childWaitElapsedMs = $childWait.ElapsedMilliseconds
+    $report.childCloseFacts = Get-ChildCloseFacts $children $app $snapshot $childHandles $childWaitStartedUtc $env:NATIVE_PROFILE
+    if ($remaining.Count -ne 0) {
+        # 旧判定は既にtimeout。後続観測で消えてもこのFAILを変えない。
+        try {
+            $report.afterWaitProbeFacts = Get-ChildCloseFacts $children $app (Get-Snapshot) $childHandles $childWaitStartedUtc $env:NATIVE_PROFILE
+            $report.afterWaitProbeElapsedMs = $childWait.ElapsedMilliseconds
+        } catch { $report.afterWaitProbeObservation = 'unavailable' }
+        throw 'NATIVE_OBSERVED_CHILD_CLOSE_TIMEOUT'
+    }
     if ($report.cleanupStarted) { throw 'NATIVE_CLOSE_OBSERVED_AFTER_CLEANUP' }
     $report.closeObservedBeforeCleanup = $true
     $report.normalCloseVerified = $true
@@ -80,10 +112,7 @@ try {
     $report.failureLine = $_.InvocationInfo.ScriptLineNumber
     Write-Output $report.failureCode
 } finally {
-    # Cleanup is deliberately after the normal-close verdict. Driver Job Object also contains partial app launches.
-    $report.cleanupStarted = $true
-    if ($nodeProcess -and -not $nodeProcess.HasExited) { $nodeProcess.Kill() }
-    if ($driverProcess -and -not $driverProcess.HasExited) { $driverProcess.Kill() }
-    $report | ConvertTo-Json -Depth 4 | Set-Content "$OutputDirectory/native-result.json" -Encoding utf8
+    # 通常closeの合否確定後にのみcleanupし、元のFAILと記録を保持する。
+    Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE
 }
-if ($report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }
+if ($report.cleanupFailures -gt 0 -or $report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or -not $report.normalCloseVerified) { exit 1 }

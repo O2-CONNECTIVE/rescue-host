@@ -21,8 +21,11 @@ var ErrDenied = errors.New("supervisor grant または期限条件が一致し�
 type Identity = lease.Identity
 
 type Binding struct {
-	// 保護 provisioning が未使用値を発行し、起動を跨いだ非再利用を担う。
-	// この core は値を生成・increment・wrap しない。
+	// 保護所有者のnamespace内で再利用しない番号。起動を跨ぐ同一性は番号単独でなく、
+	// ownerのinstance epoch + Generation + full Identity全体で非再利用を保証する。
+	// nonresumeではfresh namespace/LaunchIDと許可0からの再承認を使う。
+	// Identity.Epochはbackend session epochで、instance epochへ読み替えない。
+	// このcoreは値を生成・increment・wrap・復元しない。
 	Generation uint64
 	Identity   Identity
 }
@@ -76,7 +79,8 @@ type Authority struct {
 }
 
 // New は新規承認にだけ使う。再起動時に旧 grant を再生成する入口ではない。
-// 世代の非再利用・失効記録・新規承認の認証は保護 provisioning の必須依存。
+// compound identity非再利用と新規承認の認証は保護所有者の必須責務。
+// 永続modeの失効記録と、nonresumeのfresh起動/許可全破棄を暗黙に代替しない。
 // この core だけでは再起動を跨いだ replay 防止を保証しない。
 func New(grant ProvisionedGrant, now time.Time) (*Authority, error) {
 	now = now.Round(0)
