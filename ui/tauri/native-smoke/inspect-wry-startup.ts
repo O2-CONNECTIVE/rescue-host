@@ -13,7 +13,7 @@ try {
     collection: { type: 'string' }, source: { type: 'string' }, exe: { type: 'string' } } });
   if (!v.directory || !v.provenance || !v.collection || !v.source || !v.exe || !/^[0-9a-f]{40}$/.test(v.source)) throw new Error();
   const rawPins = await bounded(fileURLToPath(new URL('../../../tools/wry-startup-trace/pins.json', import.meta.url)), 8192);
-  if (createHash('sha256').update(rawPins).digest('hex') !== 'f98320cd9b2d76c764c99b9062b24741140e5630bd45505b8118e85ca74abbb0') throw new Error();
+  if (createHash('sha256').update(rawPins).digest('hex') !== '476a42aa826c647532204c960ba4fcbcf0100f3f74a524f9ff032c02c51030bc') throw new Error();
   const pins = JSON.parse(rawPins.toString('utf8')) as Record<string, unknown>;
   const rawProvenance = (await bounded(v.provenance, 8192)).toString('utf8');
   const provenance: unknown = JSON.parse(rawProvenance);

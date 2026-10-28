@@ -36,6 +36,7 @@ WebView作成はSTA/message pumpを使うが、今回pumpや呼出順は変更�
 `759c50ddad0ef9913bb5496cb9d509a50433a3b78cb0238d61105526589cf0e9`へ照合する。
 `tools/wry-startup-trace/pins.json`自体のhashを適用scriptとconsumerで固定する。
 置換差分、追加Rust、変更3fileの前後hash、全upstream file集合を検査し、未知fileや無関係変更を拒否する。
+bundleと元lockは.gitattributesの-textでWindows checkoutの改行変換も防ぐ。
 診断CIの自己所有tempだけへ展開し、Cargoの一時path patchで選ぶ。
 元lockの固定hashを検査し、Wry1entryのregistry source/checksumだけを外した固定postimageへ変換する。
 依存版を更新せず、`--locked`とbuild後の全source/lock再検査を行う。
@@ -68,4 +69,5 @@ I/Oの非returnに厳密な実時間保証はない。回収失敗は局所化�
 その後の余剰field・順序・CLI hash拒否は実装後回帰。
 `node --test tests/wry-startup-stages.test.ts tests/wry-startup-files.test.ts`を使う。
 stdlib record入口の3つの有限fixtureはCOMを呼ばず、producerの実file/closeを確認する。
+fixtureだけを--cfg testでbuildし、writerのfile drop後の完了通知を待つ。存在確認と固定sleepでcloseを代替しない。
 Windowsの実callback・EXE・元のnative合否は、新headのCIで別に判定する。

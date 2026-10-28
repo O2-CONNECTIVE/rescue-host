@@ -55,6 +55,13 @@ struct Recorder {
     complete: AtomicBool,
 }
 static TRACE: OnceLock<Option<Arc<Recorder>>> = OnceLock::new();
+// stdlib fixtureだけでwriterの通常closeを確認する。依存buildには含まれない。
+#[cfg(test)]
+static WRITER_FINISHED: AtomicBool = AtomicBool::new(false);
+#[cfg(test)]
+pub(crate) fn fixture_writer_finished() -> bool {
+    WRITER_FINISHED.load(SeqCst)
+}
 struct Flight<'a>(&'a Recorder);
 impl Drop for Flight<'_> {
     fn drop(&mut self) {
@@ -150,5 +157,8 @@ impl Recorder {
                 let _ = file.write_all(text.as_bytes());
             }
         }
+        // 上のscopeを出てfileがdropされた後だけ完了通知する。
+        #[cfg(test)]
+        WRITER_FINISHED.store(true, SeqCst);
     }
 }

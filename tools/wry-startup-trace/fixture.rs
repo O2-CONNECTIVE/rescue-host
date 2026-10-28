@@ -29,12 +29,11 @@ fn main() {
     }
     std::fs::write(path.join("app-startup.finish"), "finish").unwrap();
     let until = Instant::now() + Duration::from_secs(3);
-    while !path.join("wry-startup-stages.json").is_file() {
+    while !startup_probe::fixture_writer_finished() {
         if Instant::now() >= until {
             std::process::exit(3);
         }
         thread::sleep(Duration::from_millis(10));
     }
-    // writerのclose後に親が読む。thread強制終了を成功条件にしない。
-    thread::sleep(Duration::from_millis(50));
+    // 完了通知はwriterのfile drop後。main終了による強制closeを代替にしない。
 }

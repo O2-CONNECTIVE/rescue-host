@@ -53,7 +53,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $sourcePath = "$env:RUNNER_TEMP/wry-startup-source".Replace('\', '/')
           "STARTUP_WRY_CONFIG=patch.crates-io.wry.path='$sourcePath'" >> $env:GITHUB_ENV
-          rustc +1.99.1 --edition 2021 tools/wry-startup-trace/fixture.rs -o "$env:RUNNER_TEMP/wry-probe-fixture.exe"
+          rustc +1.99.1 --cfg test --edition 2021 tools/wry-startup-trace/fixture.rs -o "$env:RUNNER_TEMP/wry-probe-fixture.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -I scripts/tests/run_wry_probe.py "$env:RUNNER_TEMP/wry-probe-fixture.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
