@@ -26,6 +26,18 @@ fn join(reader: &mut ReaderTask) -> ReaderEnd {
     }
 }
 
+#[test]
+fn a_shared_cancel_token_reaches_the_same_worker_before_it_reads() {
+    use std::sync::atomic::AtomicBool;
+    let cancelled = Arc::new(AtomicBool::new(true));
+    let mut reader = ReaderTask::start_with_cancel(Cursor::new(b"{}\n"), cancelled).unwrap();
+    assert_eq!(
+        reader.poll_until(Instant::now() + Duration::from_secs(2)),
+        ReaderEvent::Joined(ReaderEnd::Cancelled)
+    );
+    assert_eq!(reader.poll(), ReaderEvent::Closed);
+}
+
 struct HeldRead {
     gate: Arc<(Mutex<bool>, Condvar)>,
     entered: Option<mpsc::SyncSender<()>>,
@@ -68,6 +80,39 @@ fn cancel_does_not_claim_to_interrupt_blocking_read_or_consume_the_owner() {
     assert_eq!(pending, ReaderEvent::Pending);
     assert_eq!(join(&mut reader), ReaderEnd::Cancelled);
     assert_eq!(reader.poll(), ReaderEvent::Closed);
+}
+
+#[test]
+fn connection_join_budget_retains_ownership_until_the_read_actually_finishes() {
+    use control_coordinator::connection::ReaderConnection;
+    use control_coordinator::Conversation;
+    let expected = serde_json::from_value(serde_json::json!({
+        "protocol": "rescue-host-control/1", "generation": "1",
+        "identity": {"launchId": "launch-001", "epoch": "1", "policyDigest": "a".repeat(64)},
+        "binding": {"artifactSha256": "b".repeat(64), "channelNonce": "c".repeat(64)}
+    }))
+    .unwrap();
+    let gate = Arc::new((Mutex::new(false), Condvar::new()));
+    let (entered, received) = mpsc::sync_channel(1);
+    let reader = ReaderTask::start(HeldRead {
+        gate: Arc::clone(&gate),
+        entered: Some(entered),
+    })
+    .unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected), reader);
+    received.recv_timeout(Duration::from_secs(2)).unwrap();
+    let unfinished = connection.cancel_and_join_until(Instant::now() + Duration::from_millis(10));
+    // Release before any assertion, even when the implementation regresses.
+    let (lock, ready) = &*gate;
+    *lock.lock().unwrap() = true;
+    ready.notify_all();
+    assert_eq!(unfinished, Err(Code::TerminationUnconfirmed));
+    assert_eq!(connection.observation().reader_join, None);
+    let joined = connection
+        .cancel_and_join_until(Instant::now() + Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(joined.reader_join, Some(ReaderEnd::Cancelled));
+    assert_eq!(joined.fault, Some(Code::TerminationUnconfirmed));
 }
 
 struct CountedRead {
