@@ -40,3 +40,31 @@ void test('単一sessionの中断前後を単調時刻と固定分類で保存�
   assert.equal(calls, 1);
   assert.equal(fire, undefined);
 });
+
+void test('早期成功はtimerを解除し、存在しないログを読まず元の結果を返す', async t => {
+  // 実装後回帰。先行REDとは区別する。
+  const directory = await mkdtemp(path.join(tmpdir(), 'session-success-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { observeSessionStartup } = await import('../native-smoke/session-observation.ts');
+  let canceled = false;
+  assert.equal(await observeSessionStartup(() => Promise.resolve('original'), directory, directory, {
+    now: () => 7, schedule: () => () => { canceled = true; }
+  }), 'original');
+  const record: unknown = JSON.parse(await readFile(path.join(directory, 'session-startup-timing.json'), 'utf8'));
+  assert.deepEqual(record, { schema: 1, purpose: 'diagnostic-hints-only', settledMs: 0, outcome: 'success', samples: [] });
+  assert.equal(canceled, true);
+});
+
+void test('診断保存不能でも元の拒否を置換せず、固定codeだけを出力する', async t => {
+  // 実装後回帰。原例外のidentityも維持する。
+  const directory = await mkdtemp(path.join(tmpdir(), 'session-write-failure-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const { observeSessionStartup } = await import('../native-smoke/session-observation.ts');
+  const codes: unknown[][] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { codes.push(args); });
+  const original = new Error('PRIVATE_FAILURE');
+  await assert.rejects(observeSessionStartup(() => Promise.reject(original), directory, path.join(directory, 'missing'), {
+    now: () => 1, schedule: () => () => {}
+  }), error => error === original);
+  assert.deepEqual(codes, [['NATIVE_SESSION_TIMING_EVIDENCE_FAILED']]);
+});

@@ -56,3 +56,26 @@ fixtureはprocessやportを作らず、native起動の証拠には数えない�
 保存は既存の固定code writerを共有し、失敗しても元のFAIL/cleanup値を成功へ変えない。住所解析不能はloopback=nullとする。
 実Windows native/配布CIの結果と、#74との結合後の固定head結果は別に記録する。
 Go/runtime/Rust readerや製品gateは変更しない。
+
+## 単一session要求の前後観測
+
+main ba8c595eのrun40667680395はsession POST15,151ms timeoutで、stdoutにproxyConnectionErrorを検出した。
+この句はtauri-driverの接続処理全般のerrorに使われ、原因かクライアント取消の結果かを現在のartifactだけでは区別できない。
+Rust/client追加が原因との証拠もない。
+
+session要求を1回だけ開始し、未完了なら10秒timerで固定2ログを各64KiBまで1回読む。
+要求が先に完了したらtimerを解除する。失敗時には要求確定後にも1回読む。
+各sampleには要求開始を基準とするperformance.nowの読取開始・完了ms、読取開始時の要求未完了boolean、固定stageを付ける。
+要求完了時刻と固定outcomeも別に記録する。壁時計・端末時刻・PID・path・例外原文は付けない。
+HyperのIncompleteMessage/Canceled/Ioの固定表記だけを種類hintへ写し、未知のproxy errorはunclassifiedとする。
+元ログはrequest IDを持たず、分類は同一requestへの帰属や内部error型の証明ではない。
+
+前sampleでerrorが存在すれば、その読取完了までに記録されていたという証拠になる。
+前false・後trueでも、10秒以降の先行errorと要求取消の結果は区別できない。
+読取windowが要求確定と重なった場合も、開始時booleanだけから記録順を断定しない。
+記録時点はevent発生時点ではなく、単調時刻はnodeプロセス内だけで比較できる。
+
+既存15秒request期限・単一要求・合否・正常終了/全子終了条件・cleanupを維持する。
+診断のI/Oは要求と並行に開始し、要求確定後に回収する。filesystem単体の厳密な完了期限は保証せず、既存60秒node期限と3分harness上限を維持する。
+診断取得不能はnull、保存不能は固定code。元の成功値/失敗例外は置換しない。
+これはharness診断であり、製品修正・旧timeout解消・実SSH成功の証拠ではない。
