@@ -1,4 +1,5 @@
 //! Internal preparation only; context matching is not peer authentication.
+pub(crate) mod connection;
 pub(crate) mod observations;
 pub(crate) mod owned;
 pub(crate) mod reader;

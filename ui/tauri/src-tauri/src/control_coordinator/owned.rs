@@ -40,6 +40,10 @@ impl OwnedCoordinator {
         self.conversation.receive(frame)
     }
 
+    pub fn transport_failed(&mut self) -> Result<(), Code> {
+        self.conversation.transport_failed()
+    }
+
     /// This is a local worker's report. This module does not create/join that
     /// worker or authenticate its pipe, and never promotes the report to proof.
     pub fn reader_completed(&mut self, report: ReaderCompletionReport) -> Result<(), Code> {
