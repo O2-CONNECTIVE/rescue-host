@@ -1,3 +1,6 @@
+mod frame_checks;
+#[path = "../src/owned_process/mod.rs"]
+mod owned_process;
 mod process_fixture;
 
 use process_fixture::Mode;
@@ -10,6 +13,13 @@ fn main() {
         return;
     }
     assert!(arguments.is_empty(), "unexpected test argument");
+    let mut bytes = std::io::Cursor::new(b"{}\n");
+    assert_eq!(
+        owned_process::frame::read_frame(&mut bytes, 3).unwrap(),
+        Some(b"{}\n".to_vec())
+    );
+    println!("owned-pipe: byte-frame checks=1 passed=1");
+    frame_checks::run();
     let cases = [
         (Mode::Graceful, Ok(())),
         (Mode::Overlong, Err("FIXTURE_PROTOCOL_REJECTED")),

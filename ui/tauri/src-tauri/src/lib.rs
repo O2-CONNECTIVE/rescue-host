@@ -6,6 +6,12 @@ use serde::{Deserialize, Serialize};
 )]
 mod control_codec;
 
+#[allow(
+    dead_code,
+    reason = "internal process boundary is not wired while the product gate is closed"
+)]
+mod owned_process;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusRequest {
