@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
-	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 	"golang.org/x/sys/windows/svc"
 )
 
@@ -23,10 +23,10 @@ func TestSCMHandlerRefusesUnconfiguredHostAndIgnoresArguments(t *testing.T) {
 
 func TestSCMHandlerMapsInterrogateAndStopWithoutUsingReportedRunning(t *testing.T) {
 	entered := make(chan struct{})
-	host := servicehost.New(provisioningFunc(func(ctx context.Context) (supervisor.ProvisionedGrant, error) {
+	host := servicehost.New(provisioningFunc(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
 		close(entered)
 		<-ctx.Done()
-		return supervisor.ProvisionedGrant{}, ctx.Err()
+		return ephemeral.ApprovedPolicy{}, ctx.Err()
 	}))
 	requests := make(chan svc.ChangeRequest, 2)
 	defer close(requests)

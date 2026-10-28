@@ -5,8 +5,11 @@ package control
 import (
 	"context"
 	"errors"
+	"sync"
+	"time"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
 )
 
 var (
@@ -24,8 +27,14 @@ type session interface {
 }
 
 type Coordinator struct {
-	session  session
-	identity backend.Identity
+	mu           sync.Mutex
+	session      session
+	identity     backend.Identity
+	prepared     bool
+	started      bool
+	stopped      bool
+	deadline     time.Time
+	closeTimeout time.Duration
 }
 
 // Operation はGo内の呼出し種別であり、wireの版やfieldを定義しない。
@@ -66,8 +75,56 @@ func newCoordinator(s session) (*Coordinator, error) {
 	return &Coordinator{session: s, identity: id}, nil
 }
 
-// Start は保護監督・契約の接続前には常に拒否する。Ready/Activateは呼ばない。
-func (c *Coordinator) Start(context.Context, backend.Identity) error { return ErrStartClosed }
+// NewPrepared は保護された型付きbootstrapだけが呼ぶ準備入口。
+// wireからgrantを作らず、supervisorの権威を新規作成・延長しない。
+// SessionのConfig/鍵集合/短leaseとgrantの照合はruntimeが先に済ませる。
+func NewPrepared(s *backend.Session, grant supervisor.ProvisionedGrant, closeTimeout time.Duration) (*Coordinator, error) {
+	c, err := New(s)
+	if err != nil {
+		return nil, err
+	}
+	if grant.Binding.Generation == 0 || grant.Binding.Identity != c.identity || grant.GuestBoundary != supervisor.SeparatedNonAdminGuest || grant.KeySetDigest == ([32]byte{}) || grant.BackendLeaseCeiling <= 0 || !time.Now().Before(grant.HardDeadline) || s.Snapshot().State != "prepared" || closeTimeout <= 0 {
+		return nil, ErrIdentity
+	}
+	c.prepared, c.deadline = true, grant.HardDeadline.Round(0)
+	c.closeTimeout = closeTimeout
+	return c, nil
+}
+
+// Start は既定constructorでは拒否する。保護bootstrapで準備した同じSessionだけを
+// Ready→Activateへ進め、失敗/取消後の再試行や復活は許可しない。
+func (c *Coordinator) Start(ctx context.Context, id backend.Identity) error {
+	if c == nil {
+		return ErrUnavailable
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.prepared {
+		return ErrStartClosed
+	}
+	if ctx == nil {
+		return ErrBudget
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		return ErrBudget
+	}
+	if id != c.identity {
+		return ErrIdentity
+	}
+	if c.started || c.stopped {
+		return ErrUnavailable
+	}
+	c.started = true
+	active, ok := c.session.(interface {
+		Ready(backend.Identity) error
+		Activate(backend.Identity) error
+	})
+	if !ok || !time.Now().Before(c.deadline) || ctx.Err() != nil || active.Ready(id) != nil || !time.Now().Before(c.deadline) || ctx.Err() != nil || active.Activate(id) != nil || !time.Now().Before(c.deadline) || ctx.Err() != nil {
+		_ = c.session.Revoke(id)
+		return ErrUnavailable
+	}
+	return nil
+}
 
 // Snapshot はGoの観測値だけを返し、認可・lease更新・期限延長を行わない。
 func (c *Coordinator) Snapshot(id backend.Identity) (backend.Snapshot, error) {
@@ -97,15 +154,25 @@ func (c *Coordinator) Stop(ctx context.Context, id backend.Identity) (backend.Sn
 	if _, err := c.Snapshot(id); err != nil {
 		return backend.Snapshot{}, err
 	}
-	if err := c.session.Revoke(id); err != nil {
+	c.mu.Lock()
+	c.stopped = true
+	err := c.session.Revoke(id)
+	c.mu.Unlock()
+	if err != nil {
 		return backend.Snapshot{}, ErrUnavailable
 	}
-	closeErr := c.session.Close(ctx)
+	closeCtx := ctx
+	if c.closeTimeout > 0 {
+		var cancel context.CancelFunc
+		closeCtx, cancel = context.WithTimeout(ctx, c.closeTimeout)
+		defer cancel()
+	}
+	closeErr := c.session.Close(closeCtx)
 	snapshot, err := c.Snapshot(id)
 	if err != nil {
 		return backend.Snapshot{}, err
 	}
-	if closeErr != nil || ctx.Err() != nil || snapshot.State != "terminated" {
+	if closeErr != nil || closeCtx.Err() != nil || snapshot.State != "terminated" {
 		return snapshot, ErrUnconfirmed
 	}
 	return snapshot, nil

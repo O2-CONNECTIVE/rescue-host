@@ -3,6 +3,7 @@ package control
 import (
 	"bytes"
 	"context"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,7 +15,101 @@ import (
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/stdio"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor"
+	"golang.org/x/crypto/ssh"
 )
+
+func approvedRealSession(t *testing.T) (*backend.Session, supervisor.ProvisionedGrant, WireContext) {
+	t.Helper()
+	// 公開の合成seedだけを使い、OS鍵や資格情報を生成・保存しない。
+	signer, err := ssh.NewSignerFromKey(ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest, err := backend.PolicyDigest("restricted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire := testWireContext()
+	wire.Identity.PolicyDigest = digest
+	grant := supervisor.ProvisionedGrant{Binding: supervisor.Binding{Generation: 1, Identity: wire.Identity.backend()}, KeySetDigest: [32]byte{1}, GuestBoundary: supervisor.SeparatedNonAdminGuest, HardDeadline: time.Now().Add(5 * time.Second), BackendLeaseCeiling: time.Second}
+	s, err := backend.New(backend.Config{Identity: grant.Binding.Identity, OperationMode: "restricted", AllowedKeys: []ssh.PublicKey{signer.PublicKey()}, HostKey: signer, MaximumDuration: 5 * time.Second, LeaseDuration: time.Second, MaxChannels: 1, MaxHandshakes: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := s.Close(ctx); err != nil {
+			t.Errorf("real Session cleanup: %v", err)
+		}
+	})
+	return s, grant, wire
+}
+
+func TestPreparedAdapterAcknowledgesRealSessionActivation(t *testing.T) {
+	s, grant, wire := approvedRealSession(t)
+	c, err := NewPrepared(s, grant, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := NewAdapter(wire, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exchange(t, a, Message{Protocol: Protocol, Kind: "hello", Generation: wire.Generation, Identity: wire.Identity, Binding: &wire.Binding})
+	message := Message{Protocol: Protocol, Kind: "start", Generation: wire.Generation, Identity: wire.Identity, Sequence: "1", RequestID: "1", Payload: json.RawMessage(`{"policyRef":"policy-001"}`)}
+	if response := exchange(t, a, message); response.Kind != "receipt" || s.Snapshot().State != "active" {
+		t.Fatalf("approved start lost its result: kind=%s state=%s", response.Kind, s.Snapshot().State)
+	}
+}
+
+func TestCanceledPreparedStartCannotRetryOrProduceReceipt(t *testing.T) {
+	s, grant, wire := approvedRealSession(t)
+	c, err := NewPrepared(s, grant, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	cancel()
+	if err := c.Start(ctx, grant.Binding.Identity); err == nil || s.Snapshot().State != "revoking" {
+		t.Fatalf("canceled start remained usable: %v %+v", err, s.Snapshot())
+	}
+	a, err := NewAdapter(wire, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exchange(t, a, Message{Protocol: Protocol, Kind: "hello", Generation: wire.Generation, Identity: wire.Identity, Binding: &wire.Binding})
+	message := Message{Protocol: Protocol, Kind: "start", Generation: wire.Generation, Identity: wire.Identity, Sequence: "1", RequestID: "1", Payload: json.RawMessage(`{"policyRef":"policy-001"}`)}
+	if response := exchange(t, a, message); response.Kind != "error" || s.Snapshot().State != "revoking" {
+		t.Fatal("failed start became a success or reactivated")
+	}
+}
+
+func TestPreparedStartReplayDoesNotReactivateAfterStop(t *testing.T) {
+	s, grant, wire := approvedRealSession(t)
+	c, err := NewPrepared(s, grant, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := NewAdapter(wire, c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exchange(t, a, Message{Protocol: Protocol, Kind: "hello", Generation: wire.Generation, Identity: wire.Identity, Binding: &wire.Binding})
+	request := Message{Protocol: Protocol, Kind: "start", Generation: wire.Generation, Identity: wire.Identity, Sequence: "1", RequestID: "1", Payload: json.RawMessage(`{"policyRef":"policy-001"}`)}
+	if response := exchange(t, a, request); response.Kind != "receipt" {
+		t.Fatal("first protected start failed")
+	}
+	stop := Message{Protocol: Protocol, Kind: "stop", Generation: wire.Generation, Identity: wire.Identity, Sequence: "2", RequestID: "2", Payload: json.RawMessage(`{}`)}
+	if response := exchange(t, a, stop); response.Kind != "receipt" {
+		t.Fatal("stop failed")
+	}
+	request.Sequence = "3"
+	if response := exchange(t, a, request); response.Kind != "receipt" || s.Snapshot().State != "terminated" {
+		t.Fatal("old start receipt became current activation")
+	}
+}
 
 func testWireContext() WireContext {
 	return WireContext{Generation: "1", Identity: WireIdentity{LaunchID: "launch-001", Epoch: "1", PolicyDigest: strings.Repeat("a", 64)}, Binding: Binding{ArtifactSHA256: strings.Repeat("b", 64), ChannelNonce: strings.Repeat("c", 64)}, PolicyRef: "policy-001"}
