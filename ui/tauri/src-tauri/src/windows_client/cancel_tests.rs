@@ -4,8 +4,8 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use windows_sys::Win32::Foundation::{
-    ERROR_INVALID_HANDLE, ERROR_IO_PENDING, ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED, WAIT_OBJECT_0,
-    WAIT_TIMEOUT,
+    ERROR_INVALID_HANDLE, ERROR_IO_PENDING, ERROR_NOT_FOUND, ERROR_OPERATION_ABORTED,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 
 // Pure API fixture: these handle values are never passed to Windows.
@@ -251,7 +251,10 @@ fn cancellation_during_synchronous_completion_never_becomes_success() {
             Err(Fault::Cancelled)
         );
         assert_eq!(data, [7; 3]);
-        assert_eq!(api.events.into_inner(), ["event", "start", "result", "close"]);
+        assert_eq!(
+            api.events.into_inner(),
+            ["event", "start", "result", "close"]
+        );
     }
 }
 
@@ -272,7 +275,10 @@ fn uncompleted_cancellation_is_fatal_after_one_second_without_closing_the_event(
                 api.base + Duration::from_secs(2),
             )
         }));
-        assert!(outcome.is_err(), "pending cancellation must invoke fake fatal");
+        assert!(
+            outcome.is_err(),
+            "pending cancellation must invoke fake fatal"
+        );
         assert_eq!(api.millis.get(), 1000);
         assert_eq!(data, [7; 3]);
         let events = api.events.into_inner();
