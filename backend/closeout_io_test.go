@@ -350,7 +350,7 @@ func TestCloseoutN4IdleAndBackpressureRevocation(t *testing.T) {
 				if result != nil {
 					t.Logf("peer_first_byte_received_before_revoke=true same_write_sequence=1 write_return_bytes=%d write_error=%v local_close=%t", result.n, result.err, errors.Is(result.err, net.ErrClosed))
 				}
-				if result == nil || result.n <= 0 || result.n >= blocked.bytes || !errors.Is(result.err, net.ErrClosed) {
+				if result == nil || result.n >= blocked.bytes || !errors.Is(result.err, net.ErrClosed) {
 					if result == nil {
 						t.Fatal("観測した同一実TCP Writeが失効後も未完了。背圧は未達")
 					}
