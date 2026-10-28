@@ -1,0 +1,56 @@
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -19,0 +20,2 @@
++#[cfg(any(target_os = "linux", windows, test))]
++mod diagnostic;
+--- a/src/server.rs
++++ b/src/server.rs
+@@ -5,0 +6 @@
++use crate::diagnostic;
+@@ -75,0 +77 @@
++  connection: diagnostic::Connection,
+@@ -76,0 +79,5 @@
++  let mut trace = if req.method() == Method::POST && req.uri().path() == "/session" {
++    Some(connection.session())
++  } else {
++    None
++  };
+@@ -102,4 +109,13 @@
+-  client
+-    .request(forward_to_native_driver(new_req, args)?)
+-    .err_into()
+-    .await
++  let forwarded = forward_to_native_driver(new_req, args)?;
++  if let Some(trace) = trace.as_mut() { trace.forward(); }
++  let response: Result<Response<Incoming>, Error> = client.request(forwarded).err_into().await;
++  match response {
++    Ok(response) => {
++      if let Some(trace) = trace.as_mut() { trace.headers(); }
++      Ok(response)
++    }
++    Err(error) => {
++      if let Some(trace) = trace.as_mut() { trace.native_error(); }
++      Err(error)
++    }
++  }
+@@ -195,0 +212 @@
++  let diagnostics = diagnostic::start();
+@@ -213,0 +231 @@
++          let connection = diagnostic::Connection::open(diagnostics.clone());
+@@ -215 +233,2 @@
+-            if let Err(err) = auto::Builder::new(TokioExecutor::new())
++            let request_connection = connection.clone();
++            let outcome = auto::Builder::new(TokioExecutor::new())
+@@ -221 +240 @@
+-                service_fn(|request| handle(client.clone(), request, args.clone())),
++                service_fn(move |request| handle(client.clone(), request, args.clone(), request_connection.clone())),
+@@ -223,4 +242,5 @@
+-              .await
+-            {
+-              println!("Error serving connection: {err:?}");
+-            }
++              .await;
++            connection.end(match outcome {
++              Ok(()) => diagnostic::Kind::None,
++              Err(error) => diagnostic::classify(error.as_ref()),
++            });

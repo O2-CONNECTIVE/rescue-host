@@ -5,3 +5,5 @@ ui/tauri/third-party/LICENSE.selectors-MPL-2.0 -text
 ui/tauri/third-party/LICENSE.microsoft-webview2 -text
 ui/tauri/third-party/NOTICE.microsoft-webview2 -text
 ui/tauri/third-party/Microsoft.Web.WebView2.nuspec -text
+# 試験専用driver patch/sourceのpin済みbytesをcheckout時に変換しない。
+tools/native-driver-trace/* -text

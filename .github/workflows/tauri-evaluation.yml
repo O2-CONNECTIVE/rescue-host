@@ -2,10 +2,10 @@ name: Tauri unwired evaluation package
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'scripts/*tauri*.py', 'scripts/tests/test_tauri_evaluation_*.py', 'docs/tauri-evaluation*', '.github/workflows/tauri-evaluation.yml']
 permissions:
   contents: read
 concurrency:
@@ -89,6 +89,10 @@ jobs:
       - name: Launch extracted release EXE and observe UI, IPC and normal close
         timeout-minutes: 3
         run: ./ui/tauri/native-smoke/supervise.ps1 -ToolsDirectory "$env:RUNNER_TEMP/evaluation-tools" -OutputDirectory "$env:RUNNER_TEMP/evaluation-evidence" -ApplicationPath "$env:RUNNER_TEMP/evaluation-unpacked/RescueHostTauriUnwiredEvaluation/rescue-host-shell.exe"
+      - name: Validate anonymous driver stages and provenance
+        if: always()
+        timeout-minutes: 1
+        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/evaluation-tools" -OutputDirectory "$env:RUNNER_TEMP/evaluation-evidence"
       - name: Save validated internal evaluation ZIP and separate evidence
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:

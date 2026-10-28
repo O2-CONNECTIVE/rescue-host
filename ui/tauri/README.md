@@ -3,6 +3,7 @@
 [画面層とアイコン方針](../../docs/tauri-react-ui.md) / [IPC と確認範囲](../../docs/tauri-native-shell.md) / [tokens の状態見本](design/README.md)
 
 Rust が接続機能の未配線状態だけを返す開発用 shell です。
+操作する担当者向けの[操作側GUIプロトタイプ](operator/README.md)は別入口・別buildです。host shellと実接続の配線は共有しません。
 Go、SSH、sidecar の起動や停止は実装していません。
 既存 Tkinter、旧記録の回復、製品接続ゲートと起動方法は変更しません。
 開始と停止は常に無効で、通信終了は未確認のままです。

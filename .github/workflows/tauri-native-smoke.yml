@@ -2,10 +2,10 @@ name: Tauri Windows native smoke
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', '.github/workflows/tauri-native-smoke.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', '.github/workflows/tauri-native-smoke.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', '.github/workflows/tauri-native-smoke.yml']
 permissions:
   contents: read
 concurrency:
@@ -19,15 +19,25 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Test ownership and close rejection contract
         run: ./ui/tauri/native-smoke/process-contract.test.ps1
       - name: Read existing WebView2 and driver versions
         shell: pwsh
         run: ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$env:RUNNER_TEMP/native-inventory.json"
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: '3.13.17'
+          architecture: x64
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '24.22.1'
+      - name: Select existing approved CI Rust version
+        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update
+      - name: Prepare hash-pinned test tools in runner temp
+        timeout-minutes: 6
+        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -InventoryPath "$env:RUNNER_TEMP/native-inventory.json"
       - name: Build locked frontend
         working-directory: ui/tauri
         run: |
@@ -35,8 +45,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm run build
           exit $LASTEXITCODE
-      - name: Select existing approved CI Rust version
-        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
@@ -47,12 +55,13 @@ jobs:
       - name: Build unchanged native shell
         working-directory: ui/tauri
         run: cargo +1.99.1 build --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
-      - name: Prepare hash-pinned test tools in runner temp
-        timeout-minutes: 6
-        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -InventoryPath "$env:RUNNER_TEMP/native-inventory.json"
       - name: One native smoke with bounded owned-process cleanup
         timeout-minutes: 3
         run: ./ui/tauri/native-smoke/supervise.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -OutputDirectory "$env:RUNNER_TEMP/native-evidence"
+      - name: Validate anonymous driver stages and provenance
+        if: always()
+        timeout-minutes: 1
+        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/native-tools" -OutputDirectory "$env:RUNNER_TEMP/native-evidence"
       - name: Save sanitized native evidence
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
