@@ -38,13 +38,14 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される18package、Linux/macOSでは59実装、Windowsでは62実装ファイルを照合します。
+通常buildに選択される19package、Linux/macOSでは68実装、Windowsでは73実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
-servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件だけを許可します。
+servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
+SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
 SCMの登録や起動、実機の権限分離を検証したとは扱いません。
 localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応する明示実装だけを許可します。
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。
@@ -57,12 +58,16 @@ protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/va
 bootstrapはcodec.go/launch.go/native_receiver.go/strict.go/types.go/validate.goと、
 非Windowsのnative_receiver_other.goまたはWindowsのnative_receiver_windows.goだけを許可します。
 bootstrapioはio.goとnative_other.go/native_windows.goの対象別1件、
-bootstrapauthはauth.go/image.go/kernel.go/profile.go/validation.goと、非Windowsのnative_other.go、Windowsのnative_windows.go/image_windows.goを厳密選択します。
+bootstrapauthはauth.go/image.go/kernel.go/profile.go/validation.go/prepared_service.goと、非Windowsのnative_other.go、Windowsのnative_windows.go/image_windows.goを厳密選択します。
 childstdioはoperation.go/pipes.go/streams.goと、非Windowsのnative_other.goまたはWindowsのnative_windows.goを厳密選択します。
+servicereadyはconfig.go/operation.go/plane.go/security.goと、非Windowsのnative_other.go、
+Windowsのnative_windows.go/connect_windows.go/listener_windows.goを厳密選択します。
 cmd/rescue-backendはmain.go/native.goの2件です。通常buildに試験用adapterを混ぜません。
 native receiver・認証・所有I/OのsourceとAPI seam試験を、実Windowsでの保護主体・ACL・実EOF後PID照会の成立へ広げません。
 保護stdio/stderrの所有・取消・EOF回収にはsourceとAPI seam試験がありますが、実Windowsでの保護成立や期限内回収は未実証です。
-固定provisioning、許可0のSCM ready、operator承認口、受理transportの供給は未配線で、既定commandは閉鎖を維持します。
+許可0のSCM readyとservice全体のissuer所有はsource候補とAPI seam試験の対象です。
+実provisioning loader、正規operator承認source、受理transportの供給は未接続で、既定SCM Hostとcommandは閉鎖を維持します。
+実service/process ACLやlistenerの保護成立、元thread退役とOS上の物理停止をCIだけで確認済みとは扱いません。
 Go JSONと終了コードを両方検査し、pass、fail、skip、no-test package、未終端を区別します。
 選択された公開test sourceと実際のtop-level結果を照合し、全skipや欠落を成功にしません。
 検査をJSON fixtureで検証する開発ツール試験は、製品のSSH境界のTDDとは別です。
