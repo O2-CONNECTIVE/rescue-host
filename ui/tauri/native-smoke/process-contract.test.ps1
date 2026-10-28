@@ -69,3 +69,20 @@ if ($facts.observed -ne 1 -or $facts.remainingSnapshot -ne 1 -or $facts.rows[0].
 $json = $facts | ConvertTo-Json -Depth 5
 if ($json.Contains('PRIVATE_CHILD_PATH') -or $json.Contains('2026-10-27') -or $json.Contains('ProcessId')) { throw 'CLOSE_FACTS_PRIVATE_METADATA_LEAK' }
 Write-Output 'CLOSE_OBSERVATION_CONTRACT_PASS checks=5 (fixtures only; not native evidence)'
+
+# cleanupのOS操作が失敗しても、元FAILの保存と所有handle解放を試す。
+$cleanupFolder = Join-Path ([IO.Path]::GetTempPath()) ([Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory $cleanupFolder -ErrorAction Stop | Out-Null
+try {
+    $broken = [pscustomobject]@{ HasExited = $false }
+    $broken | Add-Member ScriptMethod Kill { throw 'PRIVATE_CLEANUP_FAILURE' }
+    $broken | Add-Member ScriptMethod WaitForExit { param($Ms) throw 'PRIVATE_WAIT_FAILURE' }
+    $disposable = [pscustomobject]@{ Disposed = $false }
+    $disposable | Add-Member ScriptMethod Dispose { $this.Disposed = $true }
+    $cleanupReport = [ordered]@{ normalCloseVerified = $false; nativeTestsRun = 1; nativeTestsPassed = 0 }
+    Complete-NativeCleanup $broken $broken @() $app @([pscustomobject]@{ Process = $disposable }) $cleanupReport $cleanupFolder
+    $saved = Get-Content (Join-Path $cleanupFolder 'native-result.json') -Raw | ConvertFrom-Json
+    if (-not $disposable.Disposed -or $saved.normalCloseVerified -or $saved.nativeTestsPassed -ne 0 -or $saved.cleanupFailures -lt 1) { throw 'CLEANUP_FAILURE_LOST_VERDICT_OR_HANDLE' }
+    if (($saved | ConvertTo-Json -Depth 6).Contains('PRIVATE_')) { throw 'CLEANUP_PRIVATE_EXCEPTION_LEAK' }
+} finally { Remove-Item -LiteralPath $cleanupFolder -Recurse -Force }
+Write-Output 'CLEANUP_FAILURE_CONTRACT_PASS checks=2 (fixtures only; not native evidence)'
