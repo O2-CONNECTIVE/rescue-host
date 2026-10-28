@@ -81,10 +81,7 @@ fn an_unconfirmed_completion_query_is_fatal_without_closing_the_event() {
     // A failed completion query is not evidence that pending OS references ended.
     // Native fatal must not unwind; the existing unresolved path also retains
     // its Work allocation when this test's fake fatal deliberately unwinds.
-    assert!(
-        outcome.is_err(),
-        "unconfirmed completion must invoke fatal"
-    );
+    assert!(outcome.is_err(), "unconfirmed completion must invoke fatal");
     assert_eq!(api.fatals.get(), 1);
     assert_eq!(api.closed_events.get(), 0);
     assert_eq!(api.starts.get(), 1);

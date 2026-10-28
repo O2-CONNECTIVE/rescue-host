@@ -1,9 +1,9 @@
+#[cfg(test)]
+mod cancel_tests;
 mod native;
 mod operation;
 mod peer;
 mod peer_native;
-#[cfg(test)]
-mod cancel_tests;
 #[cfg(test)]
 mod peer_tests;
 #[cfg(test)]

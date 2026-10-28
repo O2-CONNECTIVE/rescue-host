@@ -1,7 +1,9 @@
 use super::Fault;
 use std::sync::Arc;
 use windows_sys::Win32::Foundation::HANDLE;
-use windows_sys::Win32::System::Threading::{PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE};
+use windows_sys::Win32::System::Threading::{
+    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+};
 
 /// Trusted bootstrap data, never values learned from the pipe or UI.
 pub(super) struct ExpectedServer {
