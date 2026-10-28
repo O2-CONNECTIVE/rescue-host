@@ -25,7 +25,8 @@ class GoEventTests(unittest.TestCase):
         for suffix in ('internal/auth', 'internal/control', 'internal/forward',
                        'internal/lease', 'internal/stdio', 'cmd/rescue-backend', 'supervisor', 'servicehost',
                        'supervisor/ephemeral', 'internal/localcontrol',
-                       'internal/runbackend', 'internal/childjob'):
+                       'internal/runbackend', 'internal/childjob',
+                       'internal/protectedkey', 'internal/bootstrap'):
             result.append({'Package': module + '/' + suffix, 'Action': 'skip'})
         return result
 
@@ -149,44 +150,61 @@ class GoProductionInventoryTests(unittest.TestCase):
     def test_scm_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'
         for target, selected, excluded, production_count in (
-                ('linux', 'scm_other.go', 'scm_windows.go', 26),
-                ('darwin', 'scm_other.go', 'scm_windows.go', 26),
-                ('windows', 'scm_windows.go', 'scm_other.go', 28)):
+                ('linux', 'scm_other.go', 'scm_windows.go', 39),
+                ('darwin', 'scm_other.go', 'scm_windows.go', 39),
+                ('windows', 'scm_windows.go', 'scm_other.go', 41)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[package], {'control.go', 'host.go', 'approved.go',
                                                       'job.go', 'ownercontrol.go', selected})
                 self.assertNotIn(excluded, inventory[package])
-                self.assertEqual(len(inventory), 13)
+                self.assertEqual(len(inventory), 15)
                 self.assertEqual(sum(map(len, inventory.values())), production_count)
 
     def test_localcontrol_sources_follow_selected_go_target(self):
         package = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'
         for target, selected, excluded, production_count in (
-                ('linux', {'native_other.go'}, 'native_windows.go', 26),
-                ('darwin', {'native_other.go'}, 'native_windows.go', 26),
-                ('windows', {'native_windows.go', 'io_windows.go'}, 'native_other.go', 28)):
+                ('linux', {'native_other.go'}, 'native_windows.go', 39),
+                ('darwin', {'native_other.go'}, 'native_windows.go', 39),
+                ('windows', {'native_windows.go', 'io_windows.go'}, 'native_other.go', 41)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[package], {'policy.go', 'boundary.go', 'wire.go'} | selected)
                 self.assertNotIn(excluded, inventory[package])
                 if target != 'windows':
                     self.assertNotIn('io_windows.go', inventory[package])
-                self.assertEqual(len(inventory), 13)
+                self.assertEqual(len(inventory), 15)
                 self.assertEqual(sum(map(len, inventory.values())), production_count)
 
     def test_runtime_and_childjob_sources_follow_selected_go_target(self):
         prefix = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/'
         for target, selected, excluded, production_count in (
-                ('linux', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 26),
-                ('darwin', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 26),
-                ('windows', {'native_windows.go', 'artifact_windows.go'}, {'native_other.go'}, 28)):
+                ('linux', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 39),
+                ('darwin', {'native_other.go'}, {'native_windows.go', 'artifact_windows.go'}, 39),
+                ('windows', {'native_windows.go', 'artifact_windows.go'}, {'native_other.go'}, 41)):
             with self.subTest(target=target):
                 inventory = go_ci.product_files_for(target)
                 self.assertEqual(inventory[prefix + 'runbackend'], {'runtime.go'})
                 self.assertEqual(inventory[prefix + 'childjob'], {'child.go', 'plan.go'} | selected)
                 self.assertFalse(inventory[prefix + 'childjob'] & excluded)
-                self.assertEqual(len(inventory), 13)
+                self.assertEqual(len(inventory), 15)
+                self.assertEqual(sum(map(len, inventory.values())), production_count)
+
+    def test_protectedkey_and_bootstrap_sources_follow_selected_go_target(self):
+        prefix = 'github.com/O2-CONNECTIVE/rescue-host/backend/internal/'
+        common = {'acl.go', 'format.go', 'loader.go', 'profile.go', 'scope.go',
+                  'source.go', 'validation.go'}
+        for target, selected, excluded, production_count in (
+                ('linux', 'native_other.go', 'native_windows.go', 39),
+                ('darwin', 'native_other.go', 'native_windows.go', 39),
+                ('windows', 'native_windows.go', 'native_other.go', 41)):
+            with self.subTest(target=target):
+                inventory = go_ci.product_files_for(target)
+                self.assertEqual(inventory[prefix + 'protectedkey'], common | {selected})
+                self.assertNotIn(excluded, inventory[prefix + 'protectedkey'])
+                self.assertEqual(inventory[prefix + 'bootstrap'],
+                                 {'codec.go', 'launch.go', 'strict.go', 'types.go', 'validate.go'})
+                self.assertEqual(len(inventory), 15)
                 self.assertEqual(sum(map(len, inventory.values())), production_count)
 
     def test_unknown_go_target_is_rejected(self):
