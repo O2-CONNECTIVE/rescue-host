@@ -297,7 +297,7 @@ fn transport_fault_after_event_acquisition_precedes_queued_frame_processing() {
     connection.hello().unwrap();
     assert_eq!(connection.observation().fault, None);
     assert_eq!(
-        connection.poll_with_transport_fault(|| Some(Code::VersionMismatch)),
+        connection.poll_with_transport_fault(|_| Some(Code::VersionMismatch)),
         ReaderProgress::Discarded
     );
     assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
@@ -311,4 +311,47 @@ fn transport_fault_after_event_acquisition_precedes_queued_frame_processing() {
         .unwrap();
     assert_eq!(joined.fault, Some(Code::VersionMismatch));
     assert!(joined.reader_join.is_some());
+}
+
+#[test]
+fn a_typed_fault_observed_at_cancelled_join_precedes_the_generic_end() {
+    use control_codec::scalar::Code;
+    use control_coordinator::connection::{ReaderConnection, ReaderProgress};
+    use control_coordinator::Conversation;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+
+    let reader = ReaderTask::start_with_cancel(
+        Cursor::new(Vec::<u8>::new()),
+        Arc::new(AtomicBool::new(true)),
+    )
+    .unwrap();
+    let mut connection = ReaderConnection::new(Conversation::new(expected_context()), reader);
+    connection.hello().unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        assert!(Instant::now() < deadline, "finite cancelled join deadline");
+        let progress = connection.poll_with_transport_fault(|event| {
+            if matches!(event, ReaderEvent::Joined(_)) {
+                Some(Code::VersionMismatch)
+            } else {
+                None
+            }
+        });
+        match progress {
+            ReaderProgress::Pending => thread::sleep(Duration::from_millis(5)),
+            event => {
+                assert_eq!(
+                    event,
+                    ReaderProgress::Joined {
+                        end: ReaderEnd::Cancelled,
+                        fault: Some(Code::VersionMismatch)
+                    }
+                );
+                break;
+            }
+        }
+    }
+    assert!(!connection.target().context_matched());
+    assert_eq!(connection.observation().fault, Some(Code::VersionMismatch));
 }

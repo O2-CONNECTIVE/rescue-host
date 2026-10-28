@@ -169,17 +169,16 @@ impl<T: ReaderTarget> ReaderConnection<T> {
     /// rejected/cancelled input is discarded without invoking the target again.
     pub fn poll_with_transport_fault(
         &mut self,
-        fault: impl FnOnce() -> Option<Code>,
+        fault: impl FnOnce(&ReaderEvent) -> Option<Code>,
     ) -> ReaderProgress {
-        let progress = self.poll();
-        if let Some(code) = fault() {
+        let event = self.reader.poll();
+        // The worker may publish a fault while poll acquires or joins its event.
+        // Observe it before either a queued frame or generic cancellation can
+        // seal the target with a different fault.
+        if let Some(code) = fault(&event) {
             self.transport_failed(code);
         }
-        progress
-    }
-
-    pub fn poll(&mut self) -> ReaderProgress {
-        match self.reader.poll() {
+        match event {
             ReaderEvent::Frame(frame) => {
                 if self.observation.fault.is_some() {
                     return ReaderProgress::Discarded;
@@ -215,6 +214,10 @@ impl<T: ReaderTarget> ReaderConnection<T> {
             }
             ReaderEvent::Closed => ReaderProgress::Closed,
         }
+    }
+
+    pub fn poll(&mut self) -> ReaderProgress {
+        self.poll_with_transport_fault(|_| None)
     }
 
     pub fn target(&self) -> &T {

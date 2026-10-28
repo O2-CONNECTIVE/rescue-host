@@ -40,6 +40,11 @@ impl NativeClient {
         // Load cancel before the typed fault: when the release-store of cancel
         // is observed, its preceding first-fault store is visible to this load.
         let cancelled = self.writer.cancel_token().load(Ordering::Acquire);
+        if cancelled {
+            // External cancellation is recorded in the same latch as IO faults.
+            // CAS order is authoritative, not wall-clock request arrival order.
+            self.writer.cancel();
+        }
         if let Some(code) = self.writer.fault() {
             self.connection.transport_failed(code);
         } else if cancelled {
@@ -52,7 +57,7 @@ impl NativeClient {
         // causes the worker to report Cancelled. Queued frames are discarded.
         self.absorb_transport_fault();
         let writer = &self.writer;
-        let _ = self.connection.poll_with_transport_fault(|| writer.fault());
+        let _ = self.connection.poll_with_transport_fault(|_| writer.fault());
         self.absorb_transport_fault();
         self.connection.observation()
     }
@@ -89,6 +94,7 @@ impl NativeClient {
     ) -> Result<ConnectionObservation, Code> {
         self.absorb_transport_fault();
         self.writer.cancel();
+        self.absorb_transport_fault();
         self.connection.cancel_and_join_until(deadline)
     }
 }

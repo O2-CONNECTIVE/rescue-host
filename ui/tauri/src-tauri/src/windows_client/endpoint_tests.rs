@@ -272,3 +272,26 @@ fn native_half_types_satisfy_the_required_thread_and_read_traits() {
     read_and_send::<NativeReader>();
     send_only::<NativeWriter>();
 }
+
+#[test]
+fn explicit_cancellation_and_transport_errors_share_one_first_fault_latch() {
+    for typed_first in [false, true] {
+        let (reader, writer, api) = bound_halves(frame("rescue-host-control/1", "hello_ack"));
+        let calls = api.calls.load(AtomicOrder::SeqCst);
+        if typed_first {
+            reader.owner.fail(Fault::VersionMismatch);
+        }
+        writer.cancel();
+        let expected = if typed_first {
+            Code::VersionMismatch
+        } else {
+            Code::TerminationUnconfirmed
+        };
+        assert_eq!(writer.fault(), Some(expected));
+        assert!(writer.cancel_token().load(AtomicOrder::Acquire));
+        reader.owner.fail(Fault::InvalidMessage);
+        writer.cancel();
+        assert_eq!(writer.fault(), Some(expected));
+        assert_eq!(api.calls.load(AtomicOrder::SeqCst), calls);
+    }
+}

@@ -35,7 +35,10 @@ fake APIの試験ではpanicを捕捉しますが、nativeのabortは実行し�
 [取消仕様](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex)、[Rustの参照契約](https://doc.rust-lang.org/std/cell/struct.UnsafeCell.html#aliasing-rules)。
 
 reader/writerは同じpipeとserverのquery handleを共有保持し、writer先行Dropでもreaderの資源を閉じません。
-固定faultはqueue済み応答より先にcoordinatorを閉鎖し、最初のfaultを保持します。
+reader event取得後・適用前に確定済みの固定faultを再確認し、queue済み応答や汎用の取消結果より先にcoordinatorを閉鎖します。
+明示取消とI/O障害は同じatomic latchに最初に記録されたfaultを保持します。
+外部cancel tokenへの書込み時刻やOS完了の実時間順を保証するものではありません。
+[Rustのatomic ordering](https://doc.rust-lang.org/std/sync/atomic/enum.Ordering.html)に従い、fault記録後に取消をReleaseで公開し、観測側はAcquireで読み取ります。
 readerの取消・実join・EOFと、peerのGo状態・stop receipt・Go Close・backend回収を分離します。
 終了待ちの予算切れでは所有を残し、候補clientのDropでjoinを確認できないときは自身のprocessをabortします。
 これは保護serviceやGoの終了証明ではなく、OS APIやschedulingに対するhard realtime保証でもありません。

@@ -138,7 +138,9 @@ impl<A: Calls + PeerCalls> MessageWriter<A> {
     }
 
     pub fn cancel(&self) {
-        self.owner.cancel.store(true, Ordering::Release);
+        // Share the first-fault CAS with IO errors before publishing cancel.
+        // A previously recorded typed fault wins; later faults cannot replace it.
+        self.owner.fail(Fault::Cancelled);
     }
 
     pub fn cancel_token(&self) -> Arc<AtomicBool> {
