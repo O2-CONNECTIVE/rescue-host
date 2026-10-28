@@ -1,9 +1,9 @@
-param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory)
+param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [string]$ApplicationPath)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
 New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop | Out-Null
-$appPath = (Resolve-Path "$PSScriptRoot/../src-tauri/target/debug/rescue-host-shell.exe").Path
+$appPath = (Resolve-Path $(if ($ApplicationPath) { $ApplicationPath } else { "$PSScriptRoot/../src-tauri/target/debug/rescue-host-shell.exe" })).Path
 $edgePath = (Resolve-Path "$ToolsDirectory/edge/msedgedriver.exe").Path
 $tauriPath = (Resolve-Path "$ToolsDirectory/tauri/bin/tauri-driver.exe").Path
 $driverProcess = $null
