@@ -192,6 +192,10 @@ impl<T: ReaderTarget> ReaderConnection<T> {
 
 impl ReaderConnection<OwnedCoordinator> {
     pub fn poll_child(&mut self) -> Result<(), Code> {
-        Ok(())
+        let result = self.target.poll_child();
+        if let Err(code) = result {
+            self.fail(code);
+        }
+        result
     }
 }
