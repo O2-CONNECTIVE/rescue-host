@@ -152,3 +152,26 @@ void test('入力の破棄とサンプル定義・トレイ・狭幅拡大・色
   assert.equal(await instance.locator(':focus').getAttribute('id'), 'review-heading');
   await instance.close();
 });
+
+void test('トレイからkeyboardで停止要求したら状態見出しへfocusを戻す', async () => {
+  const instance = await page(); await prepared(instance);
+  await instance.getByRole('button', { name: '閉じる（トレイのモック）', exact: true }).click();
+  await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).focus();
+  await instance.keyboard.press('Enter');
+  assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).evaluate(node => node === document.activeElement), true);
+  assert.equal(await instance.getByRole('heading', { name: 'トレイ格納中（モック）', exact: true }).count(), 1);
+  await instance.close();
+});
+
+void test('履歴削除をkeyboardでキャンセルしたら確認を開いたボタンへfocusを戻す', async () => {
+  const instance = await page(); await prepared(instance);
+  await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).click();
+  await instance.getByRole('button', { name: '終了確認の応答を再現', exact: true }).click();
+  const trigger = instance.getByRole('button', { name: 'サンプル履歴をすべて削除', exact: true });
+  await trigger.focus(); await instance.keyboard.press('Enter');
+  await instance.getByRole('button', { name: 'キャンセル', exact: true }).focus();
+  await instance.keyboard.press('Enter');
+  assert.equal(await trigger.evaluate(node => node === document.activeElement), true);
+  assert.equal(await instance.getByRole('region', { name: '接続履歴（メモリのモック）' }).getByText('終了確認済み（モック）', { exact: true }).count(), 1);
+  await instance.close();
+});
