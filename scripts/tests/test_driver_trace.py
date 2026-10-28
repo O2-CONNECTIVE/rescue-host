@@ -9,18 +9,19 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def trace():
+def trace(connection='unobserved'):
     events = []
     for index, (stage, state, kind) in enumerate([
             ('connection-open', 'idle', 'none'), ('session-received', 'received', 'none'),
             ('forward-start', 'forward-pending', 'none'),
+            ('native-connection-' + connection, 'forward-pending', 'none'),
             ('request-dropped', 'dropped', 'none'), ('connection-end', 'dropped', 'incomplete')], 1):
         events.append({'type': 'event', 'seq': index, 'connection': 1,
                        'request': 0 if index == 1 else 1, 'stage': stage,
                        'state': state, 'elapsedUs': index * 100, 'error': kind})
-    return [{'type': 'header', 'schema': 1, 'variant': 'tauri-driver-2.1.0-stage-1'}, *events,
-            {'type': 'summary', 'lastSequence': 5, 'attempted': 5, 'enqueued': 5,
-             'written': 5, 'dropped': 0, 'sealed': True, 'pendingRequests': 0}]
+    return [{'type': 'header', 'schema': 1, 'variant': 'tauri-driver-2.1.0-stage-2'}, *events,
+            {'type': 'summary', 'lastSequence': 6, 'attempted': 6, 'enqueued': 6,
+             'written': 6, 'dropped': 0, 'sealed': True, 'pendingRequests': 0}]
 
 
 def encode(rows):
@@ -38,14 +39,7 @@ class DriverTraceTests(unittest.TestCase):
             return result
 
     def test_terminal_connection_assignment_is_distinct_from_native_headers(self):
-        rows = trace()
-        rows[0]['variant'] = 'tauri-driver-2.1.0-stage-2'
-        rows.insert(4, {'type': 'event', 'seq': 4, 'connection': 1, 'request': 1,
-                        'stage': 'native-connection-assigned', 'state': 'forward-pending',
-                        'elapsedUs': 400, 'error': 'none'})
-        for index, event in enumerate(rows[1:-1], 1):
-            event.update(seq=index, elapsedUs=index * 100)
-        rows[-1].update(lastSequence=6, attempted=6, enqueued=6, written=6)
+        rows = trace('assigned')
         result = self.verify(encode(rows))
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
@@ -63,10 +57,10 @@ class DriverTraceTests(unittest.TestCase):
 
     def test_service_future_drop_after_incoming_eof_keeps_same_request_correlation(self):
         rows = trace()
-        dropped, ended = rows[4], rows[5]
-        rows[4], rows[5] = ended, dropped
-        rows[4].update(seq=4, elapsedUs=400, state='forward-pending')
-        rows[5].update(seq=5, elapsedUs=500)
+        dropped, ended = rows[5], rows[6]
+        rows[5], rows[6] = ended, dropped
+        rows[5].update(seq=5, elapsedUs=500, state='forward-pending')
+        rows[6].update(seq=6, elapsedUs=600)
         result = self.verify(encode(rows))
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
@@ -86,8 +80,8 @@ class DriverTraceTests(unittest.TestCase):
     def test_missing_overflow_inconsistent_or_secret_trace_is_incomplete(self):
         # 実装後の完全性/非開示回帰。
         cases = [trace()[:-1]]
-        for update in [{'attempted': 6, 'lastSequence': 6, 'dropped': 1},
-                       {'written': 4}, {'sealed': False, 'pendingRequests': 1}]:
+        for update in [{'attempted': 7, 'lastSequence': 7, 'dropped': 1},
+                       {'written': 5}, {'sealed': False, 'pendingRequests': 1}]:
             rows = trace()
             rows[-1].update(update)
             cases.append(rows)
@@ -95,7 +89,7 @@ class DriverTraceTests(unittest.TestCase):
         rows[3]['authorization'] = 'PRIVATE_AUTH_MARKER'
         cases.append(rows)
         rows = trace()
-        rows[5]['request'] = 2
+        rows[6]['request'] = 2
         cases.append(rows)
         rows = trace()
         rows[4]['seq'] = 3
@@ -122,19 +116,19 @@ class DriverTraceTests(unittest.TestCase):
         for stage, state, expected in [('native-headers', 'headers-returned', 'native-headers'),
                                        ('native-error', 'native-error', 'native-error')]:
             rows = trace()
-            rows[4].update(stage=stage, state=state)
-            rows[5].update(state=state, error='none')
+            rows[5].update(stage=stage, state=state)
+            rows[6].update(state=state, error='none')
             result = self.verify(encode(rows))
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)['requestStage'], expected)
 
     def test_monotonic_time_must_not_regress_across_connections(self):
         rows = trace()
-        rows.insert(-1, {'type': 'event', 'seq': 6, 'connection': 2, 'request': 0,
-                         'stage': 'connection-open', 'state': 'idle', 'elapsedUs': 1, 'error': 'none'})
         rows.insert(-1, {'type': 'event', 'seq': 7, 'connection': 2, 'request': 0,
+                         'stage': 'connection-open', 'state': 'idle', 'elapsedUs': 1, 'error': 'none'})
+        rows.insert(-1, {'type': 'event', 'seq': 8, 'connection': 2, 'request': 0,
                          'stage': 'connection-end', 'state': 'idle', 'elapsedUs': 2, 'error': 'none'})
-        rows[-1].update(lastSequence=7, attempted=7, enqueued=7, written=7)
+        rows[-1].update(lastSequence=8, attempted=8, enqueued=8, written=8)
         result = self.verify(encode(rows))
         self.assertEqual(result.returncode, 1)
         self.assertEqual(json.loads(result.stdout)['diagnostic'], 'incomplete')
