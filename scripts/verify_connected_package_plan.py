@@ -19,7 +19,7 @@ BLOCKERS = ['SERVICE_PROVISIONING_UNSET', 'PROTECTED_STDIO_UNVERIFIED',
             'DISTRIBUTION_TRUST_UNDECIDED']
 
 
-def digest(value, length):
+def is_hex_is_hex_digest(value, length):
     return isinstance(value, str) and re.fullmatch('[0-9a-f]{' + str(length) + '}', value) is not None
 
 
@@ -33,8 +33,8 @@ def strict_object(pairs):
 
 def validate(manifest, source, hashes):
     """宣言の内部整合だけ。filesに記載した実bytesは読み取らない。"""
-    require(digest(source, 40) and set(hashes) == set(COMPONENTS)
-            and all(digest(value, 64) for value in hashes.values()), 'PLAN_EXPECTATION_INVALID')
+    require(is_hex_digest(source, 40) and set(hashes) == set(COMPONENTS)
+            and all(is_hex_digest(value, 64) for value in hashes.values()), 'PLAN_EXPECTATION_INVALID')
     fields = {'schema', 'repository', 'sourceCommit', 'platform', 'activation',
               'productionGateClosed', 'protocols', 'components', 'files'}
     require(isinstance(manifest, dict) and set(manifest) == fields, 'PLAN_SCHEMA_INVALID')
@@ -47,7 +47,7 @@ def validate(manifest, source, hashes):
                                     'bootstrap': 'rescue-host-bootstrap/1'}, 'PLAN_PROTOCOL_MISMATCH')
     files = manifest['files']
     require(isinstance(files, dict) and set(files) == REQUIRED_FILES
-            and all(digest(value, 64) for value in files.values()), 'PLAN_FILE_SET_INVALID')
+            and all(is_hex_digest(value, 64) for value in files.values()), 'PLAN_FILE_SET_INVALID')
     components = manifest['components']
     require(isinstance(components, dict) and set(components) == set(COMPONENTS),
             'PLAN_COMPONENT_SET_INVALID')
