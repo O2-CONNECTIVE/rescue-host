@@ -51,7 +51,7 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
       <Button onClick={() => { focusAfterAction.current = state.sample ? 'review-heading' : 'sample-input'; controller.current?.restoreWindow(); }}>ウィンドウを戻す（モック）</Button>
       {state.validSession && !state.stopRequested && ['ready', 'connected', 'unconfirmed'].includes(state.phase) && <Button variant="danger" onClick={() => { focusAfterAction.current = 'operator-status-title'; void controller.current?.requestStop(); }}><Square className="icon" aria-hidden="true" focusable="false" />接続を停止（サンプル）</Button>}
     </Card> : state.sample ? <ConnectionPanel state={state}
-      onApproval={confirmed => { void controller.current?.requestApproval(confirmed); }} onStop={() => { void controller.current?.requestStop(); }}
+      onApproval={confirmed => { void controller.current?.requestApproval(confirmed); }} onStop={() => { focusAfterAction.current = 'operator-status-title'; void controller.current?.requestStop(); }}
       onRetry={() => { void controller.current?.retryStatus(); }} onReset={reset} copy={copy} /> : <ReceiveForm onReceive={receive} />}</section>
     <OperatorDetails state={state} open={detailsOpen} onOpenChange={setDetailsOpen} emit={observe} closeWindow={closeWindow} history={history} advanceClock={advanceHistoryClock} />
   </main>;

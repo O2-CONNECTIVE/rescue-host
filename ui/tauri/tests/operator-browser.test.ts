@@ -88,7 +88,8 @@ void test('操作側の確認・承認・コピー・接続・停止要求・終
   assert.equal(copied?.length, 1); assert.match(copied?.[0] ?? '', /demo-host\.invalid/);
   assert.doesNotMatch(copied?.[0] ?? '', /DEMO-2486|rescue-client-v1|PRIVATE KEY|password/i);
   await respond(instance, '外部エージェントの接続を再現');
-  await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).click();
+  await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).focus(); await instance.keyboard.press('Enter');
+  assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).evaluate(node => node === document.activeElement), true);
   assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).count(), 1);
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
   await respond(instance, '終了確認の応答を再現');

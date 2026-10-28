@@ -80,3 +80,5 @@ controller / adapter / 履歴store / 認可のモデルは変更していませ�
 変更前は上記 `operator-review-wide.png` / `operator-unconfirmed-wide.png`、変更後は `operator-review-after.png` / `operator-unconfirmed-after.png` です。
 変更前画像を再生成せず、既存の別送画像をそのまま比較に使います。通常画面の主操作が初期viewport内にあることは画像だけでなくbrowserでも検査しています。
 追加差分も実接続・nativeトレイ・OS通知・永続化の実装や、AA達成の証拠へ読み替えません。
+
+独立レビューの通常画面停止後focus消失をbrowserでRED確認し、停止要求後は状態見出しへfocusを戻す差分を追加しました。トレイと通常画面の両経路をkeyboardで確認します。
