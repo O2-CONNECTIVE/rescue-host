@@ -22,8 +22,9 @@ class GoEventTests(unittest.TestCase):
             {'Package': module, 'Test': 'TestPublicBoundary', 'Action': 'pass'},
             {'Package': module, 'Action': 'pass'},
         ]
-        for name in ('auth', 'forward', 'lease'):
-            result.append({'Package': module + '/internal/' + name, 'Action': 'skip'})
+        for suffix in ('internal/auth', 'internal/control', 'internal/forward',
+                       'internal/lease', 'internal/stdio', 'cmd/rescue-backend', 'supervisor'):
+            result.append({'Package': module + '/' + suffix, 'Action': 'skip'})
         return result
 
     def check(self, events, code=0):
