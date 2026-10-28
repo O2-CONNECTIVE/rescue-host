@@ -20,8 +20,8 @@ func safeACL(p Profile, acl []ACE, leaf bool) bool {
 		mask := expandGeneric(ace.Mask)
 		dangerous := uint32(0x000d0156) // 書込・子作成・EA・属性・子削除・削除・DACL/owner 変更
 		if leaf {
-			dangerous |= 0x21
-		} // データ読取と実行
+			dangerous |= 0x21 // データ読取と実行
+		}
 		// この方針では別の DENY で危険な ALLOW を相殺して受理しません。
 		if mask&dangerous != 0 {
 			return false

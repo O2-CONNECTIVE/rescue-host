@@ -86,6 +86,18 @@ func TestLoadExistingSyntheticOpenSSHEd25519(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsMalformedLeadingPEMWithoutScanningForAnother(t *testing.T) {
+	for _, prefix := range []string{
+		"-----BEGIN OPENSSH PRIVATE KEY-----\n",
+		"-----BEGIN OPENSSH PRIVATE KEY-----\n!\n-----END OPENSSH PRIVATE KEY-----\n",
+	} {
+		loader, _ := testLoader(append([]byte(prefix), syntheticPEM(t)...))
+		if signer, err := loader.Load(loadContext(t), testRef); signer != nil || err != ErrDenied {
+			t.Fatal("malformed leading PEM was skipped")
+		}
+	}
+}
+
 func TestLoadRejectsUnregisteredReferenceBeforeReading(t *testing.T) {
 	for _, ref := range []string{"", "unknown", `C:\protected\host-key`, "../host-key"} {
 		loader, source := testLoader(syntheticPEM(t))
@@ -178,7 +190,7 @@ func TestLoadRejectsSeedPublicMismatch(t *testing.T) {
 	if err := ssh.Unmarshal(outer.Private, &inner); err != nil {
 		t.Fatal(err)
 	}
-	inner.Private[0] ^= 1 // Keep all advertised public bytes and fingerprint unchanged.
+	inner.Private[0] ^= 1 // 公開鍵の全表現と fingerprint は変えず、seed だけを変えます。
 	outer.Private = ssh.Marshal(inner)
 	data := pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: append([]byte("openssh-key-v1\x00"), ssh.Marshal(outer)...)})
 	loader, _ := testLoader(data)
@@ -215,5 +227,49 @@ func TestLoadRejectsInnerPublicMismatch(t *testing.T) {
 	signer, err := loader.Load(loadContext(t), testRef)
 	if signer != nil || err != ErrDenied {
 		t.Fatal("inconsistent inner public key accepted")
+	}
+}
+
+func TestLoadRejectsNoncanonicalPrivateBlockPadding(t *testing.T) {
+	for _, mode := range []string{"short padding", "extra aligned padding"} {
+		t.Run(mode, func(t *testing.T) {
+			block, _ := pem.Decode(syntheticPEM(t))
+			var outer struct {
+				Cipher, KDF, Options string
+				Count                uint32
+				Public, Private      []byte
+			}
+			if err := ssh.Unmarshal(block.Bytes[len(openSSHMagic):], &outer); err != nil {
+				t.Fatal(err)
+			}
+			var inner struct {
+				Check1, Check2  uint32
+				Algorithm       string
+				Public, Private []byte
+				Comment         string
+				Padding         []byte `ssh:"rest"`
+			}
+			if err := ssh.Unmarshal(outer.Private, &inner); err != nil {
+				t.Fatal(err)
+			}
+			inner.Comment += "x"
+			inner.Padding = nil
+			outer.Private = ssh.Marshal(inner)
+			for i := byte(1); len(outer.Private)%8 != 0; i++ {
+				outer.Private = append(outer.Private, i)
+			}
+			if mode == "short padding" {
+				outer.Private = outer.Private[:len(outer.Private)-1]
+			} else {
+				for i := byte(8); i < 16; i++ {
+					outer.Private = append(outer.Private, i)
+				}
+			}
+			data := pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: append([]byte(openSSHMagic), ssh.Marshal(outer)...)})
+			loader, _ := testLoader(data)
+			if signer, err := loader.Load(loadContext(t), testRef); signer != nil || err != ErrDenied {
+				t.Fatal("invalid block padding accepted")
+			}
+		})
 	}
 }

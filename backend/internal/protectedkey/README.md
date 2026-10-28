@@ -43,6 +43,7 @@ create-child 例外、別 root の選定、既存 ACL の変更をこの実装�
 
 鍵は最大16KiB、単一の非暗号化 OpenSSH Ed25519 private-key envelope に限定します。
 外側/内側の公開鍵、秘密鍵の公開 half、固定公開 fingerprint、署名による鍵の整合性を確認します。
+private block は8 byte単位に整列させ、必要最小限の0〜7 byteの連番 padding だけを許可します。
 暗号化鍵、certificate/security-key、別鍵種、複数鍵、余分な PEM/data は拒否します。
 一時 byte slice の clear は最善努力で、Go runtime による全複製の消去を保証しません。
 
@@ -62,4 +63,5 @@ Windows 向けコンパイルは API の型を確認するだけで、ACL・iden
 [CreateFileW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew)、
 [DACL の評価](https://learn.microsoft.com/en-us/windows/win32/secauthz/how-dacls-control-access-to-an-object)、
 [pseudo thread token](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadtoken)、
-[LockOSThread](https://pkg.go.dev/runtime#LockOSThread)。
+[LockOSThread](https://pkg.go.dev/runtime#LockOSThread)、
+[OpenSSH key format](https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key)。

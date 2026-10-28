@@ -54,6 +54,10 @@ func (l *Loader) Load(ctx context.Context, fixedRef string) (ssh.Signer, error) 
 	if len(data) == 0 || len(data) > 16*1024 || !bytes.HasPrefix(data, []byte("-----BEGIN OPENSSH PRIVATE KEY-----\n")) {
 		return nil, ErrDenied
 	}
+	// pem.Decode は壊れた先行 block を飛ばすため、探索対象を単一 BEGIN に制限します。
+	if bytes.Count(data, []byte("-----BEGIN ")) != 1 {
+		return nil, ErrDenied
+	}
 	block, rest := pem.Decode(data)
 	if block == nil {
 		return nil, ErrDenied

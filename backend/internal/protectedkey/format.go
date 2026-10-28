@@ -36,6 +36,15 @@ func outerPublic(data []byte) ([]byte, error) {
 	if err := ssh.Unmarshal(outer.Private, &inner); err != nil || inner.Check1 != inner.Check2 || inner.Algorithm != ssh.KeyAlgoED25519 || len(inner.Public) != ed25519.PublicKeySize || len(inner.Private) != ed25519.PrivateKeySize {
 		return nil, ErrDenied
 	}
+	// none cipher の block は8 byte単位で、最初の整列点までの padding だけを許可します。
+	if len(outer.Private)%8 != 0 || len(inner.Padding) >= 8 {
+		return nil, ErrDenied
+	}
+	for i, value := range inner.Padding {
+		if value != byte(i+1) {
+			return nil, ErrDenied
+		}
+	}
 	if !bytes.Equal(inner.Public, inner.Private[ed25519.SeedSize:]) {
 		return nil, ErrDenied
 	}
