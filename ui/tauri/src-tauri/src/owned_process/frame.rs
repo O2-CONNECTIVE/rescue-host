@@ -2,6 +2,8 @@ use std::io::{self, BufRead, Read};
 
 // Transport bytes only. JSON fields and product limits belong to the codec owner.
 // The u16 limit bounds this allocation; caller/OS buffers are outside this helper.
+// After an error, discard the stream: consumed bytes must not be resynchronized.
+// Blocking IO itself is not interrupted here; the owning reader task needs a deadline.
 pub fn read_frame(reader: &mut impl BufRead, max_bytes: u16) -> io::Result<Option<Vec<u8>>> {
     if max_bytes == 0 {
         return Err(io::Error::new(

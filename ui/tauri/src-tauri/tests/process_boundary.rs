@@ -1,3 +1,4 @@
+mod frame_checks;
 #[path = "../src/owned_process/mod.rs"]
 mod owned_process;
 mod process_fixture;
@@ -18,6 +19,7 @@ fn main() {
         Some(b"{}\n".to_vec())
     );
     println!("owned-pipe: byte-frame checks=1 passed=1");
+    frame_checks::run();
     let cases = [
         (Mode::Graceful, Ok(())),
         (Mode::Overlong, Err("FIXTURE_PROTOCOL_REJECTED")),

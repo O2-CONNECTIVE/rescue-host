@@ -1,5 +1,6 @@
+use crate::owned_process::frame::read_frame;
 use serde::Deserialize;
-use std::io::{BufRead, BufReader, Read};
+use std::io::{BufReader, ErrorKind};
 use std::process::ChildStdout;
 use std::sync::mpsc::SyncSender;
 
@@ -24,18 +25,20 @@ pub fn read(stdout: ChildStdout, pid: u32, boot: SyncSender<()>) -> Result<(), &
     let mut reader = BufReader::with_capacity(129, stdout);
     let (mut count, mut total) = (0, 0);
     loop {
-        let mut line = Vec::new();
-        let length = (&mut reader)
-            .take(129)
-            .read_until(b'\n', &mut line)
-            .map_err(|_| "FIXTURE_IO_FAILED")?;
-        if length == 0 {
+        let line = read_frame(&mut reader, 128).map_err(|error| match error.kind() {
+            ErrorKind::InvalidInput | ErrorKind::InvalidData | ErrorKind::UnexpectedEof => {
+                "FIXTURE_PROTOCOL_REJECTED"
+            }
+            _ => "FIXTURE_IO_FAILED",
+        })?;
+        let Some(line) = line else {
             return if count == 2 {
                 Ok(())
             } else {
                 Err("FIXTURE_PROTOCOL_REJECTED")
             };
-        }
+        };
+        let length = line.len();
         total += length;
         if length > 128 || total > 192 || line.last() != Some(&b'\n') || count >= 2 {
             return Err("FIXTURE_PROTOCOL_REJECTED");
