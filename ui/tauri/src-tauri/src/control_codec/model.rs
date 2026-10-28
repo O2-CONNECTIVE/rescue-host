@@ -22,7 +22,7 @@ pub(crate) struct Binding {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Bootstrap {
     pub protocol: Protocol,
-    pub generation: Hex<32>,
+    pub generation: Decimal<true>,
     pub identity: Object<Identity>,
     pub binding: Object<Binding>,
 }
@@ -31,7 +31,7 @@ pub(crate) struct Bootstrap {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Control<P> {
     pub protocol: Protocol,
-    pub generation: Hex<32>,
+    pub generation: Decimal<true>,
     pub sequence: Decimal<true>,
     pub request_id: Decimal<true>,
     pub identity: Object<Identity>,
@@ -42,7 +42,7 @@ pub(crate) struct Control<P> {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Event<P> {
     pub protocol: Protocol,
-    pub generation: Hex<32>,
+    pub generation: Decimal<true>,
     pub sequence: Decimal<true>,
     pub identity: Object<Identity>,
     pub payload: Object<P>,
