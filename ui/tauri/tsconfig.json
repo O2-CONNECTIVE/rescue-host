@@ -28,6 +28,7 @@
     "vite.config.ts",
     "eslint.config.mjs",
     "knip.config.ts",
-    "native-smoke"
+    "native-smoke",
+    "operator"
   ]
 }
