@@ -12,6 +12,12 @@ mod control_codec;
 )]
 mod owned_process;
 
+#[allow(
+    dead_code,
+    reason = "coordinator is not wired while runtime activation is closed"
+)]
+mod control_coordinator;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StatusRequest {
