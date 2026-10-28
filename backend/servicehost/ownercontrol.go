@@ -14,7 +14,8 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/control"
 )
 
-// OwnedControlConfigは同じ保護子へ既に束縛したpipeだけを受け取る。
+// OwnedControlConfigは保護serviceから同じGo子へ既に束縛したpipeだけを受け取る。
+// GUI/localcontrolの入力をここへ転送せず、初回承認の受付口にも使わない。
 // Wireのhash/nonce/Identityは相関であって相手認証やConfig/鍵のbootstrapではない。
 // Closeがpending read/writeを解除して速やかに返ることが外部OS seamの必須条件。
 // 任意adapterのhangや実Windows pipeの成立を、この型やmemory試験で保証しない。

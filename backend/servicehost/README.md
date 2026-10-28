@@ -26,6 +26,15 @@ Runtime.Serveは受理済みtransportだけを本体Sessionへ渡し、listener�
 既定commandはbootstrap providerがnilで、`--supervised-internal`だけでは解除されない。
 既定SCM入口もprovisioning未設定のままである。
 
+| 入口 | 呼出主体と許可範囲 |
+| --- | --- |
+| 初回承認の型付きsource | operator認証後の別入口。Identity発行前の今回の承認だけ。実装/認証経路は未設定 |
+| service-owned child pipeのOwnedControl | 保護serviceだけが所有する子pipe。今回のbootstrap後にhello/startを送る。GUI要求をここへ転送しない |
+| operator向けlocalcontrol | mainの認証付きpipe候補。hello/snapshot/stopだけ。Start/Renewを許可する入口ではなく、非admin guestを拒否する |
+
+初回限定評価でも、実経路での対象鍵の署名認証、固定127.0.0.1:22、停止/最大期限/再接続拒否、Close・EOF・worker join・process reapの証跡は必要である。
+初回評価と44条件のGA判定を分け、通常CIで未実証のP2や既知NOT_MET/UNVERIFIEDを消さない。
+
 ## 保護bootstrapの具体的な残件
 
 現在の`ChildPlan.Bootstrap`とcommand側の`protectedBootstrap`は型付き接続点であり、Configや鍵を実際に別processへ配送する実装ではない。
