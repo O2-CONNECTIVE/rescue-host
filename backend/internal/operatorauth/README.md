@@ -2,7 +2,7 @@
 
 このpackageは未接続のsource候補である。
 `RunFixed`と`NewNativeController`は全OSで未設定拒否し、環境変数・argv・UI・任意path・自己申告SIDから解除しない。
-正規launcher、最小token、継承plan、report transport、operator用server認証profileを供給するnative factoryは未実装である。
+privateなWindows launcher/report I/Oのsource候補を含むが、最小token・保護profile・sole-read移譲・operator用server認証の正規供給元は未接続である。
 本packageを追加してもserviceのdispatch/予約/issuerを変更せず、製品gateを開かない。
 
 ## 同じthreadでのreadと復帰
@@ -41,11 +41,32 @@ reportが進行中でも発行拒否・workload回収・helper終了要求を先
 terminate成功をwait成功にせず、I/O completion/join・process終了が不明なら同じ参照と失敗を保持する。
 再確認は同じownerと有限contextだけで行い、新しいissuer/helperを作って復活させない。
 
-このreport seamにはnative factoryがまだない。
-匿名pipeはOVERLAPPED非対応であり、既存async adapterを転用しない。
-匿名pipeなら専用同期readerの取消/EOF/join、専用OVERLAPPED named pipeなら保護profileと両endpointの所有/権限を別に確定する必要がある。
+privateなreport factoryは、暗号学的乱数名の専用message-mode OVERLAPPED named pipeを作るsourceを含む。名前は識別子であり認証ではない。
+匿名pipeはOVERLAPPED非対応なので転用しない。
+合成試験はReadFile/WriteFile/CancelIoEx/completion/CloseHandle境界を置換し、実Windowsの成功を証明しない。
 親側のwrite endと全複製のclose、helperへの限定継承、第三者への漏出/複製の不存在が満たされなければ実EOFと真正reportを主張できない。
 16KiBのbuffer指定をpipe容量の保証やblock回避策とは扱わない。
+
+## native launcherと単回batch
+
+`startNativeHelper`は固定artifactを保持してhash/最終pathを検査し、`CreateProcessAsUserW`でsuspended childを作り、専用Jobへ割り当ててからresumeするsourceである。
+継承はoperator readerとreport writerの2handleだけで、親側の全writer/read複製を閉じてからresumeする。
+同sessionの保有primary token・process/threadの明示SDDLが必須で、LocalSystemへのfallback・logon・privilege付与はしない。
+OS APIが呼出し中に既存privilegeを一時enableする可能性は、変更なしの保証へ読み替えない。
+保持processのcreation/image/tokenとsource tokenの初回観測を固定し、後の変化を拒否する。初回観測以前の変更がないことや発行主体の真正性は証明しない。
+Jobのkill-on-closeとactive process上限1は寿命制御であり、privilege隔離やhandleの第三者複製防止ではない。
+leafの固定hashはancestor directoryのACL/保護を証明しない。
+
+`startNativeBatch`は同じ起動の`ServiceScope`を保持する元threadからだけ呼ぶprivate接続である。
+service自己認証をoperator用server認証には流用しない。
+sole readerの所有移譲が事前条件で、service側に別のread/duplex複製が残る場合は呼び出せない。
+reportを実EOFまでdrainし、保持helperの終了waitとbinding再照合の後、I/OとJob/process/imageの回収を有限context内で確認する。
+取消や回収失敗は同じCollectorの失効/回収へ進み、未確認参照を保持する。
+context-freeな終端確認は、既に有限回収が完了した記録だけを読み、新しいOS callを開始しない。
+
+native helper executableの固定entry、最小token/実SID/保護SDDLのproducer、service-owned endpointのsole-read移譲adapter、起動の累積上限、controller server認証producer、同Service adapterは未接続である。
+`messageEndpoint`は継承handleの権限/種別確認と単回read/write/closeまでを扱い、handle番号だけからprovenanceを作らない。
+これらの未設定値をUI・argv・環境変数・自己申告SIDで埋めない。
 
 ## controller側
 
@@ -61,8 +82,8 @@ SCM RUNNING PIDとservice endpoint creator、実際のhelper readerを同じPID�
 
 - protected provisioningからhelper artifact/hash・実主体/token/最小権利・controller主体と固定server profileを供給する。現在は未設定。
 - service-owned endpointのread権限をhelperだけに限定し、Supervisor側writerへreadを許さない。native上のcreator/移送後の観測を実証する。
-- launcherが事前保持したprocess/creation/image/tokenと専用report readerを同じlaunchへbindし、固定request deadline・累積起動上限・stop中の部分launch回収を実装する。
-- reportのnative I/Oとclose/cancel/実EOF/join、正常helper終了後の次request開始条件を確定する。fault後の同起動内復活は禁止する。
+- launcherの保持process/creation/image/tokenと専用report readerを同じlaunchへbindするsource候補は追加済み。累積起動上限と同Service stopへの接続は未実装。
+- reportのnative I/Oとclose/cancel/実EOF/joinのsource/API seam試験を含む。正常helper終了後の次request開始条件と実Windows検証は別途必要。fault後の同起動内復活は禁止する。
 - 統合ownerが同Serviceのverifier/予約/二段階stopへadapterを接続する。共有control/1・service/1・bootstrap/1とCI inventoryはこのpackageから変更しない。
 
 具体的なSID/ACL/account/service登録・鍵参照と利用・実SSH/relay・配布配置を使うときは、対象・影響・退避/復元・所有資源の停止確認を示した別の実機承認が必要である。
@@ -81,3 +102,7 @@ Windows native sourceはcompile対象であり、実APIの成功・process終了
 - [OpenThreadToken](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-openthreadtoken)、[Token information class](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class): queryとIdentification/AppContainerの制約。
 - [TerminateProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess)、[GetExitCodeProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getexitcodeprocess): 終了要求・wait・exit codeの区別。
 - [Anonymous pipe operations](https://learn.microsoft.com/en-us/windows/win32/ipc/anonymous-pipe-operations): OVERLAPPED非対応とread/writeのblock。
+
+今回のlauncher/report試験のRed→Greenには、部分取得・取消時の参照保持・期限切れ後のallocation拒否・cleanup期限・lock競合・handle alias拒否を含む。
+初期の未定義symbolによるcompile-red、実装後に追加したbatch順序の回帰試験、振る舞いを先に失敗させたTDDは区別して記録する。
+Windows compileはnative APIの型/リンク境界だけを確認し、13組のnative受入試験を実行済みにしない。
