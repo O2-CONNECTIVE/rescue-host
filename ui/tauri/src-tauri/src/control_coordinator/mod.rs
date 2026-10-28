@@ -1,7 +1,7 @@
 //! Internal preparation only; context matching is not peer authentication.
 use crate::control_codec::{
     decode_frame, encode_frame,
-    model::{Bootstrap, Message},
+    model::{Bootstrap, Message, Snapshot},
     scalar::Code,
 };
 
@@ -11,6 +11,12 @@ enum Phase {
     AwaitingAck,
     Bound,
     Closed(Code),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Request {
+    Snapshot,
+    Stop,
 }
 
 pub(crate) struct Conversation {
@@ -59,6 +65,18 @@ impl Conversation {
             }
             _ => self.close(Code::ContextMismatch),
         }
+    }
+
+    pub fn request(&mut self, _request: Request) -> Result<Vec<u8>, Code> {
+        Err(Code::RequestRejected)
+    }
+
+    pub fn peer_snapshot_claim(&self) -> Option<&Snapshot> {
+        None
+    }
+
+    pub fn peer_stop_receipt(&self) -> bool {
+        false
     }
 
     pub fn is_closed(&self) -> bool {
