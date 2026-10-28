@@ -61,7 +61,7 @@ jobs:
         env:
           STARTUP_PROFILE: ${{ matrix.profile }}
         run: |
-          cargo +1.99.1 test --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol,startup-diagnostics startup_diagnostics
+          cargo +1.99.1 test --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol,startup-diagnostics
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $args = @('+1.99.1', 'build', '--locked', '--manifest-path', 'src-tauri/Cargo.toml', '--features', 'custom-protocol,startup-diagnostics')
           if ($env:STARTUP_PROFILE -eq 'release') { $args += '--release' }
