@@ -16,6 +16,7 @@ patchと追加sourceのhashをscript内でpinし、文脈ずれ・fuzz・未知p
 `.gitattributes`はこのdiagnostic bundleだけcheckout改行変換を禁止し、Windowsでもpin済みbytesを保持する。
 
 CIでは既存の固定Rust1.99.1とPython3.13.17を選び、自己所有runner tempだけでfixture test/buildする。
+現在はstage-2で、終端時の接続割当てsnapshotを追加した。[接続境界の意味と未観測範囲](native-timeout-connection-boundary.md)を参照する。
 元のupstream crate/hash、patch/hash、追加source/hash、変更対象の前後hash、Cargo.lock hashをprovenanceへ残す。
 build後にsourceを再照合してbinary hashを記録し、起動直前・終了後も同じbinary hashを確認する。
 これはreview済みrepositoryと公式固定buildを信頼する対応記録であり、新しい署名・信頼根ではない。
