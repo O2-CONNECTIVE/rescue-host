@@ -205,8 +205,9 @@ void test('readerの終了未確認コードは狭い拡大表示でも診断内
     } };
   });
   await page.goto(url);
-  await page.waitForFunction(() => document.querySelector('#diagnostic')?.textContent === 'TERMINATION_UNCONFIRMED');
+  await page.waitForFunction(() => document.querySelector('#status-title')?.textContent === '状態を取得できません');
   await page.getByRole('button', { name: '診断情報', exact: true }).click();
+  await page.waitForFunction(() => document.querySelector('#diagnostic')?.textContent === 'TERMINATION_UNCONFIRMED');
   await page.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
   assert.equal(await page.locator('#status-title').innerText(), '状態を取得できません');
   assert.equal(await page.getByRole('button', { name: 'サポートを開始' }).isDisabled(), true);
