@@ -1,5 +1,6 @@
 """試験専用traceの固定schemaと完全性。実driver/OSの証拠ではない。"""
 import json
+import copy
 from pathlib import Path
 import subprocess
 import sys
@@ -53,6 +54,19 @@ class DriverTraceTests(unittest.TestCase):
             self.assertEqual(report['diagnostic'], 'complete')
             self.assertEqual(report['requestStage'], 'dropped-before-headers')
             self.assertEqual(report['connectionEnd'], 'incomplete')
+
+    def test_boolean_schema_and_regressing_monotonic_stage_are_incomplete(self):
+        for mutate in [lambda rows: rows[0].update(schema=True),
+                       lambda rows: rows[3].update(elapsedUs=1)]:
+            rows = trace()
+            mutate(rows)
+            with tempfile.TemporaryDirectory() as folder:
+                file = Path(folder) / 'trace.jsonl'
+                file.write_text('\n'.join(json.dumps(row) for row in rows), encoding='utf-8')
+                result = subprocess.run([sys.executable, '-B', str(ROOT / 'scripts/verify_driver_trace.py'),
+                                         '--trace', str(file)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(json.loads(result.stdout)['diagnostic'], 'incomplete')
 
 
 if __name__ == '__main__':
