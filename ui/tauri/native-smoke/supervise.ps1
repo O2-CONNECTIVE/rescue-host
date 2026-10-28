@@ -49,7 +49,10 @@ try {
     if ($view.browserVersion -ne (Get-Content "$PSScriptRoot/tools.json" -Raw | ConvertFrom-Json).runtimeVersion) { throw 'NATIVE_ACTUAL_RUNTIME_MISMATCH' }
     if ($view.nativeTestsStarted -ne 1 -or $view.checks -ne 3 -or -not $view.actualRustIpc) { throw 'NATIVE_ZERO_OR_INCOMPLETE_TESTS' }
     $snapshot = Get-Snapshot
-    $observation = Get-OwnedApp $driver[0] $edge[0] $appPath $snapshot
+    $phase = 'ownership-confirmation'
+    $lineageEvidence = @()
+    try { $observation = Get-OwnedApp $driver[0] $edge[0] $appPath $snapshot ([ref]$lineageEvidence) }
+    finally { $report.initialLineageFacts = @($lineageEvidence) }
     $app = $observation.App
     $children = $observation.Children
     $childHandles = @(Open-ChildObservationHandles $children)

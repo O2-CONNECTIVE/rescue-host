@@ -163,3 +163,19 @@ cleanup後の消失を通常close成功へ使いません。保持handleが取�
 子待ちの最後のsnapshot開始/終了、判定経過時間、timeout確定後の追加probeを別に残します。追加probeやcleanup後の終了を期限内の成功にしません。
 取得可能な子handleのExitTimeは子待ち開始からの相対ミリ秒に変換し、絶対時刻を保存しません。この相対値はOSのwall clock由来であり、monotonic経過時間と同じ時計であるとの保証はしません。
 cleanupの各例外は固定codeにし、外側finallyで新handle解放とJSON保存を必ず試します。cleanup失敗を元の通常close成功や全体成功に変換しません。
+
+### 初回lineageの所有確認不能を保持する
+
+head a19eb995のrun40624841399/artifact12788014753では、WebView6件は全てCIM消失・同一性確認済みhandle終了を観測しました。
+残ったslot7はrole other、親とされたrendererより古いCreationDateで、10秒後とdriver cleanup後もCIM/handle両方で生存しました。
+これはslot7自身の同一性を示しますが、appへの所属証明ではありません。旧PR55/mainの失敗を遡って同原因と確定しません。
+
+[MicrosoftのWin32_Process仕様](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-process)も、ParentProcessIdが再利用された別processを指し得ることとCreationDate照合を説明しています。
+初回探索でsnapshot行の一意性・CreationDateの取得可否・親子の生成順を検査します。
+時刻欠測・逆順・世代曖昧な候補は、黙って非所有として除外せず、探索全体をNATIVE_LINEAGE_OWNER_UNCONFIRMEDで拒否します。
+匿名理由と取得可否・親子の相対時間だけを保存し、不明なcandidateをkillしません。
+正当なother子も含め、所有確定後の全Children・既存10秒・cleanup前の正常終了判定は変えません。
+
+CreationDateはwall clock由来であり、順序整合は保護された所有証明の十分条件ではありません。
+時計変動や親世代の不確定をPASSへ変換せず、作成時の所有束縛など独立した証拠は別の未実装設計として残します。
+この変更はtimeoutの合格化ではなく、所有不確定を終了待ちより前に明示する修正です。
