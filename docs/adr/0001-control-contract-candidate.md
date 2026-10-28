@@ -15,12 +15,13 @@ LF込み16 KiB、rootを深さ1とするobject/array深さ8、1frame1object、BO
 CRLFのCRはJSON空白として許容します。未知/重複field、field名のcase違い、未知kind、不正型は拒否します。
 JSON Schemaの整数判定で `1.0` を整数へ変換することはせず、連番・request ID・epochは正規uint64十進文字列です。
 sequence/request IDは1以上、epochは0を含むuint64範囲とし、先頭0・符号・指数・小数・桁あふれを拒否します。
-launchId/policyRefはASCII tokenの1–128 bytes、generationは32桁lowercase hex、digest/nonceは64桁lowercase hexとします。
+launchId/policyRefはASCII tokenの1–128 bytes、generationは正のuint64十進文字列、digest/nonceは64桁lowercase hexとします。
 これはwireのsubsetで、既存Go Identity APIが許す値を正規化して広げません。設定値がwire制約に合わなければ開始前に拒否します。
 
 ## bootstrapとenvelope
 
 保護された所有者から事前設定したgeneration、Identity、artifact hash、channel nonceを両端で照合します。
+wire generationはsupervisor Binding.Generationと同じ値を表し、別の世代モデルや新しい発行権威を作りません。未信頼wireをProvisionedGrantへ直接変換しません。
 ownerのhello→Goのhello_ackの2frameで同じexact protocolを確認し、その前の通常要求、交渉の繰返し、別versionへの切替を拒否します。
 hash/nonceはchannel bindingであり、PID/pipe/同一userを含め相手の認証や隔離の証明ではありません。
 未確定のservice identity、IPC承認経路、信頼元や実設定をこのADRで作成・採用しません。
