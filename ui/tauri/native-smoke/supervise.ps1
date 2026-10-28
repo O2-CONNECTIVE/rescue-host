@@ -1,9 +1,11 @@
-param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [string]$ApplicationPath)
+param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory, [string]$ApplicationPath,
+    [switch]$StartupDiagnostic, [string]$StartupManifest, [string]$StartupSource)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 . "$PSScriptRoot/processes.ps1"
 . "$PSScriptRoot/close-observation.ps1"
 . "$PSScriptRoot/startup-observation.ps1"
+. "$PSScriptRoot/app-startup-observation.ps1"
 New-Item -ItemType Directory -Path $OutputDirectory -ErrorAction Stop | Out-Null
 $appPath = (Resolve-Path $(if ($ApplicationPath) { $ApplicationPath } else { "$PSScriptRoot/../src-tauri/target/debug/rescue-host-shell.exe" })).Path
 $edgePath = (Resolve-Path "$ToolsDirectory/edge/msedgedriver.exe").Path
@@ -17,7 +19,19 @@ $childWaitStartedUtc = $null
 $report = [ordered]@{ kind = 'windows-webview2-native-smoke'; nativeTestsRun = 0; nativeTestsPassed = 0; cleanupStarted = $false; normalCloseVerified = $false; failurePhase = $null }
 $phase = 'environment'
 $previousDriverTrace = $env:RESCUE_DRIVER_TRACE
+$previousAppTrace = $env:RESCUE_HOST_STARTUP_TRACE_DIR
+$appTraceDirectory = $null
+$appTraceCollected = $false
+$diagnosticBudget = [Diagnostics.Stopwatch]::new()
 try {
+    $env:RESCUE_HOST_STARTUP_TRACE_DIR = $null
+    if ($StartupDiagnostic) {
+        & node "$PSScriptRoot/inspect-app-startup.ts" --manifest $StartupManifest --exe $appPath --source $StartupSource --build-only
+        if ($LASTEXITCODE -ne 0) { throw 'NATIVE_APP_DIAGNOSTIC_BUILD_REJECTED' }
+        $appTraceDirectory = Join-Path $ToolsDirectory 'app-startup'
+        New-Item -ItemType Directory -Path $appTraceDirectory -ErrorAction Stop | Out-Null
+        $env:RESCUE_HOST_STARTUP_TRACE_DIR = $appTraceDirectory
+    }
     $before = Get-Snapshot
     if (@($before | Where-Object ExecutablePath -eq $appPath).Count -ne 0) { throw 'NATIVE_PREEXISTING_APP_REJECTED' }
     if (@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445)).Count -ne 0) { throw 'NATIVE_PORT_ALREADY_IN_USE' }
@@ -56,6 +70,11 @@ try {
     $view = Get-Content "$OutputDirectory/webview-result.json" -Raw | ConvertFrom-Json
     if ($view.browserVersion -ne (Get-Content "$PSScriptRoot/tools.json" -Raw | ConvertFrom-Json).runtimeVersion) { throw 'NATIVE_ACTUAL_RUNTIME_MISMATCH' }
     if ($view.nativeTestsStarted -ne 1 -or $view.checks -ne 3 -or -not $view.actualRustIpc) { throw 'NATIVE_ZERO_OR_INCOMPLETE_TESTS' }
+    if ($StartupDiagnostic) {
+        # Node成功後かつ通常close前に回収する。native合否とは別の観測。
+        $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget
+        $appTraceCollected = $true
+    }
     $snapshot = Get-Snapshot
     $phase = 'ownership-confirmation'
     $lineageEvidence = @()
@@ -130,19 +149,23 @@ try {
         finally { $report.startupFailureQueryMs = $startupQuery.ElapsedMilliseconds }
     }
 } finally {
+    if ($null -ne $appTraceDirectory -and -not $appTraceCollected) {
+        try { $report.appStartupFileClosed = Wait-AppStartupTrace $appTraceDirectory $diagnosticBudget }
+        catch { $report.appStartupFileClosed = $false }
+    }
     # 合否確定後の診断cutoff。新requestは送らず、自己所有workerを最大1秒だけ待つ。
     try {
         [IO.File]::WriteAllText((Join-Path $ToolsDirectory 'driver-stage.finish'), 'finish')
-        $stageWait = [Diagnostics.Stopwatch]::StartNew()
+        if (-not $diagnosticBudget.IsRunning) { $diagnosticBudget.Start() }
         do {
             if (Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')) { break }
             Start-Sleep -Milliseconds 20
-        } while ($stageWait.ElapsedMilliseconds -lt 1000)
+        } while ($diagnosticBudget.ElapsedMilliseconds -lt 1000)
         $report.driverStageFileObserved = Test-Path (Join-Path $ToolsDirectory 'driver-stage.jsonl')
     } catch { Write-Output 'NATIVE_STAGE_FINISH_FAILED' }
     # 通常closeの合否確定後にのみcleanupし、元のFAILと記録を保持する。
     try { Complete-NativeCleanup $nodeProcess $driverProcess $children $app $childHandles $report $OutputDirectory $childWaitStartedUtc $env:NATIVE_PROFILE }
-    finally { $env:RESCUE_DRIVER_TRACE = $previousDriverTrace }
+    finally { $env:RESCUE_DRIVER_TRACE = $previousDriverTrace; $env:RESCUE_HOST_STARTUP_TRACE_DIR = $previousAppTrace }
     if ($phase -eq 'webview-and-ipc' -and $report.nativeTestsPassed -eq 0) {
         try {
             $afterSnapshot = Get-Snapshot
