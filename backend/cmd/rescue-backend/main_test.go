@@ -16,7 +16,7 @@ func TestClosedCommandProcess(t *testing.T) {
 	if _, err := exec.CommandContext(ctx, "go", "build", "-mod=readonly", "-o", path, ".").CombinedOutput(); err != nil {
 		t.Fatalf("fixed command build failed: %v", err)
 	}
-	for _, args := range [][]string{nil, {"--stdio"}, {"--start", "SECRET_TEST_ARGUMENT"}} {
+	for _, args := range [][]string{nil, {"--stdio"}, {"--supervised-internal"}, {"--start", "SECRET_TEST_ARGUMENT"}} {
 		childCtx, childCancel := context.WithTimeout(context.Background(), 2*time.Second)
 		command := exec.CommandContext(childCtx, path, args...)
 		var stdout, stderr bytes.Buffer
