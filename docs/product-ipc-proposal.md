@@ -3,6 +3,7 @@
 [通信契約と既存実装の観察](communication-contract.md) / [脅威モデル](threat-model.md) / [Decision #36](https://github.com/O2-CONNECTIVE/rescue-host/issues/36)
 
 **比較用の仕様案・未採用・未実装です。**
+後続の[制御契約の採用候補ADR](adr/0001-control-contract-candidate.md)が、準備コードの正本schema/vectorと技術候補を具体化しています。保護主体の実設定やactivation承認とは別です。
 基点は公開 main `72e526e84a13db96a0a4d53f84d0644f80c9d38e` です。
 本書は既存の責務を具体化する候補で、DEC-01（所有と終了保証）・DEC-02（契約正本）を決定しません。
 製品 gate は閉鎖し、[PR #34](https://github.com/O2-CONNECTIVE/rescue-host/pull/34) の P2 hold と既知の未達・未検証を維持します。
