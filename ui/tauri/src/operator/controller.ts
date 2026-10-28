@@ -62,6 +62,9 @@ export function createOperatorController({ adapter, onChange }: {
     },
     requestApproval(confirmed: boolean) { return request('approval', confirmed); },
     requestStop() { return request('stop'); },
+    retryStatus() { return Promise.resolve(); },
+    minimizeToTray() {},
+    restoreWindow() {},
     reset() {
       if (disposed) return;
       flow += 1;

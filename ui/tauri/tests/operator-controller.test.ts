@@ -11,6 +11,7 @@ function setup(overrides: Partial<OperatorAdapter> = {}) {
   const adapter: OperatorAdapter = {
     mode: 'mock', requestApproval: value => { flow = value; requests.push('approval'); return Promise.resolve(); },
     requestStop: () => { requests.push('stop'); return Promise.resolve(); },
+    queryStatus: () => { requests.push('status'); return Promise.resolve(); },
     subscribe: value => { listener = value; return () => { listener = () => {}; }; }, ...overrides
   };
   const controller = createOperatorController({ adapter, onChange: value => { state = value; } });
@@ -31,8 +32,9 @@ void test('初期化した体験へ古い観測や遅延した要求失敗を適
   const stop = new Promise<void>((_resolve, reject) => { rejectStop = reject; });
   const { controller, emit, raw } = setup({ requestStop: () => stop });
   controller.acceptSample('code'); await controller.requestApproval(true);
-  emit('approved'); emit('connected');
+  emit('approved'); emit('prepared'); emit('connected');
   const pending = controller.requestStop();
+  emit('stop_confirmed');
   controller.reset();
   assert.equal(controller.snapshot().phase, 'entry');
   controller.acceptSample('definition');
@@ -67,7 +69,7 @@ void test('要求の失敗は固定表示にし、接続や終了の成功へ読
     controller.acceptSample('code');
     await controller.requestApproval(true);
     if (operation === 'stop') {
-      emit('approved'); emit('connected'); await controller.requestStop();
+      emit('approved'); emit('prepared'); emit('connected'); await controller.requestStop();
     }
     assert.equal(controller.snapshot().phase, operation === 'approval' ? 'failed' : 'unconfirmed');
     assert.equal(controller.snapshot().termination, 'unconfirmed');
@@ -75,20 +77,20 @@ void test('要求の失敗は固定表示にし、接続や終了の成功へ読
   }
 });
 
-void test('期限切れ・拒否・失敗・停止未確認は終了確認にならず、後から来た成功応答でも消えない', async () => {
+void test('期限切れ・拒否・失敗・停止未確認は接続完了応答で終了確認に変わらない', async () => {
   for (const [advance, event, expected] of [
     [false, 'expired', 'expired'], [false, 'denied', 'failed'],
     [false, 'failed', 'failed'], [true, 'lost', 'unconfirmed']
   ] as const) {
     const { controller, emit } = setup();
     controller.acceptSample('code'); await controller.requestApproval(true);
-    if (advance) { emit('approved'); emit('connected'); await controller.requestStop(); }
+    if (advance) { emit('approved'); emit('prepared'); emit('connected'); await controller.requestStop(); }
     emit(event);
     assert.equal(controller.snapshot().phase, expected);
-    assert.equal(controller.snapshot().termination, 'unconfirmed');
-    emit('stop_confirmed'); emit('connected');
+    assert.equal(controller.snapshot().termination, event === 'denied' ? 'not_started' : 'unconfirmed');
+    emit('connected');
     assert.equal(controller.snapshot().phase, expected);
-    assert.equal(controller.snapshot().termination, 'unconfirmed');
+    assert.equal(controller.snapshot().termination, event === 'denied' ? 'not_started' : 'unconfirmed');
   }
 });
 
@@ -96,7 +98,7 @@ void test('停止要求の受付と繰返し操作だけでは終了確認にせ
   const { controller, requests, emit } = setup();
   controller.acceptSample('code');
   await controller.requestApproval(true);
-  emit('approved'); emit('connected');
+  emit('approved'); emit('prepared'); emit('connected');
   await controller.requestStop();
   assert.equal(controller.snapshot().phase, 'stopping');
   assert.equal(controller.snapshot().termination, 'unconfirmed');
@@ -119,7 +121,41 @@ void test('確認後の依頼受付・承認・接続完了をそれぞれ別の
   assert.deepEqual(requests, ['approval']);
   emit('approved');
   assert.equal(controller.snapshot().phase, 'connecting');
+  emit('prepared');
+  assert.equal(controller.snapshot().phase, 'ready');
   emit('connected');
   assert.equal(controller.snapshot().phase, 'connected');
   assert.equal(controller.snapshot().termination, 'unconfirmed');
+});
+
+void test('トレイ格納は接続を維持し、停止未確認では次へ進まず有効な同一接続の状態だけ再確認する', async () => {
+  const { controller, emit, requests } = setup();
+  controller.acceptSample('code'); await controller.requestApproval(true);
+  emit('approved'); emit('prepared'); emit('connected');
+  controller.minimizeToTray();
+  assert.equal(controller.snapshot().visibility, 'tray');
+  assert.equal(controller.snapshot().phase, 'connected');
+  assert.equal(controller.snapshot().termination, 'unconfirmed');
+  controller.restoreWindow();
+  assert.equal(controller.snapshot().visibility, 'window');
+  controller.reset(); controller.acceptSample('definition');
+  assert.equal(controller.snapshot().phase, 'connected');
+  await controller.requestStop(); emit('lost');
+  controller.reset(); controller.acceptSample('definition');
+  await controller.requestApproval(true);
+  assert.equal(controller.snapshot().phase, 'unconfirmed');
+  await controller.retryStatus();
+  assert.deepEqual(requests, ['approval', 'stop', 'status']);
+  assert.equal(controller.snapshot().checkingStatus, true);
+  emit('status_active');
+  assert.equal(controller.snapshot().phase, 'unconfirmed');
+  assert.equal(controller.snapshot().stopRequested, true);
+  emit('expired');
+  await controller.retryStatus(); emit('approved'); emit('prepared'); emit('status_active');
+  assert.equal(controller.snapshot().phase, 'expired');
+  assert.deepEqual(requests, ['approval', 'stop', 'status']);
+  emit('stop_confirmed');
+  assert.equal(controller.snapshot().termination, 'confirmed');
+  controller.reset();
+  assert.equal(controller.snapshot().phase, 'entry');
 });
