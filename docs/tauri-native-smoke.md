@@ -91,3 +91,40 @@ request は最大256件、phase 履歴は最大32件に制限し、上限後も�
 request 15秒、全体60秒、readiness 10秒、worker1件と再実行なしの条件は変更しません。
 観測追加を原因修正や実 SSH の成功へ読み替えません。
 `webview-passed-awaiting-close` は UI/IPC 検査の段階結果であり、通常 close は従来どおり別の `native-result.json` で確認します。
+
+## 観測子の終了timeoutの診断と未確定事項
+
+PR #55 head `8bab44f848edb45d723a8410e7bedeaeb0567bde` の通常native [run40619463105](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40619463105) / job122589680885 / artifact12786596829は、`NATIVE_OBSERVED_CHILD_CLOSE_TIMEOUT` で失敗しました。
+UI・実Rust IPC・keyboardは通過し、失敗phaseはnormal-close、WebView子の観測数は6です。
+同headのrelease配布 [run40619462988](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40619462988) / artifact12786887402は通常終了まで成功しています。
+この成功で通常nativeの失敗を取り消しません。初期originの失敗とは別件です。
+
+コードの到達経路ではapp本人のhandleによる通常close・exit code 0の確認を通過した後、元の観測子と同じPID/CreationDateを持つsnapshot行が10秒以内に消えなかったと判定しています。
+ただし失敗JSONへappのexit codeや残存子の件数・役割・同一性の内訳は保存されません。
+`cleanupStarted=true` はfinallyへ入った証拠であり、通常close成功やcleanup完了の証明ではありません。
+
+現証跡からは、次の候補を区別できません。
+
+- 観測子が実際に残っていた。
+- PPIDだけによる子孫探索で、PID再利用後の古い親子関係を所有子へ誤帰属した。
+- CIMの残存観測と実process handleの状態が異なった、またはsnapshot取得が遅れた。
+
+現在の子孫探索は親子の生成時刻の順序を検査していません。
+またSame-ProcessはCreationDateの有効な取得値を必須にしていません。
+いずれも確認すべき条件ですが、この失敗で欠測やPID再利用が発生した証拠はなく、原因と断定しません。
+実行中のdriverが残存へ影響した可能性も、現在の記録からは確定できません。
+製品の所有process基盤はGUIに未配線であり、この失敗をGoやcodecの起動・失効失敗と同一視しません。
+
+### 受入を変えない追加観測案
+
+これは実装済みの観測や、終了条件の緩和ではありません。
+
+1. app通常closeの要求・本人handleでの終了確認・exit codeを、子待ちが失敗しても保存する。
+2. 観測子へ匿名slotと役割（WebView/other）を付け、親slot、生成時刻の取得可否と親子の時刻順序、最終same-identity残存を保存する。PID・絶対時刻・path・command lineは公開しない。
+3. 初めに同一性確認して保持した子handleの終了状態を、CIM上の残存と並記する。handle取得不能・同一性不確定を成功や子の除外へ変換しない。
+4. app終了待ちと子待ちの経過時間、snapshot取得時間、残存数を分けて残す。生の例外文やユーザー情報は保存しない。
+
+観測の契約試験では、失敗後もapp結果が残ること、CIM/handleの不一致と取得不能が区別されること、旧FAILが成功へ変わらないことを先に確認する必要があります。
+既存10秒・全観測子の終了要求・cleanup前の正常終了判定を維持します。
+timeout増、子のフィルター除外、成功するまでの試験再実行、先にdriver/sessionを消して正常終了と扱う変更は行いません。
+保証範囲の変更が必要と判断した場合は別の提案として明示し、この診断から暗黙に採用しません。
