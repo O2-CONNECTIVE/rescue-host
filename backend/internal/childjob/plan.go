@@ -3,6 +3,7 @@ package childjob
 import (
 	"encoding/hex"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap"
 )
@@ -41,7 +42,11 @@ func bootstrapArgs(spec Spec) ([]string, error) {
 // ローカルdriveの正規絶対pathだけを扱う。UNC/device/search pathを採らない。
 // pathの真正性や祖先directoryの保護は、この構文検査では証明しない。
 func localImagePath(path string) bool {
-	if len(path) < 7 || !((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) || path[1:3] != `:\` || !strings.HasSuffix(strings.ToLower(path), ".exe") {
+	return localFilePath(path) && strings.HasSuffix(strings.ToLower(path), ".exe")
+}
+
+func localFilePath(path string) bool {
+	if len(path) < 4 || len(path) > maxCommandUnits*4 || !utf8.ValidString(path) || utf16Units(path) > maxCommandUnits || !((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) || path[1:3] != `:\` {
 		return false
 	}
 	for _, segment := range strings.Split(path[3:], `\`) {
@@ -61,9 +66,15 @@ func makePlan(spec Spec) (launchPlan, error) {
 	if !configured(spec) || !localImagePath(spec.Artifact.Path) {
 		return launchPlan{}, ErrConfig
 	}
-	args, err := bootstrapArgs(spec)
+	args, err := launchArgs(spec)
 	if err != nil {
 		return launchPlan{}, ErrConfig
+	}
+	if spec.Command != nil {
+		args = append([]string(nil), args...)
+		for i, arg := range args {
+			args[i] = escapeWindowsArg(arg)
+		}
 	}
 	separator := strings.LastIndex(spec.Artifact.Path, `\`)
 	directory := spec.Artifact.Path[:separator]

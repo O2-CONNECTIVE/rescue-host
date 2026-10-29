@@ -42,6 +42,7 @@ type Spec struct {
 	PrimaryToken   uintptr
 	CleanupTimeout time.Duration
 	Bootstrap      *Bootstrap
+	Command        *FixedCommand
 }
 
 type kernel interface {
@@ -63,6 +64,7 @@ type Child struct {
 	api                         kernel
 	gate                        chan struct{}
 	image, job, process, thread uintptr
+	dependencies                []uintptr
 	assigned, exited            bool
 	exitCode                    uint32
 }
@@ -77,7 +79,7 @@ func bounded(ctx context.Context) bool {
 
 func configured(spec Spec) bool {
 	h := spec.Handles
-	if _, err := bootstrapArgs(spec); err != nil {
+	if _, err := launchArgs(spec); err != nil {
 		return false
 	}
 	return spec.Artifact.Path != "" && !strings.ContainsRune(spec.Artifact.Path, 0) && spec.Artifact.SHA256 != ([32]byte{}) &&
@@ -118,6 +120,16 @@ func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 	if err != nil || c.image == 0 || ctx.Err() != nil {
 		return fail()
 	}
+	if spec.Command != nil {
+		for _, dependency := range spec.Command.dependencies {
+			handle, verifyErr := api.verifyArtifact(ctx, dependency)
+			// 検証途中の失敗でも返された同じhandleを回収責務ごと保持します。
+			c.dependencies = append(c.dependencies, handle)
+			if verifyErr != nil || handle == 0 || ctx.Err() != nil {
+				return fail()
+			}
+		}
+	}
 	c.job, err = api.newJob()
 	if err != nil || c.job == 0 || ctx.Err() != nil {
 		return fail()
@@ -143,6 +155,7 @@ func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 }
 
 func freezeSpec(spec Spec) Spec {
+	spec.Command = copyCommand(spec.Command)
 	if spec.Bootstrap != nil {
 		snapshot := *spec.Bootstrap
 		spec.Bootstrap = &snapshot
@@ -194,7 +207,18 @@ func (c *Child) waitOwned(ctx context.Context) error {
 		return ErrUnconfirmed
 	}
 	var unconfirmed bool
-	for _, handle := range []*uintptr{&c.thread, &c.image, &c.process, &c.job} {
+	for _, handle := range []*uintptr{&c.thread, &c.image} {
+		if err := c.release(handle); err != nil {
+			unconfirmed = true
+		}
+	}
+	// module importやleader退出だけでは解放しません。JobEmptyまで同じ参照です。
+	for i := range c.dependencies {
+		if err := c.release(&c.dependencies[i]); err != nil {
+			unconfirmed = true
+		}
+	}
+	for _, handle := range []*uintptr{&c.process, &c.job} {
 		if err := c.release(handle); err != nil {
 			unconfirmed = true
 		}

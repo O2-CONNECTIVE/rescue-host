@@ -1,7 +1,7 @@
 # 一時guestのWindows境界と清掃journal
 
 [一時guestのcore](temporary-guest-account.md)に接続するsourceの境界を定める。
-accountの変更方式と保護provisioningは未採用で、`NewNative`は未設定拒否を維持する。
+accountの変更は[SID指定清掃候補](temporary-guest-sid-mutations.md)をsourceに準備するが、保護provisioningと製品配線は未設定で、`NewNative`は未設定拒否を維持する。
 OperatorSID／AuthenticationIdの認証根は変更しない。
 実Windowsのaccount、資格情報、ACL、service、SSHは今回操作しない。
 
@@ -65,7 +65,7 @@ not-foundも、rename済みの旧SIDが存在しないことの証明へ昇格�
 照合とmutationの間の同名置換を、coreのmutexや直前lookupだけで防いだとは扱わない。
 名前指定mutationはexact操作の代替として配線しない。
 
-公開PowerShell LocalAccountsのSID指定は、次に検討するsupported surfaceの候補である。
+公開PowerShell LocalAccountsのSID指定は、無効化・削除adapterのsupported surfaceとしてsource候補を実装する。
 第一者sourceではSIDからRID／SAM user handleへ進み、delete／disableで名前へ戻らない構成を確認した。
 ただし確認したsource版と配備binaryの同一性、固定moduleの保護、Service所有のJob／I/O／終了確認が必要である。
 作成中の例外で部分SIDを返せない場合は、no-SID unknownとして隔離し、自動削除・盲目的createをしない。
@@ -74,7 +74,7 @@ cmdletのnot-foundだけでは確定不在としない。
 
 Goからsamlibの内部exportを直接呼ぶ案は、SAMRの公開RPC仕様をDLL ABI保証へ読み替えない。
 独自RPC clientを採る場合も、認証、NDR、context handleと異常終了回収の別設計が必要である。
-今回のsource準備は、いずれの変更方式の採用や実機権限付与でもない。
+今回のsource準備は、実配置での利用可判定や実機権限付与ではない。
 
 ## source試験と実機受入
 
