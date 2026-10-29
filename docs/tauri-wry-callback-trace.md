@@ -1,5 +1,8 @@
 # 試験専用Wry callback観測
 
+本稿は#108/#112/#116までの観測の履歴を含む。後続の現行variant3・5file差分・12event枠・script送信と待機の識別は
+[script登録待機の調査](tauri-script-wait-investigation.md)を参照する。旧variant2のartifactを新形式で補完しない。
+
 関連 #91 / #102 / #105。#105の同一診断release失敗では、app内の保守的cutoffまで約14.842秒、build戻りmarkerが未観測だった。
 driverは同じ試行でheader未到達。これは内部の待ち場所やOS原因の証明ではない。
 #102/#105のFAILを保持し、自動mergeや成功までの再実行はしない。

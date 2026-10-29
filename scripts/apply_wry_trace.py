@@ -8,8 +8,8 @@ import re
 import sys
 import tarfile
 
-PINS_SHA256 = '00a49269901133049934030352523c10d731dfd8095e286ed21516f76304b401'
-ALLOWED = {'src/lib.rs', 'src/webview2/mod.rs', 'src/startup_probe.rs', 'src/startup_pump.rs'}
+PINS_SHA256 = '250c3047dccf1b444cc6c727b6b47835b1cbef278d1fd09bd102ec260db772ec'
+ALLOWED = {'src/lib.rs', 'src/webview2/mod.rs', 'src/startup_probe.rs', 'src/startup_pump.rs', 'src/startup_script.rs'}
 
 
 class Rejected(Exception):
@@ -62,15 +62,22 @@ def derive_pump_source(source):
     return function.encode(), (header + changed).encode()
 
 
-def prepare_bytes(archive, pump_archive, bundle):
+def prepare_bytes(archive, pump_archive, macro_archive, bundle):
     need(bundle.is_dir() and not bundle.is_symlink())
     need({x.name for x in bundle.iterdir()} == {'probe.rs', 'fixture.rs', 'pins.json', 'replacements.json',
-         'UPSTREAM_LICENSE.txt', 'pump.rs', 'PUMP_UPSTREAM_LICENSE.txt'})
+         'UPSTREAM_LICENSE.txt', 'pump.rs', 'PUMP_UPSTREAM_LICENSE.txt', 'startup_script.rs'})
     pin_bytes = read(bundle / 'pins.json', 8192)
     need(sha(pin_bytes) == PINS_SHA256)
     pins = json.loads(pin_bytes)
     need(sha(archive) == pins['upstreamSha256'])
     need(sha(pump_archive) == pins['pumpUpstreamSha256'])
+    need(sha(macro_archive) == pins['macroUpstreamSha256'])
+    with tarfile.open(fileobj=io.BytesIO(macro_archive)) as source:
+        member = source.getmember('webview2-com-macros-0.8.1/src/lib.rs')
+        need(member.isfile() and member.size <= 65536)
+        module = source.extractfile(member).read()
+        function = module[module.index(b'fn impl_completed_callback('):module.index(b'/// Implement an `EventCallback`')]
+        need(sha(function) == pins['macroFunctionSha256'])
     with tarfile.open(fileobj=io.BytesIO(pump_archive)) as source:
         member = source.getmember('webview2-com-0.39.1/src/lib.rs')
         need(member.isfile() and member.size <= 65536)
@@ -92,6 +99,8 @@ def prepare_bytes(archive, pump_archive, bundle):
     need(read(bundle / 'UPSTREAM_LICENSE.txt', 8192) == before['LICENSE-MIT'])
     patch = read(bundle / 'replacements.json', 65536)
     code = read(bundle / 'probe.rs', 32768)
+    scripts = read(bundle / 'startup_script.rs', 32768)
+    need(sha(scripts) == pins['scriptCodeSha256'])
     need(sha(patch) == pins['replacementsSha256'] and sha(code) == pins['codeSha256'])
     after = dict(before)
     for change in json.loads(patch):
@@ -100,6 +109,7 @@ def prepare_bytes(archive, pump_archive, bundle):
         after[name] = after[name].decode().replace(old, new).encode()
     after['src/startup_probe.rs'] = code
     after['src/startup_pump.rs'] = pump
+    after['src/startup_script.rs'] = scripts
     changed = {n for n in after if after[n] != before.get(n)}
     need(changed == ALLOWED and set(pins['postimage']) == ALLOWED)
     need(all(sha(after[n]) == pins['postimage'][n] for n in changed))
@@ -117,7 +127,7 @@ def check_tree(folder, expected):
 
 
 def run(args):
-    pins, after = prepare_bytes(read(args.archive, 2 * 1024 * 1024), read(args.pump_archive, 65536), args.bundle)
+    pins, after = prepare_bytes(read(args.archive, 2 * 1024 * 1024), read(args.pump_archive, 65536), read(args.macro_archive, 65536), args.bundle)
     lock = read(args.app_lock, 1024 * 1024)
     need(re.fullmatch('[0-9a-f]{40}', args.source_commit) and not args.report.exists())
     if args.verify:
@@ -126,7 +136,8 @@ def run(args):
         binary = read(args.exe, 64 * 1024 * 1024)
         result = {k: pins[k] for k in ['variant', 'upstreamSha256', 'replacementsSha256', 'codeSha256',
                                      'postimage', 'lockBeforeSha256', 'lockAfterSha256', 'pumpUpstreamSha256',
-                                     'pumpFunctionSha256', 'pumpCodeSha256', 'pumpLicenseSha256']}
+                                     'pumpFunctionSha256', 'pumpCodeSha256', 'pumpLicenseSha256',
+                                     'macroUpstreamSha256', 'macroFunctionSha256', 'scriptCodeSha256']}
         result.update(pinsSha256=PINS_SHA256, sourceCommit=args.source_commit, exeSha256=sha(binary))
     else:
         need(not args.source.exists() and sha(lock) == pins['lockBeforeSha256'])
@@ -152,7 +163,7 @@ def main():
         def error(self, message):
             raise Rejected()
     parser = Parser(description=__doc__)
-    for name in ['archive', 'pump-archive', 'bundle', 'source', 'app-lock', 'report']:
+    for name in ['archive', 'pump-archive', 'macro-archive', 'bundle', 'source', 'app-lock', 'report']:
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--source-commit', required=True)
     parser.add_argument('--verify', action='store_true')

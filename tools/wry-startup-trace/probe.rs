@@ -10,6 +10,10 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+#[path = "startup_script.rs"]
+mod script;
+use script::Scripts;
+pub(crate) use script::Signal as ScriptSignal;
 #[derive(Clone, Copy)]
 pub(crate) enum Stage {
     WebviewEnter,
@@ -22,6 +26,11 @@ pub(crate) enum Stage {
     ControllerApiReturn,
     ControllerCallback,
     ControllerWaitReturn,
+    InitEnter,
+    InitReturn,
+    WebviewExitOk,
+    WebviewExitError,
+    WebviewUnwind,
 }
 impl Stage {
     fn name(self) -> &'static str {
@@ -36,6 +45,11 @@ impl Stage {
             Self::ControllerApiReturn => "controller-api-return",
             Self::ControllerCallback => "controller-callback",
             Self::ControllerWaitReturn => "controller-wait-return",
+            Self::InitEnter => "init-enter",
+            Self::InitReturn => "init-return",
+            Self::WebviewExitOk => "webview-exit-ok",
+            Self::WebviewExitError => "webview-exit-error",
+            Self::WebviewUnwind => "webview-unwind",
         }
     }
 }
@@ -49,6 +63,7 @@ struct Event {
 pub(crate) enum PumpScope {
     Environment,
     Controller,
+    Script(u32),
 }
 #[derive(Clone, Copy)]
 pub(crate) enum PumpSignal {
@@ -159,7 +174,8 @@ impl Pump {
 #[derive(Clone)]
 struct Observation {
     events: Vec<Event>,
-    pumps: [Pump; 2],
+    pumps: [Pump; 3],
+    scripts: Scripts,
 }
 struct Recorder {
     start: Instant,
@@ -191,8 +207,9 @@ pub(crate) fn record(stage: Stage) {
         let memory = Arc::new(Recorder {
             start: Instant::now(),
             state: Mutex::new(Observation {
-                events: Vec::with_capacity(10),
-                pumps: [Pump::empty(), Pump::empty()],
+                events: Vec::with_capacity(12),
+                pumps: [Pump::empty(), Pump::empty(), Pump::empty()],
+                scripts: Scripts::empty(),
             }),
             attempted: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
@@ -215,13 +232,16 @@ pub(crate) fn record(stage: Stage) {
     }
     let seq = memory.attempted.fetch_add(1, SeqCst) + 1;
     if let Ok(mut state) = memory.state.try_lock() {
-        if state.events.len() < 10 {
+        if state.events.len() < 12 {
             state.events.push(Event {
                 seq,
                 stage,
                 elapsed: memory.start.elapsed().as_micros(),
             });
-            if matches!(stage, Stage::ControllerWaitReturn) {
+            if matches!(
+                stage,
+                Stage::WebviewExitOk | Stage::WebviewExitError | Stage::WebviewUnwind
+            ) {
                 memory.complete.store(true, SeqCst);
             }
             return;
@@ -242,8 +262,73 @@ pub(crate) fn observe_pump(scope: PumpScope, signal: PumpSignal) {
         let index = match scope {
             PumpScope::Environment => 0,
             PumpScope::Controller => 1,
+            PumpScope::Script(ordinal) => {
+                if ordinal == 0 || ordinal != state.scripts.calls {
+                    state.scripts.invalid = true;
+                    return;
+                }
+                if matches!(signal, PumpSignal::Enter) {
+                    state.scripts.pump_ordinal = ordinal;
+                }
+                2
+            }
         };
         state.pumps[index].update(signal, memory.start.elapsed().as_micros());
+    } else {
+        memory.dropped.fetch_add(1, SeqCst);
+    }
+}
+pub(crate) struct BuildScope(bool);
+impl BuildScope {
+    pub fn new() -> Self {
+        Self(false)
+    }
+    pub fn success(&mut self) {
+        self.0 = true;
+    }
+}
+impl Drop for BuildScope {
+    fn drop(&mut self) {
+        record(if thread::panicking() {
+            Stage::WebviewUnwind
+        } else if self.0 {
+            Stage::WebviewExitOk
+        } else {
+            Stage::WebviewExitError
+        });
+    }
+}
+pub(crate) fn begin_script() -> u32 {
+    let Some(Some(memory)) = TRACE.get() else {
+        return 0;
+    };
+    memory.in_flight.fetch_add(1, SeqCst);
+    let _flight = Flight(memory);
+    if !memory.enabled.load(SeqCst) {
+        return 0;
+    }
+    if let Ok(mut state) = memory.state.try_lock() {
+        let ordinal = state.scripts.begin(memory.start.elapsed().as_micros());
+        state.pumps[2] = Pump::empty();
+        ordinal
+    } else {
+        memory.dropped.fetch_add(1, SeqCst);
+        0
+    }
+}
+pub(crate) fn observe_script(ordinal: u32, signal: ScriptSignal) {
+    let Some(Some(memory)) = TRACE.get() else {
+        return;
+    };
+    memory.in_flight.fetch_add(1, SeqCst);
+    let _flight = Flight(memory);
+    if !memory.enabled.load(SeqCst) {
+        return;
+    }
+    if let Ok(mut state) = memory.state.try_lock() {
+        state
+            .scripts
+            .update(ordinal, signal, memory.start.elapsed().as_micros());
     } else {
         memory.dropped.fetch_add(1, SeqCst);
     }
@@ -271,7 +356,8 @@ impl Recorder {
             .map(|v| v.clone())
             .unwrap_or(Observation {
                 events: Vec::new(),
-                pumps: [Pump::empty(), Pump::empty()],
+                pumps: [Pump::empty(), Pump::empty(), Pump::empty()],
+                scripts: Scripts::empty(),
             });
         let mut events = state.events;
         events.sort_by_key(|e| e.seq);
@@ -288,9 +374,9 @@ impl Recorder {
             .collect();
         let flights = self.in_flight.load(SeqCst);
         let text = format!(
-            "{{\"schema\":1,\"variant\":\"wry-webview2-stage-2\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{},\"pumps\":{{\"environment\":{},\"controller\":{}}}}}",
+            "{{\"schema\":1,\"variant\":\"wry-webview2-stage-3\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{},\"pumps\":{{\"environment\":{},\"controller\":{},\"script\":{}}},\"scripts\":{}}}",
             rows.join(","), self.attempted.load(SeqCst), events.len(), self.dropped.load(SeqCst), requested && flights == 0, flights, end,
-            state.pumps[0].json(), state.pumps[1].json());
+            state.pumps[0].json(), state.pumps[1].json(), state.pumps[2].json(), state.scripts.json());
         if text.len() <= 2048 {
             if let Ok(mut file) = OpenOptions::new()
                 .write(true)

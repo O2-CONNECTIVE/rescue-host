@@ -1,6 +1,6 @@
 const stages = ['webview-enter', 'environment-reused', 'environment-api-start', 'environment-api-return',
   'environment-callback', 'environment-wait-return', 'controller-api-start', 'controller-api-return',
-  'controller-callback', 'controller-wait-return', 'init-enter', 'init-return', 'webview-exit-ok', 'webview-exit-error'] as const;
+  'controller-callback', 'controller-wait-return', 'init-enter', 'init-return', 'webview-exit-ok', 'webview-exit-error', 'webview-unwind'] as const;
 type Stage = typeof stages[number];
 type Event = { seq: number; stage: Stage; elapsedUs: number };
 function object(x: unknown): x is Record<string, unknown> { return !!x && typeof x === 'object' && !Array.isArray(x); }
@@ -17,7 +17,7 @@ export function classifyWryStartup(input: unknown) {
     if (!object(row) || !exact(row, ['seq', 'stage', 'elapsedUs']) || row.seq !== events.length + 1 ||
       !integer(row.elapsedUs) || row.elapsedUs < elapsed) return incomplete;
     const stage = stages.find(s => s === row.stage);
-    if (!stage || seen.has(stage) || seen.has('webview-exit-ok') || seen.has('webview-exit-error') || (events.length === 0 && stage !== 'webview-enter') ||
+    if (!stage || seen.has(stage) || ['webview-exit-ok', 'webview-exit-error', 'webview-unwind'].some(s => seen.has(s as Stage)) || (events.length === 0 && stage !== 'webview-enter') ||
       (stage !== 'webview-enter' && !seen.has('webview-enter'))) return incomplete;
     const environmentReady = seen.has('environment-reused') || seen.has('environment-wait-return');
     if ((stage === 'environment-reused' && seen.has('environment-api-start')) ||
@@ -60,8 +60,9 @@ export function classifyWryStartup(input: unknown) {
       : !seen.has('controller-callback') ? 'controller-callback-not-observed'
       : !seen.has('controller-wait-return') ? 'controller-wait-return-not-observed' : 'controller-wait-returned';
   }
-  if (seen.has('webview-exit-error')) phase = 'webview-error-exit-observed';
-  else if (seen.has('webview-exit-ok')) phase = 'webview-returned';
+  if (seen.has('webview-unwind')) phase = 'webview-unwind-observed';
+  else if (seen.has('webview-exit-error')) phase = 'webview-error-exit-observed';
+  else if (seen.has('webview-exit-ok')) phase = 'webview-exit-guard-ok-observed';
   else if (seen.has('init-return')) phase = 'post-init-webview-exit-not-observed';
   else if (seen.has('init-enter')) phase = scriptPhase(scripts);
   const hint = phase.startsWith('script-') && scripts.calls > 0 && scripts.result === 'pending'

@@ -2,16 +2,17 @@ import type { Pump } from './wry-pump-state.ts';
 const counts = ['calls', 'apiReturns', 'callbacks', 'sends', 'returns'] as const;
 const times = ['startedUs', 'apiStartUs', 'apiReturnUs', 'callbackUs', 'sentUs', 'returnUs'] as const;
 type Scripts = Record<typeof counts[number], number> & Record<typeof times[number], number | null> &
-  { result: 'idle' | 'pending' | 'ok' | 'error'; callbackOk: boolean | null; invalid: false };
+  { result: 'idle' | 'pending' | 'ok' | 'error'; callbackOk: boolean | null; pumpOrdinal: number; invalid: false };
 export function readScripts(value: unknown, end: number, pump: Pump): Scripts | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const x = value as Record<string, unknown>; const keys = [...counts, ...times, 'result', 'callbackOk', 'invalid'];
+  const x = value as Record<string, unknown>; const keys = [...counts, ...times, 'result', 'callbackOk', 'pumpOrdinal', 'invalid'];
   if (Object.keys(x).length !== keys.length || !keys.every(k => Object.hasOwn(x, k)) || x.invalid !== false
     || !counts.every(k => typeof x[k] === 'number' && Number.isSafeInteger(x[k]) && x[k] >= 0 && x[k] <= 128)
     || !times.every(k => x[k] === null || (typeof x[k] === 'number' && Number.isSafeInteger(x[k]) && x[k] >= 0 && x[k] <= end))
-    || !['idle', 'pending', 'ok', 'error'].includes(String(x.result))
+    || typeof x.result !== 'string' || !['idle', 'pending', 'ok', 'error'].includes(x.result)
     || !(x.callbackOk === null || typeof x.callbackOk === 'boolean')) return null;
   const s = x as Scripts;
+  if (!Number.isInteger(s.pumpOrdinal) || s.pumpOrdinal !== (pump.entered ? s.calls : 0)) return null;
   if (s.calls === 0) return counts.every(k => s[k] === 0) && times.every(k => s[k] === null)
     && s.result === 'idle' && s.callbackOk === null && !pump.entered ? s : null;
   const prior = s.calls - 1;

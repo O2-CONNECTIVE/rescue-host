@@ -50,7 +50,8 @@ jobs:
         run: |
           Invoke-WebRequest 'https://static.crates.io/crates/wry/wry-0.57.1.crate' -OutFile "$env:RUNNER_TEMP/wry.crate" -TimeoutSec 60
           Invoke-WebRequest 'https://static.crates.io/crates/webview2-com/webview2-com-0.39.1.crate' -OutFile "$env:RUNNER_TEMP/pump.crate" -TimeoutSec 60
-          python scripts/apply_wry_trace.py --archive "$env:RUNNER_TEMP/wry.crate" --pump-archive "$env:RUNNER_TEMP/pump.crate" --bundle tools/wry-startup-trace --source "$env:RUNNER_TEMP/wry-startup-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:RUNNER_TEMP/wry-prepared.json" --source-commit $env:STARTUP_SOURCE
+          Invoke-WebRequest 'https://static.crates.io/crates/webview2-com-macros/webview2-com-macros-0.8.1.crate' -OutFile "$env:RUNNER_TEMP/macro.crate" -TimeoutSec 60
+          python scripts/apply_wry_trace.py --archive "$env:RUNNER_TEMP/wry.crate" --pump-archive "$env:RUNNER_TEMP/pump.crate" --macro-archive "$env:RUNNER_TEMP/macro.crate" --bundle tools/wry-startup-trace --source "$env:RUNNER_TEMP/wry-startup-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:RUNNER_TEMP/wry-prepared.json" --source-commit $env:STARTUP_SOURCE
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $sourcePath = "$env:RUNNER_TEMP/wry-startup-source".Replace('\', '/')
           "STARTUP_WRY_CONFIG=patch.crates-io.wry.path='$sourcePath'" >> $env:GITHUB_ENV
@@ -58,7 +59,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -I scripts/tests/run_wry_probe.py "$env:RUNNER_TEMP/wry-probe-fixture.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -I scripts/tests/run_wry_provenance.py "$env:RUNNER_TEMP/wry.crate" "$env:RUNNER_TEMP/pump.crate" tools/wry-startup-trace "$env:RUNNER_TEMP/wry-startup-source" ui/tauri/src-tauri/Cargo.lock $env:STARTUP_SOURCE
+          python -I scripts/tests/run_wry_provenance.py "$env:RUNNER_TEMP/wry.crate" "$env:RUNNER_TEMP/pump.crate" "$env:RUNNER_TEMP/macro.crate" tools/wry-startup-trace "$env:RUNNER_TEMP/wry-startup-source" ui/tauri/src-tauri/Cargo.lock $env:STARTUP_SOURCE
           exit $LASTEXITCODE
       - name: Distinguish sent callbacks from GetMessage returns on owned windows
         timeout-minutes: 3
@@ -94,7 +95,7 @@ jobs:
           New-Item -ItemType Directory $fixture -ErrorAction Stop | Out-Null
           $exe = "$env:CARGO_TARGET_DIR/$env:STARTUP_PROFILE/rescue-host-shell.exe"
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
-          python scripts/apply_wry_trace.py --verify --archive "$env:RUNNER_TEMP/wry.crate" --pump-archive "$env:RUNNER_TEMP/pump.crate" --bundle tools/wry-startup-trace --source "$env:RUNNER_TEMP/wry-startup-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:RUNNER_TEMP/wry-provenance.json" --source-commit $env:STARTUP_SOURCE --exe $exe
+          python scripts/apply_wry_trace.py --verify --archive "$env:RUNNER_TEMP/wry.crate" --pump-archive "$env:RUNNER_TEMP/pump.crate" --macro-archive "$env:RUNNER_TEMP/macro.crate" --bundle tools/wry-startup-trace --source "$env:RUNNER_TEMP/wry-startup-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:RUNNER_TEMP/wry-provenance.json" --source-commit $env:STARTUP_SOURCE --exe $exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $manifest = [ordered]@{
             schema = 1; variant = 'host-startup-diagnostic-1'; sourceCommit = $env:STARTUP_SOURCE

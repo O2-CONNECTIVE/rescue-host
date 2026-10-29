@@ -17,6 +17,7 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
       codeSha256: pins.codeSha256, postimage: pins.postimage, lockBeforeSha256: pins.lockBeforeSha256, lockAfterSha256: pins.lockAfterSha256,
       pumpUpstreamSha256: pins.pumpUpstreamSha256, pumpFunctionSha256: pins.pumpFunctionSha256,
       pumpCodeSha256: pins.pumpCodeSha256, pumpLicenseSha256: pins.pumpLicenseSha256,
+      macroUpstreamSha256: pins.macroUpstreamSha256, macroFunctionSha256: pins.macroFunctionSha256, scriptCodeSha256: pins.scriptCodeSha256,
       pinsSha256: createHash('sha256').update(rawPins).digest('hex'), sourceCommit: 'a'.repeat(40),
       exeSha256: createHash('sha256').update('NOT_AN_EXECUTABLE').digest('hex') };
     const native = { kind: 'windows-webview2-native-smoke', wryStartupFileClosed: true };
@@ -27,7 +28,7 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
     const trace = { schema: 1, variant: 'wry-webview2-stage-3', purpose: 'diagnostic-hints-only',
       events: [{ seq: 1, stage: 'webview-enter', elapsedUs: 0 }], attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 100,
       pumps: { environment: empty, controller: empty, script: empty },
-      scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0,
+      scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0, pumpOrdinal: 0,
         startedUs: null, apiStartUs: null, apiReturnUs: null, callbackUs: null, sentUs: null,
         returnUs: null, result: 'idle', callbackOk: null, invalid: false } };
     await writeFile(path.join(folder, 'wry-startup-stages.json'), JSON.stringify(trace));
