@@ -141,7 +141,14 @@ func TestEndpointMoveReturnsOwnedHandleWithLateDeadlineError(t *testing.T) {
 }
 
 func TestEndpointCloseStopsInflightWriteAndRetainsOwner(t *testing.T) {
-	e, k := endpointMoved(t)
+	// The 5ms caller deadline below tests blocked admission. A separate finite
+	// cleanup budget tests recovery, without requiring scheduler service in 10ms.
+	// A controlled caller deadline still forces an actual cleanup overrun below;
+	// this fixture budget cannot turn that negative case into a successful close.
+	cfg := config()
+	cfg.CleanupTimeout = time.Second
+	f, k := endpointFixtureWithConfig(t, cfg)
+	e, k := moveEndpointFixture(t, f, k)
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once, releaseOnce sync.Once
 	unblock := func() { releaseOnce.Do(func() { close(release) }) }
@@ -171,8 +178,29 @@ func TestEndpointCloseStopsInflightWriteAndRetainsOwner(t *testing.T) {
 	if got.receipt != nil || !errors.Is(got.err, ErrDenied) {
 		t.Fatal("stop後の遅延writeを受理しました", got.err)
 	}
-	if c, err := e.CloseEndpoint(testContext(t)); c == nil || err != nil || e.MatchesCompletion(got.receipt, c) {
-		t.Fatal("強制cleanupを正常交換へ昇格しました", err)
+	overrun, finishOverrun := context.WithTimeout(ctx, 5*time.Millisecond)
+	defer finishOverrun()
+	overrunObserved := false
+	k.pipe.writer.onClose = func() { <-overrun.Done(); overrunObserved = true }
+	c, err = e.CloseEndpoint(overrun)
+	if !overrunObserved || overrun.Err() != context.DeadlineExceeded || c != nil || !errors.Is(err, ErrUnconfirmed) || errors.Is(err, ErrFatal) || e.MatchesCompletion(got.receipt, c) {
+		t.Fatal("期限を越えたcleanupで完了記録を返しました", err)
+	}
+	if k.pipe.writer.closes != 1 || k.pipe.read.closes != 0 || k.scope.closes != 1 || k.svc.closes != 1 || k.proc.closes != 1 {
+		t.Fatal("同じownerの実参照を回収しませんでした")
+	}
+	k.pipe.writer.onClose = nil
+	// Exactly one fresh finite cleanup asks the same owner for its physical ack.
+	// No loop retries until success; already closed references must stay closed.
+	c, err = e.CloseEndpoint(testContext(t))
+	if c == nil || err != nil || e.MatchesCompletion(got.receipt, c) {
+		t.Fatal("同じownerの再回収を確認できないか正常交換へ昇格しました", err)
+	}
+	if k.pipe.writer.closes != 1 || k.pipe.read.closes != 0 || k.scope.closes != 1 || k.svc.closes != 1 || k.proc.closes != 1 {
+		t.Fatal("回収済み参照を二重に閉じました")
+	}
+	if r, err := e.WriteResponse(testContext(t), []byte("abc")); r != nil || !errors.Is(err, ErrDenied) || k.pipe.writer.writes != 1 {
+		t.Fatal("期限失敗したownerがwriteを再開しました", err)
 	}
 }
 

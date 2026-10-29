@@ -135,9 +135,17 @@ func (k *endpointTestKernel) createEndpoint(string, string) (endpointDuplex, err
 
 func endpointFixture(t *testing.T) (*Factory, *endpointTestKernel) {
 	t.Helper()
-	f, preflight := preflightFixture(t)
-	k := &endpointTestKernel{preflightKernel: preflight}
-	k.pipe.value = fixture(config()).listener.value
+	return endpointFixtureWithConfig(t, config())
+}
+
+func endpointFixtureWithConfig(t *testing.T, c Config) (*Factory, *endpointTestKernel) {
+	t.Helper()
+	f, err := NewNative(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &endpointTestKernel{preflightKernel: &preflightKernel{fakeKernel: fixture(c)}}
+	k.pipe.value = fixture(c).listener.value
 	k.pipe.connection.done = true
 	k.pipe.read = endpointTestHandle{handle: 88, access: 0x120089}
 	k.pipe.writer = endpointTestHandle{handle: 89, access: 0x2}
@@ -149,6 +157,11 @@ func endpointFixture(t *testing.T) (*Factory, *endpointTestKernel) {
 func endpointMoved(t *testing.T) (*Endpoint, *endpointTestKernel) {
 	t.Helper()
 	f, k := endpointFixture(t)
+	return moveEndpointFixture(t, f, k)
+}
+
+func moveEndpointFixture(t *testing.T, f *Factory, k *endpointTestKernel) (*Endpoint, *endpointTestKernel) {
+	t.Helper()
 	e, err := f.PrepareEndpoint(testContext(t))
 	if err != nil {
 		t.Fatal(err)
