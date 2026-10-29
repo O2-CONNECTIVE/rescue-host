@@ -43,7 +43,7 @@ func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servi
 	if err != nil {
 		return nil, err
 	}
-	return prepareBatch(s, owner, nativeBatchOps{
+	b, err := prepareBatch(s, owner, nativeBatchOps{
 		scope:         scope,
 		moveSoleInput: moveNativeSoleInput,
 		parent:        func(context.Context) error { return nil },
@@ -72,6 +72,10 @@ func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servi
 		},
 		closeHandle: func(h uintptr) error { return windows.CloseHandle(windows.Handle(h)) },
 	})
+	if b != nil {
+		b.serviceFactory = factory
+	}
+	return b, err
 }
 
 func validateNativeOperatorRead(h uintptr) error {

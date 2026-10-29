@@ -80,6 +80,12 @@ type sessionSource interface {
 	quiesce(context.Context, binding) (sessionReceipt, error)
 }
 
+// The native never-created producer binds only the actual account creator's
+// sealed return. Callers cannot substitute Status or a raw SID for this handoff.
+type creatorSessionBinder interface {
+	bindCreated(accountReceipt, *seal) error
+}
+
 // previousSessionSourceは旧epochの実対象を回収する専用producer。
 // 新しい空sessionの成功を旧sessionの清掃証拠として代用しない。
 type previousSessionSource interface {

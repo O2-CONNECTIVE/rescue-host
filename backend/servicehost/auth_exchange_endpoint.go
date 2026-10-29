@@ -9,8 +9,9 @@ import (
 // Only the private memory seam replaces operations. Production wraps the exact
 // concrete Endpoint and never manufactures its cross-package receipts.
 type serviceAuthEndpointOps struct {
-	concrete *serviceready.Endpoint
-	close    func(context.Context) error
+	concrete  *serviceready.Endpoint
+	factories *serviceNativeFactories
+	close     func(context.Context) error
 }
 type serviceAuthEndpoint struct {
 	ops                           serviceAuthEndpointOps
@@ -22,7 +23,12 @@ type serviceAuthEndpoint struct {
 }
 
 func (r *serviceAuthRequest) authenticatedEndpointLocked() bool {
-	return r.endpointExchange && r.batchConsumed && r.endpoint != nil && r.endpoint.ops.concrete != nil && r.endpoint.inspection != nil && r.endpoint.input != nil && r.batch.concrete != nil && r.batch.concrete.MatchesSoleInput(r.endpoint.input)
+	return r.batchConsumed && r.endpointInputBoundLocked()
+}
+
+func (r *serviceAuthRequest) endpointInputBoundLocked() bool {
+	held := r.endpoint
+	return r.endpointExchange && held != nil && held.ops.concrete != nil && held.ops.factories.canonical() && held.inspection != nil && held.input != nil && r.batch.concrete != nil && r.batch.concrete.MatchesSoleInput(held.input) && r.batch.concrete.MatchesServiceFactory(held.ops.factories.auth)
 }
 
 // prepareEndpoint is ownership preparation only. There is no configured caller
@@ -96,9 +102,19 @@ func (r *serviceAuthRequest) closeEndpoint(ctx context.Context) error {
 		return nil
 	}
 	cleaned, acquiring, uncertain, ops := held.cleaned, held.acquiring, held.uncertain, held.ops
+	inspection := held.inspection
+	guestOwnsInspection := s.staging != nil && s.staging.lease == inspection && s.staging.transferred && !s.staging.closed
 	s.mu.Unlock()
 	if acquiring {
 		return ErrRuntimeUnconfirmed
+	}
+	if inspection != nil {
+		if guestOwnsInspection {
+			return ErrRuntimeUnconfirmed
+		}
+		if err := inspection.Close(ctx); err != nil {
+			return authFailure(err, ErrRuntimeUnconfirmed)
+		}
 	}
 	if !cleaned && ops.concrete != nil {
 		if ops.close == nil {
@@ -138,4 +154,82 @@ func (r *serviceAuthRequest) nativeEndpointOperations(endpoint *serviceready.End
 		r.endpoint.closed = receipt
 		return nil
 	}}
+}
+
+// The same worker holds partial returns before error/cancel inspection.
+// Lease acquisition precedes Split while the connected duplex still exists.
+func (r *serviceAuthRequest) splitEndpointForInspection(ctx context.Context) (*serviceready.SoleInput, error) {
+	if r == nil || r.adapter == nil {
+		return nil, ErrProvisioningRejected
+	}
+	s := r.adapter.service
+	s.mu.Lock()
+	held := r.endpoint
+	if held == nil || held.ops.concrete == nil || held.input != nil || held.inspection != nil || !r.acquisitionLiveLocked(ctx) {
+		s.mu.Unlock()
+		return nil, ErrProvisioningRejected
+	}
+	endpoint := held.ops.concrete
+	s.mu.Unlock()
+	if err := endpoint.AwaitConnected(ctx); err != nil {
+		return nil, authFailure(err, ErrProvisioningRejected)
+	}
+	input, lease, err := endpoint.SplitForInspection(ctx)
+	s.mu.Lock()
+	held.input, held.inspection = input, lease
+	live := r.acquisitionLiveLocked(ctx)
+	s.mu.Unlock()
+	if err != nil {
+		return input, authFailure(err, ErrProvisioningRejected)
+	}
+	if input == nil || lease == nil || !live {
+		return input, ErrProvisioningRejected
+	}
+	return input, nil
+}
+
+// No caller is configured until an independent protected expected operator
+// policy supplies this concrete factory. Nil never adopts observed candidates.
+func (a *serviceAuthAdapter) exchangeControlEndpoint(ctx context.Context) error {
+	if a == nil || a.service == nil {
+		return ErrProvisioningRejected
+	}
+	s := a.service
+	s.mu.Lock()
+	control := s.control
+	var factories *serviceNativeFactories
+	if control != nil {
+		factories = control.factories
+	}
+	s.mu.Unlock()
+	if !factories.canonical() || !factories.batch.MatchesServiceFactory(factories.auth) {
+		return ErrProvisioningUnconfigured
+	}
+	r, err := a.reserveExchange(ctx)
+	if err != nil {
+		return err
+	}
+	return r.runOwner(func() error {
+		if _, err := r.prepareControlEndpoint(r.worker); err != nil {
+			return err
+		}
+		input, err := r.splitEndpointForInspection(r.worker)
+		if err != nil {
+			return err
+		}
+		batch, err := factories.batch.Prepare(input, r.owner, r.issuer)
+		if batch != nil {
+			attachErr := r.attachBatch(batch)
+			if err == nil {
+				err = attachErr
+			}
+		}
+		if err != nil {
+			return authFailure(err, ErrProvisioningRejected)
+		}
+		if batch == nil {
+			return ErrProvisioningUnconfigured
+		}
+		return r.exchangeBody(nil)
+	})
 }

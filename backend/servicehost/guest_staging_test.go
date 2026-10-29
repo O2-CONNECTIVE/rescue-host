@@ -137,3 +137,28 @@ func TestGuestStagingOwnerBindsOnlySameUnusedOuterAndKeepsMissingEndpointClosed(
 		t.Fatal("zero ticket accepted")
 	}
 }
+
+func TestGuestStagingProductionEndpointKeepsMissingExpectedOperatorSourceClosed(t *testing.T) {
+	s, err := NewPreviewService(previewConfigFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner := &guestOwnerFixture{service: s}
+	if err = s.BindOuterFinalizer(owner); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.BindGuestStagingOwner(owner); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err = s.auth.exchangeControlEndpoint(ctx); !errors.Is(err, ErrProvisioningUnconfigured) {
+		t.Fatal("missing canonical expected policy entered native exchange", err)
+	}
+	if s.auth.attempts != 0 || s.auth.active != nil || owner.prepares.Load() != 0 || s.staging != nil || s.Snapshot().Generation != 0 || s.Snapshot().HasAuthority {
+		t.Fatal("nil producer acquired owner/native/grant state")
+	}
+	if err = s.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

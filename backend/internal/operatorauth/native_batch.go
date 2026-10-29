@@ -3,6 +3,7 @@ package operatorauth
 import (
 	"context"
 	"errors"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"sync"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
@@ -59,6 +60,7 @@ type nativeBatch struct {
 	uncertain                  bool
 	self                       *nativeBatch
 	issuer                     *ephemeral.Issuer
+	serviceFactory             *bootstrapauth.Factory
 	mu                         sync.Mutex
 	spec                       nativeBatchSpec
 	request                    context.Context
