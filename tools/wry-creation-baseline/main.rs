@@ -62,3 +62,18 @@ fn main() {
     #[cfg(not(windows))]
     std::process::exit(1);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::begin_on_initial_event;
+
+    #[test]
+    fn 初回初期化だけで作成し以後は繰り返さない() {
+        let mut attempted = false;
+        let mut calls = 0;
+        assert!(!begin_on_initial_event(&mut attempted, false));
+        if begin_on_initial_event(&mut attempted, true) { calls += 1; }
+        if begin_on_initial_event(&mut attempted, true) { calls += 1; }
+        assert_eq!(calls, 1);
+    }
+}
