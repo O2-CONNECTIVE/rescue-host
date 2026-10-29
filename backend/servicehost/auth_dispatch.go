@@ -17,6 +17,8 @@ import (
 // Private composition only. No configured native producer calls this adapter
 // yet; neither wire values nor a boolean can construct an authenticated Read.
 type serviceAuthAdapter struct {
+	sidRequired     bool                   // immutable after pre-use protected owner composition
+	operator        *serviceOperatorRecord // authenticated facts for this logical channel only
 	service         *Service
 	dispatch        *serviceDispatcher
 	limit, attempts uint64 // Service.mu
@@ -27,14 +29,15 @@ type serviceAuthAdapter struct {
 // Production operations always wrap a concrete prepared Batch and its exact
 // Collector. Only package tests replace this private operation seam.
 type serviceAuthBatchOps struct {
-	concrete  *operatorauth.Batch
-	issuer    *ephemeral.Issuer
-	owner     *serviceauthowner.Owner
-	collector *operatorauth.Collector
-	start     func(context.Context) error
-	collect   func(context.Context) (*operatorauth.Read, error)
-	consume   func(context.Context, *operatorauth.Read) ([]byte, error)
-	close     func(context.Context) error
+	concrete             *operatorauth.Batch
+	issuer               *ephemeral.Issuer
+	owner                *serviceauthowner.Owner
+	collector            *operatorauth.Collector
+	start                func(context.Context) error
+	collect              func(context.Context) (*operatorauth.Read, error)
+	consume              func(context.Context, *operatorauth.Read) ([]byte, error)
+	consumeAuthenticated func(context.Context, *operatorauth.Read) ([]byte, serviceOperatorSubject, error)
+	close                func(context.Context) error
 }
 
 // Check the actual deadline as well as Err: timer delivery may be delayed.
@@ -51,7 +54,9 @@ func nativeServiceAuthBatch(batch *operatorauth.Batch, issuer *ephemeral.Issuer,
 		return serviceAuthBatchOps{}, ErrProvisioningUnconfigured
 	}
 	collector := batch.Collector()
-	return serviceAuthBatchOps{concrete: batch, issuer: issuer, owner: owner, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
+	return serviceAuthBatchOps{concrete: batch, issuer: issuer, owner: owner, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, consumeAuthenticated: func(ctx context.Context, read *operatorauth.Read) ([]byte, serviceOperatorSubject, error) {
+		return consumeNativeOperator(ctx, collector, read)
+	}, close: batch.Close}, nil
 }
 
 type serviceAuthRequest struct {
@@ -198,9 +203,18 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 		return ErrProvisioningRejected
 	}
 	s.mu.Unlock()
-	frame, err := batch.consume(r.worker, read)
+	var frame []byte
+	var subject serviceOperatorSubject
+	if a.sidRequired {
+		if batch.consumeAuthenticated == nil {
+			return ErrProvisioningRejected
+		}
+		frame, subject, err = batch.consumeAuthenticated(r.worker, read)
+	} else {
+		frame, err = batch.consume(r.worker, read)
+	}
 	s.mu.Lock()
-	if err != nil || !r.liveLocked() {
+	if err != nil || !r.liveLocked() || (a.sidRequired && !r.acceptOperatorLocked(subject)) {
 		s.mu.Unlock()
 		return authFailure(err, ErrProvisioningRejected)
 	}

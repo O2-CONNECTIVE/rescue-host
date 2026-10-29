@@ -21,6 +21,9 @@ status: accepted
 ## 実装と残る境界
 
 今回のcoreは固定SID policy、実message認証後のreport/2、EOF・正常exit・回収後のsealed Readと単回binding消費を実装する。
-保護Rootからの実供給とService stop gateでのchannel bindingは後続の組合せ差分で検証する。
+元Execution ownerは保持Recordを再照合し、Service公開前に固定SID policyを一度だけ供給する。
+Serviceは同Collector/owner/issuerの単回認証結果をstop gateで照合し、同一logical channelの主体projectionを固定する。
+同SIDでもAuthId等が変われば書込み・dispatch前に拒否して失効し、別Serviceへのbinding移譲や旧intentの再利用は認めない。
+これらの正例はprivate OS/owner memory seamであり、同一製品callerの実Windows縦断ではない。
 純粋なpolicy構成は保護Rootの証明でも起動可能性でもない。正規の専用helper token・same-launch evidence・helper entryの保護sourceは未構成で、取得・Move前の拒否を維持する。
 実Windows、実runtime/inner sshd、実SSH、製品gate解除の成立をこの採用やmemory試験から推定しない。

@@ -31,6 +31,11 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 		if err == nil && e.staging {
 			err = service.BindGuestStagingOwner(e)
 		}
+		if err == nil && e.preview != nil {
+			if policyStage, ok := e.stage.(operatorSIDPolicyStage); ok {
+				err = policyStage.BindOperatorSIDPolicy(ctx, service, e)
+			}
+		}
 		if err == nil {
 			e.service.Store(service)
 		}
