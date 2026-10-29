@@ -25,6 +25,8 @@ func (f bootstrapFunc) ReadApproved(ctx context.Context) (runbackend.ApprovedCon
 	return f(ctx)
 }
 
+func (bootstrapFunc) CleanupTimeout() time.Duration { return time.Second }
+
 type ownedOutput struct {
 	bytes.Buffer
 	closed bool
