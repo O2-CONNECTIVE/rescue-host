@@ -1,0 +1,223 @@
+name: Fixed main cross-runner comparison
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/main-timeout-cross-runner.yml', '.github/workflows/main-timeout-cross-worker.yml', 'scripts/collect_driver_license_material.py', 'scripts/tests/test_driver_license_material.py', 'scripts/tests/test_cross_runner_workflow.py', 'docs/third-party/tauri-driver-LICENSE-MIT']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  prepare:
+    runs-on: windows-2022
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: source
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      zip_sha: ${{ steps.hashes.outputs.zip_sha }}
+      exe_sha: ${{ steps.hashes.outputs.exe_sha }}
+      driver_sha: ${{ steps.hashes.outputs.driver_sha }}
+      provenance_sha: ${{ steps.hashes.outputs.provenance_sha }}
+      licenses_sha: ${{ steps.hashes.outputs.licenses_sha }}
+      manifest_sha: ${{ steps.hashes.outputs.manifest_sha }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13.17'
+          architecture: x64
+      - name: Test reproduction contract
+        working-directory: control
+        run: python -I -m unittest discover -s scripts/tests -p test_driver_license_material.py -v
+      - name: Test cross-runner workflow contract
+        working-directory: control
+        run: python -I -m unittest discover -s scripts/tests -p test_cross_runner_workflow.py -v
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: 1eda7a4e964d34a751dcc89509ee07b3482917a7
+          path: source
+          persist-credentials: false
+      - name: Create owned temporary root
+        run: |
+          $id = [Guid]::NewGuid().ToString('D').ToLowerInvariant()
+          $root = Join-Path $env:RUNNER_TEMP ("main-repro-" + $id)
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          [IO.File]::WriteAllText((Join-Path $root 'owner.json'), ([ordered]@{schema=1; purpose='main-repro'; runId=$id} | ConvertTo-Json -Compress))
+          "REPRO_ROOT=$root" >> $env:GITHUB_ENV
+          "REPRO_RUN_ID=$id" >> $env:GITHUB_ENV
+          $initial = [ordered]@{schema=1; trials=@(1..3 | ForEach-Object { [ordered]@{trial=$_; outcome='not-started'; sessionOutcome='not-started'; sessionMs=$null; normalClose=$null; driverTrace='not-started'; cleanup='not-started'} })}
+          [IO.File]::WriteAllText((Join-Path $root 'three-trials.json'), ($initial | ConvertTo-Json -Depth 6 -Compress))
+      - name: Record fixed source and test archive boundary
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -cne '1eda7a4e964d34a751dcc89509ee07b3482917a7') { throw 'SOURCE_SHA_MISMATCH' }
+          if ($sha -notmatch '^[0-9a-f]{40}$') { throw 'SOURCE_SHA_INVALID' }
+          "EVALUATION_SOURCE_SHA=$sha" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=$env:REPRO_ROOT/tauri-evaluation-target" >> $env:GITHUB_ENV
+          python -B -m unittest discover -s scripts/tests -p 'test_tauri_evaluation_*.py' -v
+          exit $LASTEXITCODE
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Build locked frontend with runtime notices
+        working-directory: source/ui/tauri
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/notices.mjs --check
+          exit $LASTEXITCODE
+      - name: Select fixed official Rust in disposable CI
+        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update
+      - name: Read locked Cargo metadata before compiling
+        working-directory: source/ui/tauri
+        run: |
+          cargo +1.99.1 metadata --locked --format-version 1 --features custom-protocol --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml > "$env:REPRO_ROOT/cargo-metadata.json"
+          exit $LASTEXITCODE
+      - name: Collect complete dependency license texts before compiling
+        run: |
+          $sysroot = (rustc +1.99.1 --print sysroot).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem -LiteralPath "$sysroot/share/doc/rust" -File | Select-Object -ExpandProperty Name
+          python -B scripts/collect_tauri_licenses.py --metadata "$env:REPRO_ROOT/cargo-metadata.json" --frontend-notice ui/tauri/dist/THIRD_PARTY_NOTICES.txt --rust-docs "$sysroot/share/doc/rust" --output "$env:REPRO_ROOT/evaluation-licenses"
+          exit $LASTEXITCODE
+      - name: Build locked release executable
+        working-directory: source/ui/tauri
+        run: cargo +1.99.1 build --release --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Create source-bound evaluation archive
+        run: |
+          $exe = "$env:CARGO_TARGET_DIR/release/rescue-host-shell.exe"
+          if ((Get-AuthenticodeSignature $exe).Status -ne 'NotSigned') { throw 'UNEXPECTED_SIGNATURE_STATE' }
+          python -B scripts/package_tauri_evaluation.py --exe $exe --licenses "$env:REPRO_ROOT/evaluation-licenses" --source-sha $env:EVALUATION_SOURCE_SHA --output "$env:REPRO_ROOT/evaluation-package"
+          exit $LASTEXITCODE
+      - name: Extract the exact distribution ZIP and check every file hash
+        run: |
+          $zip = "$env:REPRO_ROOT/evaluation-package/RescueHostTauriUnwiredEvaluation-x64.zip"
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exeHash = (Get-FileHash "$env:CARGO_TARGET_DIR/release/rescue-host-shell.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          python -B scripts/verify_tauri_evaluation.py --archive $zip --source $env:EVALUATION_SOURCE_SHA --archive-sha256 $zipHash --exe-sha256 $exeHash > "$env:REPRO_ROOT/evaluation-package/verification.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive $zip -DestinationPath "$env:REPRO_ROOT/evaluation-unpacked"
+          $root = "$env:REPRO_ROOT/evaluation-unpacked/RescueHostTauriUnwiredEvaluation"
+          $manifest = Get-Content "$root/MANIFEST.json" -Raw | ConvertFrom-Json
+          if ($manifest.sourceCommit -ne $env:EVALUATION_SOURCE_SHA -or $manifest.integration -ne 'not_connected' -or $manifest.canStart -or $manifest.canStop -or -not $manifest.productionGateClosed) { throw 'PACKAGE_BOUNDARY_MISMATCH' }
+          foreach ($file in $manifest.files.PSObject.Properties) {
+            if ((Get-FileHash (Join-Path $root $file.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.Value) { throw 'PACKAGE_FILE_HASH_MISMATCH' }
+          }
+      - name: Read existing CI WebView2 without updating it
+        run: ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$env:REPRO_ROOT/evaluation-inventory.json"
+      - name: Prepare existing pinned native test tools in runner temp
+        timeout-minutes: 6
+        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:REPRO_ROOT/evaluation-tools" -InventoryPath "$env:REPRO_ROOT/evaluation-inventory.json"
+      - name: Collect fixed driver license inventory
+        run: |
+          $sysroot = (rustc +1.99.1 --print sysroot).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python ../control/scripts/collect_driver_license_material.py --driver-source "$env:REPRO_ROOT/evaluation-tools/tauri-driver-2.1.0" --driver-crate "$env:REPRO_ROOT/evaluation-tools/tauri-driver.crate" --mit-license ../control/docs/third-party/tauri-driver-LICENSE-MIT --app-collector scripts/collect_tauri_licenses.py --rust-docs "$sysroot/share/doc/rust" --output "$env:REPRO_ROOT/driver-licenses"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path "$env:REPRO_ROOT/driver-licenses/*" -DestinationPath "$env:REPRO_ROOT/driver-licenses.zip"
+      - name: Stage only approved diagnostic files and bind hashes
+        id: hashes
+        run: |
+          $payload = "$env:REPRO_ROOT/payload"
+          New-Item -ItemType Directory -Path $payload -ErrorAction Stop | Out-Null
+          Copy-Item "$env:REPRO_ROOT/evaluation-package/RescueHostTauriUnwiredEvaluation-x64.zip" "$payload/RescueHostTauriUnwiredEvaluation-x64.zip"
+          Copy-Item "$env:REPRO_ROOT/evaluation-tools/tauri/bin/tauri-driver.exe" "$payload/tauri-driver.exe"
+          Copy-Item "$env:REPRO_ROOT/evaluation-tools/driver-provenance.json" "$payload/driver-provenance.json"
+          Copy-Item "$env:REPRO_ROOT/driver-licenses.zip" "$payload/driver-licenses.zip"
+          $expected = @('RescueHostTauriUnwiredEvaluation-x64.zip','tauri-driver.exe','driver-provenance.json','driver-licenses.zip') | Sort-Object
+          $actual = @(Get-ChildItem -LiteralPath $payload -File | Select-Object -ExpandProperty Name | Sort-Object)
+          if (($actual -join ',') -cne ($expected -join ',')) { throw 'PAYLOAD_SET_MISMATCH' }
+          $zipHash = (Get-FileHash "$payload/RescueHostTauriUnwiredEvaluation-x64.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exeHash = (Get-FileHash "$env:REPRO_ROOT/evaluation-unpacked/RescueHostTauriUnwiredEvaluation/rescue-host-shell.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $driverHash = (Get-FileHash "$payload/tauri-driver.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $provenanceHash = (Get-FileHash "$payload/driver-provenance.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $licensesHash = (Get-FileHash "$payload/driver-licenses.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $provenance = Get-Content "$payload/driver-provenance.json" -Raw | ConvertFrom-Json
+          if ($provenance.binarySha256 -cne $driverHash) { throw 'DRIVER_HASH_MISMATCH' }
+          [IO.File]::WriteAllText("$payload/manifest.json", ([ordered]@{schema=1; source=$env:EVALUATION_SOURCE_SHA; zipSha=$zipHash; exeSha=$exeHash; driverSha=$driverHash; provenanceSha=$provenanceHash; licensesSha=$licensesHash} | ConvertTo-Json -Compress))
+          $manifestHash = (Get-FileHash "$payload/manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "manifest_sha=$manifestHash" >> $env:GITHUB_OUTPUT
+          foreach ($entry in @{zip_sha=$zipHash; exe_sha=$exeHash; driver_sha=$driverHash; provenance_sha=$provenanceHash; licenses_sha=$licensesHash}.GetEnumerator()) { "$($entry.Key)=$($entry.Value)" >> $env:GITHUB_OUTPUT }
+      - name: Publish approved fixed diagnostic payload for one day
+        id: upload
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fixed-main-cross-runner-payload
+          path: ${{ env.REPRO_ROOT }}/payload/*
+          if-no-files-found: error
+          retention-days: 1
+  runner-one:
+    needs: prepare
+    uses: ./.github/workflows/main-timeout-cross-worker.yml
+    with:
+      label: first
+      artifact_id: ${{ needs.prepare.outputs.artifact_id }}
+      artifact_digest: ${{ needs.prepare.outputs.artifact_digest }}
+      zip_sha: ${{ needs.prepare.outputs.zip_sha }}
+      exe_sha: ${{ needs.prepare.outputs.exe_sha }}
+      driver_sha: ${{ needs.prepare.outputs.driver_sha }}
+      provenance_sha: ${{ needs.prepare.outputs.provenance_sha }}
+      licenses_sha: ${{ needs.prepare.outputs.licenses_sha }}
+      manifest_sha: ${{ needs.prepare.outputs.manifest_sha }}
+  summary:
+    if: ${{ always() }}
+    needs: [prepare, runner-one, runner-two]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summarize all four planned trials
+        env:
+          PREPARE: ${{ needs.prepare.result }}
+          FIRST_RESULT: ${{ needs.runner-one.result }}
+          FIRST_ROWS: ${{ needs.runner-one.outputs.trials }}
+          SECOND_RESULT: ${{ needs.runner-two.result }}
+          SECOND_ROWS: ${{ needs.runner-two.outputs.trials }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          def rows(label, result, raw):
+              fallback = 'not-started' if result == 'skipped' else 'unknown'
+              output = [{'runner': label, 'trial': i, 'outcome': fallback} for i in (1, 2)]
+              try:
+                  data = json.loads(raw)
+                  if not isinstance(data, list) or len(data) != 2 or [r.get('trial') for r in data] != [1, 2]:
+                      return output
+                  allowed = {'success', 'failed', 'not-started', 'started', 'unknown'}
+                  for i, row in enumerate(data):
+                      if row.get('outcome') not in allowed:
+                          return output
+                      output[i] = {'runner': label, **{k: row.get(k) for k in ('trial', 'outcome', 'sessionOutcome', 'sessionMs', 'normalClose', 'driverTrace', 'cleanup')}}
+              except (ValueError, TypeError, AttributeError):
+                  pass
+              return output
+          data = {'schema': 1, 'prepare': os.environ['PREPARE'], 'runnerResults': [os.environ['FIRST_RESULT'], os.environ['SECOND_RESULT']], 'rootCleanup': 'not-verified-runner-disposal', 'trials': rows('first', os.environ['FIRST_RESULT'], os.environ['FIRST_ROWS']) + rows('second', os.environ['SECOND_RESULT'], os.environ['SECOND_ROWS'])}
+          Path('summary.json').write_text(json.dumps(data, separators=(',', ':')), encoding='utf-8')
+          PY
+      - name: Save comparison summary
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fixed-main-cross-summary
+          path: summary.json
+          if-no-files-found: error
+          retention-days: 1
+  runner-two:
+    needs: [prepare, runner-one]
+    if: ${{ needs.runner-one.result == 'success' && needs.runner-one.outputs.ok == 'true' }}
+    uses: ./.github/workflows/main-timeout-cross-worker.yml
+    with:
+      label: second
+      artifact_id: ${{ needs.prepare.outputs.artifact_id }}
+      artifact_digest: ${{ needs.prepare.outputs.artifact_digest }}
+      zip_sha: ${{ needs.prepare.outputs.zip_sha }}
+      exe_sha: ${{ needs.prepare.outputs.exe_sha }}
+      driver_sha: ${{ needs.prepare.outputs.driver_sha }}
+      provenance_sha: ${{ needs.prepare.outputs.provenance_sha }}
+      licenses_sha: ${{ needs.prepare.outputs.licenses_sha }}
+      manifest_sha: ${{ needs.prepare.outputs.manifest_sha }}
