@@ -16,7 +16,7 @@ import (
 // callerはBatch全回収までthreadとscopeを保持する。固定provisioning未接続の
 // RunFixedからは呼ばれず、UI/argv/SID文字列からscopeを生成しない。
 func startNativeBatch(ctx context.Context, s nativeBatchSpec, scope *bootstrapauth.ServiceScope, owner batchOwner) (*nativeBatch, error) {
-	if scope == nil {
+	if scope == nil || s.producer == nil {
 		return nil, ErrUnconfigured
 	}
 	thread := &nativeThread{owner: windows.GetCurrentThreadId()}
@@ -31,6 +31,13 @@ func startNativeBatch(ctx context.Context, s nativeBatchSpec, scope *bootstrapau
 			return nil
 		},
 		clean: thread.clean,
+		newProfile: func(c context.Context) (batchProfile, error) {
+			p, e := newNativeProfilePipe(c, s.producer)
+			if p == nil {
+				return nil, e
+			}
+			return p, e
+		},
 		newReport: func(c context.Context, r reportConfig) (batchReport, error) {
 			p, e := newNativeReportPair(c, r)
 			if p == nil {

@@ -76,7 +76,7 @@ func (nativeHelperKernel) validate(ctx context.Context, s nativeLaunchSpec) erro
 	for _, pipe := range []struct {
 		h      uintptr
 		access uint32
-	}{{s.operatorRead, 0x120089}, {s.reportWrite, 0x120102}} {
+	}{{s.operatorRead, 0x120089}, {s.reportWrite, 0x120102}, {s.profileRead, 0x120089}} {
 		kind, e := windows.GetFileType(windows.Handle(pipe.h))
 		if e != nil || kind != windows.FILE_TYPE_PIPE || launchHandleAccess(pipe.h, true, pipe.access) != nil {
 			return ErrDenied
@@ -132,7 +132,7 @@ func (nativeHelperKernel) createSuspended(s nativeLaunchSpec) (uintptr, uintptr,
 		return 0, 0, err
 	}
 	defer attributes.Delete()
-	handles := [2]windows.Handle{windows.Handle(s.operatorRead), windows.Handle(s.reportWrite)}
+	handles := [3]windows.Handle{windows.Handle(s.operatorRead), windows.Handle(s.reportWrite), windows.Handle(s.profileRead)}
 	if err = attributes.Update(windows.PROC_THREAD_ATTRIBUTE_HANDLE_LIST, unsafe.Pointer(&handles[0]), unsafe.Sizeof(handles)); err != nil {
 		return 0, 0, err
 	}
@@ -140,7 +140,7 @@ func (nativeHelperKernel) createSuspended(s nativeLaunchSpec) (uintptr, uintptr,
 	if err != nil {
 		return 0, 0, err
 	}
-	command, err := windows.UTF16FromString(`"` + s.imagePath + `" --operator-auth-internal ` + strconv.FormatUint(uint64(s.operatorRead), 10) + " " + strconv.FormatUint(uint64(s.reportWrite), 10))
+	command, err := windows.UTF16FromString(`"` + s.imagePath + `" --operator-auth-internal ` + strconv.FormatUint(uint64(s.operatorRead), 10) + " " + strconv.FormatUint(uint64(s.reportWrite), 10) + " " + strconv.FormatUint(uint64(s.profileRead), 10) + " " + s.launchID)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -157,7 +157,7 @@ func (nativeHelperKernel) createSuspended(s nativeLaunchSpec) (uintptr, uintptr,
 	startup.ProcThreadAttributeList = attributes.List()
 	environment := [2]uint16{}
 	var process windows.ProcessInformation
-	// No STARTF_USESTDHANDLES; only the two explicit handles are inherited.
+	// No STARTF_USESTDHANDLES; only the three explicit handles are inherited.
 	err = windows.CreateProcessAsUser(windows.Token(s.primaryToken), image, &command[0], processSA, threadSA, true, windows.CREATE_SUSPENDED|windows.CREATE_UNICODE_ENVIRONMENT|windows.EXTENDED_STARTUPINFO_PRESENT, &environment[0], directory, &startup.StartupInfo, &process)
 	runtime.KeepAlive(handles)
 	runtime.KeepAlive(processSA)

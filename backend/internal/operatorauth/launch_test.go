@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -50,7 +51,7 @@ func (k *memoryLaunchKernel) waitEmpty(context.Context, uintptr) error { return 
 func (k *memoryLaunchKernel) close(uintptr) error                      { return k.step("close") }
 func launchFixture() (context.Context, context.CancelFunc, nativeLaunchSpec, *memoryLaunchKernel) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	spec := nativeLaunchSpec{imagePath: `C:\Protected\helper.exe`, imageSHA256: [32]byte{1}, maxImageBytes: 1024, primaryToken: 20, operatorRead: 21, reportWrite: 22, cleanup: time.Second, processSDDL: "D:P(A;;GA;;;SY)", threadSDDL: "D:P(A;;GA;;;SY)", helperUserSID: "S-1-5-21-1"}
+	spec := nativeLaunchSpec{imagePath: `C:\Protected\helper.exe`, imageSHA256: [32]byte{1}, launchID: strings.Repeat("a", 64), maxImageBytes: 1024, primaryToken: 20, operatorRead: 21, reportWrite: 22, profileRead: 23, cleanup: time.Second, processSDDL: "D:P(A;;GA;;;SY)", threadSDDL: "D:P(A;;GA;;;SY)", helperUserSID: "S-1-5-21-1"}
 	return ctx, cancel, spec, &memoryLaunchKernel{binding: helperBinding{pid: 23, creation: 24, tokenID: 25, childModifiedID: 26, sourceTokenID: 27, sourceModifiedID: 28, user: spec.helperUserSID, imagePath: spec.imagePath}}
 }
 func TestHelperLaunchReturnsSuspendedAndRetainsBindingAfterExit(t *testing.T) {

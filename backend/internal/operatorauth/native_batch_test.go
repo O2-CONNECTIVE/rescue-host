@@ -58,6 +58,7 @@ func batchFixture(t *testing.T) (nativeBatchSpec, batchOwner, nativeBatchOps, *[
 	l.helperUserSID = r.helperSID
 	l.operatorRead = 0
 	l.reportWrite = 0
+	l.profileRead = 0
 	s := nativeBatchSpec{input: 31, launch: l, report: r}
 	events := []string{}
 	p := &memoryBatchReport{events: &events}
@@ -65,6 +66,10 @@ func batchFixture(t *testing.T) (nativeBatchSpec, batchOwner, nativeBatchOps, *[
 	o := batchOwner{revoke: func() error { events = append(events, "revoke"); return nil }, reclaim: func(context.Context) error { events = append(events, "reclaim-workload"); return nil }}
 	k := nativeBatchOps{
 		parent: func(context.Context) error { return nil }, clean: func() error { return nil },
+		newProfile: func(context.Context) (batchProfile, error) {
+			events = append(events, "profile")
+			return &memoryBatchProfile{events: &events}, nil
+		},
 		newReport: func(context.Context, reportConfig) (batchReport, error) {
 			events = append(events, "report")
 			return p, nil
@@ -72,7 +77,7 @@ func batchFixture(t *testing.T) (nativeBatchSpec, batchOwner, nativeBatchOps, *[
 		duplicateRead: func(uintptr) (uintptr, error) { events = append(events, "duplicate-read"); return 32, nil },
 		start: func(_ context.Context, l nativeLaunchSpec) (batchChild, error) {
 			events = append(events, "suspended")
-			if l.operatorRead != 32 || l.reportWrite != 61 {
+			if l.operatorRead != 32 || l.reportWrite != 61 || l.profileRead != 63 {
 				return nil, ErrDenied
 			}
 			return c, nil
@@ -97,7 +102,7 @@ func TestNativeBatchWiringReleasesParentCopiesBeforeResume(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"report", "duplicate-read", "suspended", "release-writers", "close-child-read-copy", "close-original-read", "resume", "binding"}
+	want := []string{"profile", "report", "duplicate-read", "suspended", "release-profile-reader", "release-writers", "close-child-read-copy", "close-original-read", "resume", "binding", "send-profile", "binding"}
 	if !reflect.DeepEqual(*events, want) {
 		t.Fatal(*events)
 	}
@@ -108,14 +113,14 @@ func TestNativeBatchWiringReleasesParentCopiesBeforeResume(t *testing.T) {
 	if _, err = r.Consume(requestContext(t)); err != nil {
 		t.Fatal(err)
 	}
-	want = append(want, "binding", "drain-eof", "wait", "binding", "close-report", "close-child")
+	want = append(want, "binding", "drain-eof", "wait", "binding", "close-profile", "close-report", "close-child")
 	if !reflect.DeepEqual(*events, want) {
 		t.Fatal(*events)
 	}
 }
 
 func TestNativeBatchRejectsDuplicateAliasingWithoutClosingBorrowedToken(t *testing.T) {
-	for _, kind := range []string{"input", "token", "invalid"} {
+	for _, kind := range []string{"input", "token", "invalid", "profile"} {
 		t.Run(kind, func(t *testing.T) {
 			s, o, k, events, _, _ := batchFixture(t)
 			value := s.input
@@ -124,6 +129,9 @@ func TestNativeBatchRejectsDuplicateAliasingWithoutClosingBorrowedToken(t *testi
 			}
 			if kind == "invalid" {
 				value = ^uintptr(0)
+			}
+			if kind == "profile" {
+				value = 63
 			}
 			k.duplicateRead = func(uintptr) (uintptr, error) { return value, ErrDenied }
 			b, err := startBatch(requestContext(t), s, o, k)
