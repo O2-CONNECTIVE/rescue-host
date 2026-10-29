@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, access, rm, writeFile, readFile } from 'node:fs/promise
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { cleanupBaselineArms } from '../native-smoke/baseline-cleanup.ts';
+import { cleanupBaselineArms, cleanupBaselineShared } from '../native-smoke/baseline-cleanup.ts';
 
 void test('終了が確認されたarmだけの専用領域を削除し、未確認の領域は残す', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'baseline-cleanup-'));
@@ -18,6 +18,20 @@ void test('終了が確認されたarmだけの専用領域を削除し、未確
     await assert.rejects(access(path.join(root, 'baseline-tools')));
     await access(path.join(root, 'baseline-tools-b'));
     await access(path.join(root, 'baseline-b-evidence'));
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+void test('共有build一時物は両armの安全確認後だけ削除し、他の資源を残す', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'baseline-shared-'));
+  try {
+    await mkdir(path.join(root, 'baseline-project')); await writeFile(path.join(root, 'wry.crate'), 'owned');
+    await writeFile(path.join(root, 'unrelated'), 'keep');
+    assert.equal(await cleanupBaselineShared(root, { first: 'removed', second: 'unconfirmed' }), 'unconfirmed');
+    await access(path.join(root, 'baseline-project'));
+    assert.equal(await cleanupBaselineShared(root, { first: 'removed', second: 'not-started' }), 'removed');
+    await assert.rejects(access(path.join(root, 'baseline-project')));
+    await assert.rejects(access(path.join(root, 'wry.crate')));
+    await access(path.join(root, 'unrelated'));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
