@@ -8,6 +8,15 @@
 コードのmain統合、未接続GUIの評価、製品の遠隔接続とOS保護は別々に判定します。
 変化するCI結果は[Actions](https://github.com/O2-CONNECTIVE/rescue-host/actions)と各PRの固定headで確認してください。
 
+## 2026-10-29のsource統合追記
+
+[#147](https://github.com/O2-CONNECTIVE/rescue-host/pull/147)は、固定guest設定の保護Root読取と同じ要求Endpointの検査leaseを追加しました。
+[#148](https://github.com/O2-CONNECTIVE/rescue-host/pull/148)は、実Confirm/codec/issuerを通すsource/fakeの単回発行と回収順序を追加しました。
+統合main `71b05bb1ef26a91d42cc40efe1ffd6b290e47147` の[Go 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40916475323)、[Python 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40916475540)、[日本語検査](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40916475491)は全7ジョブ成功です。
+正例の認証・Record再検査・OS来歴にはmemory modelを使い、製品runtime sourceは未登録です。保持ChallengeからのLaunchや実SSHを実装済みとは判定しません。
+実guest Plan/sessionからstagerへの呼出し、内側sshdの実token/shellと停止owner、実Windows配置と保護は未接続・未実装・未検証として残ります。
+以下の#72当時の配布/native証跡は履歴であり、この新sourceの実機検証結果へ合成しません。
+
 ## 提供段階と証拠の読み方
 
 | 提供段階 | 定義 |

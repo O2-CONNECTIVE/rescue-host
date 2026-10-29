@@ -38,9 +38,10 @@ PCや監督サービスの再起動後は許可をすべて失効させ、再承
 | 遠隔作業とOS保護 | 実サービス、ACL、製品のJob管理、認証付きIPC、実SSHの一連の製品動作は未検証 |
 
 GUI評価版の実機起動と表示は利用者から確認済みです。
-main `929d516173dbbf772ba224d5dde500f6e51f1501` の認証交換の所有管理は実装済みで、Go・Python・日本語commitの限定CIが成功しています。
-このCIはfixtureの確認であり、実機SSH、OS保護、製品接続の成功ではありません。
-これはSSH接続、停止の強制力、OS保護の保証ではありません。
+固定guest設定の保護Root読取と要求単位の検査leaseは[#147](https://github.com/O2-CONNECTIVE/rescue-host/pull/147)、確認から同issuerの単回発行・status・revokeまでのsource/fake経路は[#148](https://github.com/O2-CONNECTIVE/rescue-host/pull/148)で統合しました。
+main `71b05bb1ef26a91d42cc40efe1ffd6b290e47147` のGo・Python・日本語検査は全7ジョブ成功しています。
+発行経路の正例はprivate OS seamを置換したfixtureで、製品runtime providerは未登録、実LaunchとSSHは未接続です。
+このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。
 [確認した版、公開証跡、統合済み準備コード、残る制約](docs/status.md)を参照してください。
