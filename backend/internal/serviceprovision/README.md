@@ -67,7 +67,8 @@ UI pollingを承認・renewへ変換しない。
 ## 強い起動handleとSCMの全回収owner
 
 `NewNativeExecution`は固定Anchor、正の回収再確認間隔、認証済み承認sourceを必須とする純粋constructorである。
-`RunFixed`はこの入口へ接続するが、既定値は全て未設定のため取得前に拒否する。
+`NewNativeExecution`は従来の承認・強token構成の専用入口として残す。
+`RunFixed`は下記のpreview専用入口へ接続するが、既定値は全て未設定のため取得前に拒否する。
 環境変数・argv・UIによる上書き、仮のSID/handle/承認sourceによる補完は行わない。
 
 `Execution.Run`は元callerのNoThreadTokenと実service SID所属を拒否検査した後、専用の元OS threadで`PrepareFixed`を行う。
@@ -116,5 +117,21 @@ LeaseDurationは既存の上限制約として保持し、wireへ独自fieldを�
 descriptorは構成時の表示snapshotであり、毎要求のfile再認証、認証済みoperator、承認、grantを表すcapabilityではない。
 認証/sequenceを通ったprepare-intentの表示までを扱い、ConfirmApprovalと実起動は未構成拒否を維持する。
 既存ComposeServiceの承認/launcher検査にpreviewへのfallbackを追加しない。
-nativeExecutionStage.Initializeは引き続き既存ComposeServiceを使用し、今回のComposePreviewServiceを実行fileへ接続していない。
+`RunFixed → NewNativePreviewExecution → nativeExecutionStage.Initialize` は、表示専用modeを明示して `PrepareFixed → ComposePreviewService` へ接続する。
+このmodeは強token取得・旧Approval・Launcherを呼ばず、同じrootのquery-only tokenだけを借りる。
+legacy `NewNativeExecution` のnil Approval拒否にfallbackを追加しない。
+PreviewLimitsと回収再確認間隔も固定供給元が明示する必須値で、現RunFixedでは未設定のままである。
+
+preview構成でも元Execution ownerを `BindOuterFinalizer` へ結び、同じopaque inner proofを確認してから元threadでPreparedを閉じる。
+SCM側は自分のthreadで別のWitnessを取得し、元Prepared.scopeを移送しない。
+query tokenとroot/file参照はinner終端まで保持し、回収未確認なら元ownerを残す。
+source/fake試験は、実preview constructor・Execution RPCとSCM起動失敗の回収モデル、およびservicehost内のmemory WitnessによるServe/stopを別々に扱う。
+両者を実WindowsのSCM縦断成功や本人承認の成功へ合成しない。
 実行fileの既定Anchor、正規operator入力、実Windowsの保護設定と承認sourceは未接続のままであり、このsource/fake試験を実機の接続成立と扱わない。
+
+
+本人承認sourceの次の接点は、既存previewIntentと認証済みconfirm要求の間である。
+同じboot/channel/intent・発行したexact digest・有効期限を同じstop gateで検査し、確認試行を単回消費する必要がある。
+保持Recordの再解決は元Prepared ownerへの有限要求で行い、dispatch threadでscopeを直接使わない。
+解決後も同じgateでstopとintentを再照合し、guest bindingと実authority producerがない間は成功receipt・ApprovedPolicy・grantを発行しない。
+現コードはConfirmApprovalの未構成拒否を維持する。新しい汎用Approval interfaceや自己申告の認証値でこの欠落を埋めない。

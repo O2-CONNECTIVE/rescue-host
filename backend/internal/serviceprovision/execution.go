@@ -17,6 +17,15 @@ type ExecutionConfig struct {
 	CleanupRetry time.Duration
 	Approval     servicehost.ProtectedProvisioning
 }
+
+// PreviewExecutionConfigは表示専用の実行所有を構成する固定値。
+// 本人承認、強い起動token、guest/SSH起動の代用品ではない。
+type PreviewExecutionConfig struct {
+	Anchor       Anchor
+	CleanupRetry time.Duration
+	Limits       PreviewLimits
+}
+
 type executionStage interface {
 	Initialize(context.Context) (*servicehost.Service, error)
 	Close(context.Context) error
@@ -41,6 +50,7 @@ type executionRequest struct {
 type Execution struct {
 	configured bool
 	cfg        ExecutionConfig
+	preview    *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
 	calls      executionCalls
 	used       atomic.Bool
 	service    atomic.Pointer[servicehost.Service]
@@ -57,7 +67,28 @@ func NewNativeExecution(c ExecutionConfig) (*Execution, error) {
 	if c.CleanupRetry <= 0 || c.Approval == nil {
 		return nil, ErrApprovalUnconfigured
 	}
-	return &Execution{configured: true, cfg: c, requests: make(chan executionRequest), cleaned: make(chan struct{})}, nil
+	return newExecutionOwner(c), nil
+}
+
+// NewNativePreviewExecutionはlegacy承認を補完せず、表示専用経路を明示選択する。
+// 入力不備なら元thread/root/SCMを取得する前に拒否する。
+func NewNativePreviewExecution(c PreviewExecutionConfig) (*Execution, error) {
+	if err := c.Anchor.Validate(); err != nil {
+		return nil, err
+	}
+	if c.CleanupRetry <= 0 || c.Limits.RequestLimit == 0 ||
+		c.Limits.RequestLimit >= c.Limits.LaunchLimit ||
+		c.Limits.LaunchLimit > 1024 || c.Limits.IntentTTL <= 0 {
+		return nil, ErrRootConfig
+	}
+	e := newExecutionOwner(ExecutionConfig{Anchor: c.Anchor, CleanupRetry: c.CleanupRetry})
+	limits := c.Limits
+	e.preview = &limits
+	return e, nil
+}
+
+func newExecutionOwner(c ExecutionConfig) *Execution {
+	return &Execution{configured: true, cfg: c, requests: make(chan executionRequest), cleaned: make(chan struct{})}
 }
 
 // Runはoriginal callerを拒否検査してから、固定scope専用の元OS threadを作る。
@@ -76,7 +107,7 @@ func (e *Execution) Run(ctx context.Context) error {
 		calls.guard = executionCaller
 	}
 	if calls.stage == nil {
-		calls.stage = func() executionStage { return &nativeExecutionStage{cfg: e.cfg} }
+		calls.stage = func() executionStage { return &nativeExecutionStage{cfg: e.cfg, preview: e.preview} }
 	}
 	if calls.runSCM == nil {
 		calls.runSCM = servicehost.RunReadySCM
