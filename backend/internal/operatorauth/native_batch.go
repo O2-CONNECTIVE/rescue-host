@@ -168,6 +168,11 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 			err = errors.Join(err, b.Close(cleanup))
 		}
 	}()
+	if p, ok := s.producer.(*protectedProfileProvider); ok {
+		if e := p.bindRequest(b.request); e != nil {
+			return e
+		}
+	}
 	if !b.admitted(ctx) {
 		return ErrDenied
 	}

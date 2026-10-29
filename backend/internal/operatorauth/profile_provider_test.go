@@ -207,6 +207,25 @@ func TestProtectedProfileProviderCannotExtendOriginalRequest(t *testing.T) {
 	}
 }
 
+func TestProtectedProfileProviderRejectsOriginalCancellationDuringRecheck(t *testing.T) {
+	p, q := providerFixture()
+	provider, err := newProtectedProfileProvider(p, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err = provider.prepare(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fresh, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	q.onInspect = func(int) { cancel() }
+	if err = provider.recheck(fresh); err == nil {
+		t.Fatal("late original cancellation accepted")
+	}
+}
+
 func TestProtectedProfileProviderIsRetainedByPreparedBatch(t *testing.T) {
 	p, q := providerFixture()
 	provider, err := newProtectedProfileProvider(p, q)
@@ -236,6 +255,13 @@ func TestProtectedProfileProviderIsRetainedByPreparedBatch(t *testing.T) {
 	}
 	if q.queries < 2 {
 		t.Fatal("candidate was not rechecked after preparation")
+	}
+	proof, err := b.Collect(ctx)
+	if err != nil {
+		t.Fatalf("successful Start lost original request before Collect: %v", err)
+	}
+	if _, err = b.Collector().Consume(ctx, proof); err != nil {
+		t.Fatal(err)
 	}
 	if err = b.Close(ctx); err != nil {
 		t.Fatal(err)

@@ -17,6 +17,8 @@ guestのuserはoperatorと異なる必須値であり、他のguest token属性�
 候補から固定するprocess generationとTokenId/ModifiedIdは、その後の同一性・drift検出にだけ使用する。
 これらの識別値やimage pathは、正規の発行者・署名・配置保護を証明しない。
 その後のBatch parent検査も同じcandidateを再照会し、一度の不一致後は復活させない。
+Batchは元要求をproviderに一度だけ結び、Start終了時に取消す起動専用contextと区別する。
+照会前後で元要求と現在の有限contextを確認し、新しいcontextで元要求の取消・期限を延長しない。
 helperの実message read、同thread impersonation、token比較、revert確認は省略しない。
 
 ## native queryの所有

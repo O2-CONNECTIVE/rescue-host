@@ -59,9 +59,11 @@ func (p *protectedProfileProvider) prepare(ctx context.Context) (profilePipeMate
 		return profilePipeMaterial{}, ErrDenied
 	}
 	p.used = true
-	p.request = ctx
+	if p.request == nil {
+		p.request = ctx
+	}
 	actual, err := p.query.inspect(ctx)
-	if err != nil || actual.pid == 0 || actual.creation == 0 || actual.tokenID == 0 || actual.modifiedID == 0 || actual.imagePath != p.policy.imagePath || actual.primary != p.policy.primary || !reportContextValid(ctx) {
+	if err != nil || actual.pid == 0 || actual.creation == 0 || actual.tokenID == 0 || actual.modifiedID == 0 || actual.imagePath != p.policy.imagePath || actual.primary != p.policy.primary || !reportContextValid(ctx) || !reportContextValid(p.request) {
 		return profilePipeMaterial{}, errors.Join(ErrDenied, err)
 	}
 	p.baseline = actual
@@ -85,10 +87,23 @@ func (p *protectedProfileProvider) recheck(ctx context.Context) error {
 		return ErrDenied
 	}
 	actual, err := p.query.inspect(ctx)
-	if err != nil || actual != p.baseline || !reportContextValid(ctx) {
+	if err != nil || actual != p.baseline || !reportContextValid(ctx) || !reportContextValid(p.request) {
 		p.prepared = false
 		return errors.Join(ErrDenied, err)
 	}
+	return nil
+}
+
+// Batchは起動専用contextを作る前の元要求を渡す。prepare単体ではそのctxを使う。
+func (p *protectedProfileProvider) bindRequest(ctx context.Context) error {
+	if p == nil || !p.mu.TryLock() {
+		return ErrDenied
+	}
+	defer p.mu.Unlock()
+	if p.used || p.closed || p.request != nil || !reportContextValid(ctx) {
+		return ErrDenied
+	}
+	p.request = ctx
 	return nil
 }
 
