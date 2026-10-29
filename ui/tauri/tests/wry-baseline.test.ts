@@ -49,3 +49,6 @@ void test('controller未完了でもPOSTの別失敗をtimeoutへ読み替えな
     { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'request-failed', failurePhase: 'session-create' });
   assert.equal(r.outcome, 'session-request-failed');
 });
+void test('成功風でもPOST結果の矛盾を不完全として拒否する', () => {
+  assert.equal(decideBaseline(collection, wry, { ...session, sessionOutcome: 'timeout' }).diagnostic, 'incomplete');
+});
