@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは182実装、Windowsでは201実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは198実装、Windowsでは218実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -129,10 +129,14 @@ childjobの固定commandは固定argvと依存file保持の構成を扱います
 
 guest作成入口のsource候補はcreation_codec.go/creation_native.go/creation_query.go/creation_script.go/creation_source.go/sid_script_parts.goを共通登録します。
 creation_query_other.goはLinux/macOS、creation_query_windows.goはWindowsだけで選択し、未知・欠落・他OS実装の混入を拒否します。
-登録してもpublic NewNativeは未構成拒否を維持します。必要最小権限のnative完全検査producer、保護provisioning/token、Service連携が未実装・未接続のため、準備や削除の完了を成功扱いしません。
+登録してもpublic NewNativeは未構成拒否を維持します。staging guestの限定権限検査は下記のsource候補へ接続しましたが、正規manifest/保持handleの供給、実行時token/handle gate、Service連携は未接続のため、製品の準備や削除の完了を成功扱いしません。
 memory/source API seamとcrosscompileを、実Windowsアカウント操作やSSH接続成功へ読み替えません。
 
 
 確認要求の再検査はservicehost/confirmation.goとinternal/serviceprovision/confirmation.goの2実装だけを追加登録します。
 前者の単回予約/opaque ticketと後者の元owner RPC/保持Record再検査を結びますが、成功時もSERVICE_NOT_READYであり、ApprovedPolicy・Challenge・grantを作りません。
 unit/raceの各レイヤの成功を実native認証と元threadを通したWindows縦断の成功へ合成しません。
+
+
+一時guestの限定権限検査は、[対応範囲](guest-limited-inspection.md)の共通12実装とLinux/macOSの4実装またはWindowsの5実装だけをguestaccountへ追加登録します。
+作成→journal→無効staging検査→SID清掃のsource/fake確認であり、未来の実行token/継承handle/runtimeの保護やSeparatedNonAdminGuestの成立をこの登録から推定しません。
