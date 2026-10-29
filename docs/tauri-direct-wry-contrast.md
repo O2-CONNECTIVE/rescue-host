@@ -67,6 +67,18 @@ worker markerは作成箇所への到達のみを示し、thread joinの証明�
 redirect等の複数開始を保持し、取得失敗・未対応・あふれ・順序不整合は不完全とする。生IDやURIは出力しない。
 診断hookの失敗はsticky faultとして扱う。snapshot読取後のfault競合、panic abort、COM getterやOS内部の動作は完全には観測できない。
 
+## 同一runnerでの順次比較と停止条件
+
+同じ固定binary・HTML・拒否条件・driverを使い、Aはbuild中のwith_html、Bはbuild後のload_htmlを一回ずつ順次実行する。
+各armのprofile・trace・出力は別の新規一時領域とし、単一document要求と15秒上限を維持する。
+BはAの終了コードとは別に、所有集合、appと観測子の終了、driver終了、listener不在、cleanup失敗0を確認できた時だけ開始する。欠測・所有不明ならBは未実施。
+判定は同じrun UUID・source・binary hashとarmの一致も要求する。timeout時は自己所有の直接childだけに終了を要求し、孫の終了とcleanupは未確認としてBを開始しない。
+証跡の保存が成功した後だけ、確認済armと共有buildの固定一時領域を片付けて不存在を確認する。保存失敗や所有不明では対象を残し、未確認を報告する。
+A失敗/B成功は呼出位置・時機への感度を示唆するが原因確定ではない。両armで同IDの拒否と失敗完了なら共通経路が候補だが、HTML呼出が発生元とは断定しない。
+片方のtimeout・欠測・不確実なcleanupは判別不能とし、両成功や逆転も固定順による初期化・cache・時間差を考慮する。いずれも製品合格や安定性を意味しない。
+この比較でも識別できなければ、同じsource・binary hash・runtimeと各arm一回の逐次実行を専用Windowsで照合する案を残す。実機操作は別の対象・範囲の承認後に行う。
+main配布のsession-create timeoutは別試行の別境界として追跡し、このfixtureのdocument判定と同一原因と推定しない。
+
 ## 独立判定と終了
 
 対照kindはdirect-wry-controller-contrast、productNativePassは常にfalse。

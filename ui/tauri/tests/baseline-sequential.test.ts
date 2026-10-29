@@ -30,16 +30,16 @@ void test('失敗した先行armでもcleanup確認後だけ一度後続を実�
   const report = { schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true, mode: 'with-html', ...expected,
     ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
   let calls = 0;
-  const a = async () => ({ outcome: 'failed' as const, report });
-  const b = async () => { calls++; return { outcome: 'passed' as const, report: { ...report, mode: 'load-html' } }; };
+  const a = () => Promise.resolve({ outcome: 'failed' as const, report });
+  const b = () => { calls++; return Promise.resolve({ outcome: 'passed' as const, report: { ...report, mode: 'load-html' } }); };
   assert.deepEqual(await runSequential(a, b, expected), { first: 'failed', second: 'passed', cleanup: 'confirmed', secondCleanup: 'confirmed' });
   assert.equal(calls, 1);
-  assert.deepEqual(await runSequential(async () => ({ outcome: 'timeout' as const, report }), b, expected),
+  assert.deepEqual(await runSequential(() => Promise.resolve({ outcome: 'timeout' as const, report }), b, expected),
     { first: 'timeout', second: 'not-started', cleanup: 'unconfirmed', secondCleanup: 'not-started' });
-  assert.deepEqual(await runSequential(async () => ({ outcome: 'failed' as const, report: null }), b, expected),
+  assert.deepEqual(await runSequential(() => Promise.resolve({ outcome: 'failed' as const, report: null }), b, expected),
     { first: 'failed', second: 'not-started', cleanup: 'unconfirmed', secondCleanup: 'not-started' });
   assert.equal(calls, 1);
-  assert.deepEqual(await runSequential(a, async () => ({ outcome: 'failed' as const, report: null }), expected),
+  assert.deepEqual(await runSequential(a, () => Promise.resolve({ outcome: 'failed' as const, report: null }), expected),
     { first: 'failed', second: 'failed', cleanup: 'confirmed', secondCleanup: 'unconfirmed' });
 });
 

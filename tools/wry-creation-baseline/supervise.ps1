@@ -1,5 +1,7 @@
 param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory,
-    [Parameter(Mandatory)][string]$ApplicationPath, [Parameter(Mandatory)][string]$BuildManifest)
+    [Parameter(Mandatory)][string]$ApplicationPath, [Parameter(Mandatory)][string]$BuildManifest,
+    [Parameter(Mandatory)][ValidateSet('with-html', 'load-html')][string]$Mode,
+    [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')][string]$RunId)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $native = (Resolve-Path "$PSScriptRoot/../../ui/tauri/native-smoke").Path
@@ -15,12 +17,12 @@ $manifest = Get-Content $BuildManifest -Raw | ConvertFrom-Json
 $hash = (Get-FileHash $appPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($manifest.schema -ne 1 -or $manifest.kind -ne 'direct-wry-controller-contrast' -or $manifest.distribution -ne $false -or $manifest.featureTreeMatched -ne $true -or $manifest.sourceCommit -cnotmatch '^[0-9a-f]{40}$' -or $manifest.exeSha256 -cne $hash) { throw 'NATIVE_BASELINE_BUILD_REJECTED' }
 $report = [ordered]@{ schema = 1; kind = 'direct-wry-controller-contrast'; productNativePass = $false
-    sourceCommit = $manifest.sourceCommit; exeSha256 = $hash; fixedInputsVerified = $true
+    sourceCommit = $manifest.sourceCommit; exeSha256 = $hash; fixedInputsVerified = $true; mode = $Mode; runId = $RunId
     sessionSucceeded = $false; normalCloseVerified = $false; ownerSetRecorded = $false; observedChildren = 0
     forcedApp = $false; forcedChildren = 0; cleanupStarted = $false; navigationWorkerMarkerObserved = $false }
 $driverProcess = $null; $nodeProcess = $null; $appProcess = $null; $app = $null
 $driver = @(); $edge = @(); $children = @(); $handles = @(); $budget = [Diagnostics.Stopwatch]::new()
-$previous = @{}; $envNames = @('RESCUE_DRIVER_TRACE', 'RESCUE_HOST_STARTUP_TRACE_DIR', 'RESCUE_BASELINE_PROFILE', 'NATIVE_OUTPUT_DIR', 'NATIVE_APP_EXE', 'NATIVE_PROFILE', 'NATIVE_TOOLS_DIR')
+$previous = @{}; $envNames = @('RESCUE_DRIVER_TRACE', 'RESCUE_HOST_STARTUP_TRACE_DIR', 'RESCUE_BASELINE_PROFILE', 'RESCUE_BASELINE_MODE', 'NATIVE_OUTPUT_DIR', 'NATIVE_APP_EXE', 'NATIVE_PROFILE', 'NATIVE_TOOLS_DIR')
 foreach ($name in $envNames) { $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process') }
 $trace = Join-Path $ToolsDirectory 'baseline-trace'
 $profile = Join-Path $ToolsDirectory 'baseline-profile'
@@ -34,6 +36,7 @@ try {
     $env:RESCUE_DRIVER_TRACE = Join-Path $ToolsDirectory 'driver-stage.jsonl'
     $env:RESCUE_HOST_STARTUP_TRACE_DIR = $trace
     $env:RESCUE_BASELINE_PROFILE = $profile
+    $env:RESCUE_BASELINE_MODE = $Mode
     $driverProcess = Start-Process $tauriPath -ArgumentList @('--port', '4444', '--native-port', '4445', '--native-driver', "`"$edgePath`"") -PassThru -RedirectStandardOutput "$ToolsDirectory/driver.stdout.log" -RedirectStandardError "$ToolsDirectory/driver.stderr.log"
     $ready = $false; $watch = [Diagnostics.Stopwatch]::StartNew()
     do {
