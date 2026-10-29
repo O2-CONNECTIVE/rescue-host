@@ -5,6 +5,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestCollectorConsumesOnlyItsOwnProofOnce(t *testing.T) {
@@ -36,6 +37,43 @@ func TestCollectorConsumesOnlyItsOwnProofOnce(t *testing.T) {
 	group.Wait()
 	if successes.Load() != 1 {
 		t.Fatal("proof consumption count", successes.Load())
+	}
+}
+
+func TestCollectorDirectDrainReceivesStopAndOriginalCancellation(t *testing.T) {
+	for _, mode := range []string{"close", "original"} {
+		t.Run(mode, func(t *testing.T) {
+			original, stopOriginal := context.WithCancel(requestContext(t))
+			defer stopOriginal()
+			caller, stopCaller := context.WithCancel(requestContext(t))
+			defer stopCaller()
+			entered := make(chan struct{})
+			noop := func() error { return nil }
+			withContext := func(context.Context) error { return nil }
+			c := &Collector{request: original, cleanup: time.Second, ops: collectorOps{check: withContext, drain: func(ctx context.Context) (reportResult, error) {
+				close(entered)
+				<-ctx.Done()
+				return reportResult{}, ctx.Err()
+			}, terminate: noop, wait: func(context.Context) (uint32, error) { return 0, nil }, closeIO: withContext, closeProcess: noop, revoke: noop, reclaim: withContext}}
+			done := make(chan error, 1)
+			go func() { _, err := c.Collect(caller); done <- err }()
+			<-entered
+			if mode == "close" {
+				_ = c.Close(requestContext(t))
+			} else {
+				stopOriginal()
+			}
+			select {
+			case err := <-done:
+				if err == nil {
+					t.Fatal("cancelled drain succeeded")
+				}
+			case <-time.After(100 * time.Millisecond):
+				stopCaller()
+				<-done
+				t.Fatal("stop did not reach direct collector drain")
+			}
+		})
 	}
 }
 

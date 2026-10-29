@@ -18,6 +18,18 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		c.mu.Unlock()
 		return nil, ErrDenied
 	}
+	if reportContextValid(ctx) {
+		var cancel context.CancelFunc
+		if c.request != nil {
+			deadline, _ := c.request.Deadline()
+			ctx, cancel = context.WithDeadline(ctx, deadline)
+			stop := context.AfterFunc(c.request, cancel)
+			c.activeCancel = func() { cancel(); stop() }
+		} else {
+			ctx, cancel = context.WithCancel(ctx)
+			c.activeCancel = cancel
+		}
+	}
 	c.used, c.busy = true, true
 	c.mu.Unlock()
 	defer func() {
@@ -140,9 +152,18 @@ func (c *Collector) Close(ctx context.Context) (result error) {
 			result = ErrUnconfirmed
 		}
 	}()
+	c.mu.Lock()
+	activeCancel := c.activeCancel
+	c.mu.Unlock()
+	if activeCancel != nil {
+		defer activeCancel()
+	}
 	if !c.revoked {
 		c.revokeErr = c.ops.revoke()
 		c.revoked = true
+	}
+	if activeCancel != nil {
+		activeCancel()
 	}
 	if !finite(ctx) {
 		return ErrUnconfirmed
