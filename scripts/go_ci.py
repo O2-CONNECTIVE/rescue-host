@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'backend'
 GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/guestaccount': {
+        'close.go', 'lifecycle.go', 'model.go', 'plan.go', 'prepare.go', 'recovery.go', 'source.go', 'validation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
