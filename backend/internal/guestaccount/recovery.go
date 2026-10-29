@@ -23,17 +23,17 @@ func recoverLifecycle(ctx context.Context, p Plan, s sources) (owner *Lifecycle,
 		return nil, ErrUnknown
 	}
 	b := r.record.binding
-	if r.record.stage < reserved || r.record.stage > deleteComplete {
+	if r.record.stage < reserved || r.record.stage > abortComplete {
 		return nil, ErrManual
 	}
-	if r.record.stage < ownedSID {
+	if r.record.stage < ownedSID || r.record.stage == abortComplete {
 		if b != p.binding {
 			return nil, ErrManual
 		}
 	} else if !p.validBinding(b) {
 		return nil, ErrManual
 	}
-	if r.record.stage != deleteComplete && (s.previous == nil || s.previous.previousBinding() != b) {
+	if r.record.stage != deleteComplete && r.record.stage != abortComplete && (s.previous == nil || s.previous.previousBinding() != b) {
 		return nil, ErrUnconfigured
 	}
 	l.record = r.record
@@ -50,6 +50,9 @@ func recoverLifecycle(ctx context.Context, p Plan, s sources) (owner *Lifecycle,
 	}
 	if r.record.stage == deleteComplete {
 		l.deletionObserved = true
+		l.state = Closed
+	}
+	if r.record.stage == abortComplete {
 		l.state = Closed
 	}
 	return l, nil

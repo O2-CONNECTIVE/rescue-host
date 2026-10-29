@@ -20,6 +20,7 @@ type fixture struct {
 	partial, omitCreate, deleteDespiteError bool
 	createEntered, createRelease            chan struct{}
 	quiesceEntered, quiesceRelease          chan struct{}
+	journalHook                             func(stage)
 	createHook                              func()
 	inspectHook                             func(*accountSnapshot)
 	oldBinding                              binding
@@ -62,6 +63,9 @@ func (f *fixture) journalResult(r record, op string) (journalReceipt, error) {
 		return journalReceipt{}, err
 	}
 	f.stored = r
+	if f.journalHook != nil {
+		f.journalHook(r.stage)
+	}
 	if f.corrupt[op] {
 		r.binding.generation++
 	}

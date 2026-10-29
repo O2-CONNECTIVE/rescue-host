@@ -62,6 +62,7 @@ const (
 	preparedDisabled
 	deleteAttempt
 	deleteComplete
+	abortComplete // 作成副作用の開始前に中止した予約の終端
 )
 
 type record struct {

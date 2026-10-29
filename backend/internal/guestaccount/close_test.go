@@ -18,7 +18,7 @@ func TestCloseRevokesAndQuiescesBeforeExactDeletion(t *testing.T) {
 	if err != nil || s.State != Closed || s.CleanupRequired {
 		t.Fatalf("status=%+v error=%v", s, err)
 	}
-	want := []string{"revoke", "disable", "quiesce", "inspect", "commit:5", "delete", "inspect", "commit:6"}
+	want := []string{"revoke", "disable", "quiesce", "inspect", "commit:5", "inspect", "delete", "inspect", "commit:6"}
 	if !reflect.DeepEqual(f.trace, want) {
 		t.Fatalf("安全な停止順序=%v want=%v", f.trace, want)
 	}

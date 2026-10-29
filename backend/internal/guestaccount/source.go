@@ -52,6 +52,13 @@ type accountSnapshot struct {
 	groups, privileges, logonRights                    []string
 }
 
+// journalSourceは保護installation scopeの排他所有下で使う。reserveは既存
+// intentを上書きせず原子的に登録する。saveは同一不変bindingと同一SID
+// （最初のSID確定だけを除く）を条件に、許可済み単調stage遷移だけをcommit
+// する。同じrecordへの再保存は冪等で、terminalの回帰/他intentの上書きは
+// 拒否する。特に削除済みaccountの終端commit再試行にこの条件が必要である。
+// receiptはdurable commit確認後だけ返し、loadも同じ排他scopeの確定記録
+// を読む。これを満たすnative backendは未実装。memoryは製品へ接続しない。
 type journalSource interface {
 	reserve(context.Context, record) (journalReceipt, error)
 	save(context.Context, record) (journalReceipt, error)

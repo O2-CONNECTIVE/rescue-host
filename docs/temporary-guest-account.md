@@ -66,12 +66,14 @@ private seamのexact-binding delete成功を、このOS保証の実証へ読み�
 一時名のprefixやcommentだけで削除対象を選ばない。UserCommentは本人が変更できる場合がある。
 削除後の記録保存が失敗しても、その後の同名別SIDのアカウントを削除しない。
 結果不明のcreate/enable/delete/commitを、別名や新ownerで盲目的に再実行しない。
+削除済みaccountの不在を確認済みで終端保存だけが未確認の場合は、同じbindingと同じ終端recordへの冪等・条件付きcommitだけを再試行する。
+その前提を満たすjournalは、単調stage、SID確定以外のbinding不変、他intent上書き禁止、terminalからの回帰禁止を要求する。
 
 ## 異常終了と再起動後
 
 | 保護記録 | 回復時の扱い |
 | --- | --- |
-| 作成attemptの前で、OS副作用が未開始と確定 | 記録に従い中止処理。成功を装って別の既存accountを採用しない |
+| 作成attemptの前で、OS副作用が未開始と確定 | 予約済みならSIDなし中止完了を保存し、receipt確認後だけ清掃完了。保存未確認では要清掃を維持し、既存accountを採用しない |
 | 作成中でSID記録なし、またはcommit結果不明 | 名前/prefix/commentから所有認定せず、quarantineと手動照合の対象にする。有効化・自動削除・新sessionを拒否 |
 | 実SIDの所有記録あり | 旧epochの許可を拒否し、旧sessionの回収証拠を確認して同じ所有対象を清掃。無条件resumeはしない |
 | 削除の結果不明／完了記録未確認 | 既知SIDの不在とpending操作の実returnを照合。別SID・不明な所有では削除を再実行しない |

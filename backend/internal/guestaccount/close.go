@@ -25,6 +25,11 @@ func (l *Lifecycle) Close(ctx context.Context) (result error) {
 	if l.deletionObserved {
 		return l.finishDeletion(ctx)
 	}
+	if l.record.stage == abortComplete {
+		// receipt確認後のcaller取消では、確定済み終端を再保存しない。
+		l.state = Closed
+		return nil
+	}
 	wasPlanned := l.state == Planned
 	l.state = Cleaning
 	r, revErr := l.revoke(ctx)
@@ -38,7 +43,14 @@ func (l *Lifecycle) Close(ctx context.Context) (result error) {
 		if revErr != nil {
 			return l.failure(revErr)
 		}
-		if wasPlanned || l.record.stage == reserved && !l.unknown {
+		if wasPlanned {
+			l.state = Closed
+			return nil
+		}
+		if l.record.stage == reserved && !l.unknown {
+			if err := l.save(ctx, abortComplete, false); err != nil {
+				return err
+			}
 			l.state = Closed
 			return nil
 		}
@@ -109,7 +121,10 @@ func (l *Lifecycle) Close(ctx context.Context) (result error) {
 	if err := l.save(ctx, deleteAttempt, false); err != nil {
 		return err
 	}
-	if !finite(ctx) {
+	// journal I/O中の変化を保存前snapshotで通さない。nativeのatomic
+	// SID mutation保証とは別に、commit後もexact/disabledを再確認する。
+	snapshot, err = l.sources.accounts.inspect(ctx, l.record.binding)
+	if err != nil || !l.snapshot(snapshot, exact) || !snapshot.disabled || !finite(ctx) {
 		return ErrCleanup
 	}
 	l.deletionPending = true

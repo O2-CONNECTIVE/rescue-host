@@ -139,3 +139,28 @@ func TestMixedKnownAndUnknownDeleteNeverAuthorizesRetry(t *testing.T) {
 		t.Fatalf("混合error後blinddelete=%v", f.trace)
 	}
 }
+
+func TestDeletionRechecksExactDisabledAccountAfterIntentCommit(t *testing.T) {
+	for _, change := range []string{"identity", "enabled"} {
+		t.Run(change, func(t *testing.T) {
+			l, f := preparedFixture(t)
+			f.inspectHook = func(s *accountSnapshot) {
+				if f.stored.stage == deleteAttempt {
+					if change == "identity" {
+						s.binding.sid = s.binding.machine + "-9999"
+					} else {
+						s.disabled = false
+					}
+				}
+			}
+			if err := l.Close(testContext(t)); err == nil {
+				t.Fatal("保存後の対象変更を受理")
+			}
+			for _, step := range f.trace {
+				if step == "delete" {
+					t.Fatalf("保存前snapshotで削除=%v", f.trace)
+				}
+			}
+		})
+	}
+}
