@@ -88,10 +88,12 @@ void test('操作側の確認・承認・コピー・接続・停止要求・終
   assert.equal(copied?.length, 1); assert.match(copied?.[0] ?? '', /demo-host\.invalid/);
   assert.doesNotMatch(copied?.[0] ?? '', /DEMO-2486|rescue-client-v1|PRIVATE KEY|password/i);
   await respond(instance, '外部エージェントの接続を再現');
+  await screenshot(instance, 'operator-connected.png');
   await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).focus(); await instance.keyboard.press('Enter');
   assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).evaluate(node => node === document.activeElement), true);
   assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).count(), 1);
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  await screenshot(instance, 'operator-stopping.png');
   await respond(instance, '終了確認の応答を再現');
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 1);
   await details(instance);
@@ -120,6 +122,9 @@ void test('停止未確認・履歴削除・read-only再確認・失効後の禁
   assert.equal(await instance.getByRole('heading', { name: '終了を確認できません（モック）', exact: true }).count(), 1);
   await respond(instance, '期限切れを再現');
   assert.equal(await instance.getByRole('heading', { name: '期限切れ・終了未確認（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('button', { name: '新しい接続の体験へ', exact: true }).isDisabled(), true);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  await screenshot(instance, 'operator-expired.png');
   assert.equal(await instance.getByRole('button', { name: '同じ接続の状態を再確認（モック）', exact: true }).count(), 0);
   await respond(instance, '終了確認の応答を再現');
   await details(instance);
@@ -131,6 +136,33 @@ void test('停止未確認・履歴削除・read-only再確認・失効後の禁
   await instance.getByRole('button', { name: '31日経過を再現（履歴のみ）', exact: true }).click();
   assert.equal(await instance.getByText('保存されたサンプル履歴はありません。', { exact: true }).count(), 1);
   assert.equal(await instance.getByRole('button', { name: '新しい接続の体験へ', exact: true }).isDisabled(), true);
+  await instance.close();
+});
+
+void test('承認待ち・準備失敗・拒否を区別し、終了未確認の間は新規接続を許可しない', async () => {
+  const instance = await page(); await receive(instance);
+  await instance.getByRole('button', { name: '承認を依頼（サンプル）', exact: true }).click();
+  assert.equal(await instance.getByRole('button', { name: '承認の返事を待っています', exact: true }).count(), 1);
+  await screenshot(instance, 'operator-waiting.png');
+  await respond(instance, '承認応答を再現');
+  assert.equal(await instance.getByRole('button', { name: '接続情報を準備しています', exact: true }).count(), 1);
+  await respond(instance, '接続失敗を再現');
+  assert.equal(await instance.getByRole('heading', { name: '接続の準備に失敗しました（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  const next = instance.getByRole('button', { name: '新しい接続の体験へ', exact: true });
+  assert.equal(await next.isDisabled(), true);
+  // aria-disabledでもcontrollerの境界で次の接続を拒否する。
+  await next.evaluate(button => (button as HTMLButtonElement).click());
+  assert.equal(await instance.getByLabel('サンプルの接続コード', { exact: true }).count(), 0);
+  await screenshot(instance, 'operator-preparation-failed.png');
+  await respond(instance, '終了確認の応答を再現');
+  await next.click(); await receive(instance);
+  await instance.getByRole('button', { name: '承認を依頼（サンプル）', exact: true }).click();
+  await respond(instance, '承認拒否を再現');
+  assert.equal(await instance.getByRole('heading', { name: '承認されませんでした（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  assert.equal(await next.isDisabled(), false);
+  await screenshot(instance, 'operator-denied.png');
   await instance.close();
 });
 

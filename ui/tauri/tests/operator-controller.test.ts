@@ -127,6 +127,28 @@ void test('停止要求の受付と繰返し操作だけでは終了確認にせ
   assert.equal(controller.snapshot().termination, 'confirmed');
 });
 
+void test('承認要求の遅い失敗応答で停止待ちの表示を巻き戻さず、新規接続も許可しない', async () => {
+  let rejectApproval: (reason: Error) => void = () => {};
+  const approval = new Promise<void>((_resolve, reject) => { rejectApproval = reject; });
+  const { controller, raw, requests } = setup({ requestApproval: () => approval });
+  controller.acceptSample('code');
+  const pending = controller.requestApproval(true);
+  raw({ flow: 1, event: 'approved' });
+  raw({ flow: 1, event: 'prepared' });
+  raw({ flow: 1, event: 'connected' });
+  await controller.requestStop();
+  rejectApproval(new Error('private late approval failure'));
+  await pending;
+  assert.equal(controller.snapshot().phase, 'stopping');
+  assert.equal(controller.snapshot().diagnostic, 'DEMO_STOP_REQUESTED');
+  assert.equal(controller.snapshot().termination, 'unconfirmed');
+  controller.reset(); controller.acceptSample('definition');
+  await controller.requestApproval(true);
+  assert.deepEqual(requests, ['stop']);
+  raw({ flow: 1, event: 'stop_confirmed' });
+  assert.equal(controller.snapshot().phase, 'stopped');
+});
+
 void test('確認後の依頼受付・承認・接続完了をそれぞれ別の状態として扱う', async () => {
   const { controller, requests, emit } = setup();
   controller.acceptSample('definition');

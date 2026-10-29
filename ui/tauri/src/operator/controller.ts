@@ -75,7 +75,8 @@ export function createOperatorController({ adapter, onChange, history }: {
       if (operation === 'approval') await adapter.requestApproval(current);
       else await adapter.requestStop(current);
     } catch {
-      if (!disposed && flow === current && live()) publish({
+      // 観測で次の段階へ進んだ後は、古い要求の失敗で表示を巻き戻さない。
+      if (!disposed && flow === current && state.phase === (operation === 'approval' ? 'waiting' : 'stopping')) publish({
         phase: operation === 'approval' ? 'failed' : 'unconfirmed',
         diagnostic: operation === 'approval' ? 'DEMO_REQUEST_FAILED' : 'DEMO_TERMINATION_UNCONFIRMED'
       });
