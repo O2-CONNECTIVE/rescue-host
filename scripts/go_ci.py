@@ -27,7 +27,7 @@ PRODUCT_FILES = {
         'permission_facts_buffer.go', 'permission_groups.go', 'permission_inspect.go',
         'permission_objects.go', 'permission_objects_buffer.go', 'permission_policy.go',
         'staging.go', 'staging_borrow.go', 'staging_native.go',
-        'staging_profile.go', 'staging_query.go',
+        'staging_profile.go', 'staging_query.go', 'never_created.go', 'never_created_session.go',
         'fixed_layout.go', 'fixed_layout_strict.go', 'fixed_layout_validate.go', 'fixed_layout_wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
@@ -61,7 +61,8 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go', 'preview.go', 'confirmation.go',
-        'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go', 'guest_source.go'},
+        'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go', 'guest_source.go',
+        'staging_execution.go', 'staging_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner': {'owner.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {

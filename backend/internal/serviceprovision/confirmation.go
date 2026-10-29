@@ -25,6 +25,15 @@ func (s *nativeExecutionStage) VerifyPreviewConfirmation(ctx context.Context, ex
 		return err
 	}
 	// currentの新しいdeadlineは採用しない。初回構成のhard capを延長しない。
+	if s.staging {
+		if s.guest == nil {
+			return ErrRootDenied
+		}
+		current.ConfigDigest, err = s.guest.Digest(ctx)
+		if err != nil {
+			return err
+		}
+	}
 	if !samePreviewContents(frozen, current) || !rootLive(ctx) || !time.Now().Before(frozen.HardDeadline) {
 		return ErrRootDenied
 	}

@@ -28,6 +28,9 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 	}
 	if err == nil {
 		err = service.BindOuterFinalizer(e)
+		if err == nil && e.staging {
+			err = service.BindGuestStagingOwner(e)
+		}
 		if err == nil {
 			e.service.Store(service)
 		}
@@ -60,6 +63,17 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 	}
 	ready <- executionReady{service: service}
 	for request := range e.requests {
+		if request.guest != nil {
+			guestErr := e.guestOnOwner(request.ctx, *request.guest, request.lease, request.closeGuest)
+			request.reply <- guestErr
+			if errors.Is(guestErr, ErrRootFatal) {
+				healthy = false
+				for {
+					time.Sleep(e.cfg.CleanupRetry)
+				}
+			}
+			continue
+		}
 		if request.confirmation != nil {
 			resolveErr := e.resolvePreviewOnOwner(request.ctx, service, *request.confirmation)
 			request.reply <- resolveErr // buffered; canceled caller cannot hold up cleanup

@@ -33,12 +33,17 @@
 長期sessionの保持対象へ要求pipeを残さず、raw endpointをadapterが閉じることもありません。
 [固定sourceと要求単位lease](guest-fixed-source.md)がproducer・短期返却・full入口の現状を扱います。
 
+未起動専用の明示入口は、同Endpointの検査leaseと元Execution ownerを実`newNativeStaging`へ接続する。
+元要求の取消returnとSDKの実returnを区別し、内側stagerの回収ackまで部分参照を保持する。
+全workload/auth joinと外側Root/tokenの解放はその後であり、内側Closeから全体joinを待たない。
+このsource配線の正例は各packageのprivate OS/owner memory seamで検証し、同一製品callerによる実Windows認証・account操作の正例とは区別する。
+
 ## 未実装・未接続・未検証
 
 | 分類 | 残件 |
 | --- | --- |
 | 未実装 | 内側sshdが実際に作るguest token/shellのresume前gateと実作業停止owner |
-| 未接続 | 固定sourceと実要求endpointのleaseを内部adapterへ渡す呼出し、正規承認→grant/session source、動的SIDを使うkey/helper/sshd構成 |
+| 未接続 | 製品の正規operator認証policy source、実runtime証跡からのgrant/起動、動的SIDを使うkey/helper/sshd構成 |
 | 未検証 | 実Windowsの配置・SID・ACL・API権限・依存解決、実account操作、Job最後handleと実停止、実SSHと再接続拒否 |
 
 現Recordは固定GuestSIDを作成前から要求します。

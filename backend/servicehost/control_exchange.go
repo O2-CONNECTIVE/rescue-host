@@ -14,9 +14,7 @@ func (r *serviceAuthRequest) writeDispatchReply(reply *serviceDispatchReply, leg
 	}
 	s := r.adapter.service
 	s.mu.Lock()
-	if r.endpointExchange {
-		// Native typed SoleInput-to-Batch matching is still unavailable. No readiness
-		// observation or fixture callback can open this physical input path.
+	if r.endpointExchange && !r.authenticatedEndpointLocked() {
 		s.mu.Unlock()
 		return ErrProvisioningUnconfigured
 	}
@@ -72,6 +70,8 @@ func (r *serviceAuthRequest) prepareControlEndpoint(ctx context.Context) (*servi
 	}
 	return r.prepareEndpointOps(ctx, func(c context.Context) (serviceAuthEndpointOps, error) {
 		endpoint, err := factories.prepareEndpoint(c)
-		return r.nativeEndpointOperations(endpoint), err
+		ops := r.nativeEndpointOperations(endpoint)
+		ops.factories = factories
+		return ops, err
 	})
 }
