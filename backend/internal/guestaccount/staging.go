@@ -274,7 +274,7 @@ func (o *stagingOwner) Prepare(ctx context.Context) (result error) {
 		return e
 	}
 	result = o.lifecycle.Prepare(ctx)
-	if o.accounts.inspectionUnknown.Load() {
+	if stagingQueryUnsafe(o.accounts) {
 		o.blocked = true
 		return ErrUnknown
 	}
@@ -314,7 +314,7 @@ func (o *stagingOwner) Close(ctx context.Context) (result error) {
 	if o.lifecycle != nil {
 		result = o.lifecycle.Close(ctx)
 	}
-	if o.accounts != nil && o.accounts.inspectionUnknown.Load() {
+	if o.accounts != nil && stagingQueryUnsafe(o.accounts) {
 		o.blocked = true
 		return ErrUnknown
 	}

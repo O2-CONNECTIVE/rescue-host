@@ -21,7 +21,6 @@ type stagingWindows struct {
 	scope   *stagingWindowsScope
 	refs    []*stagingWindowsResource
 	control *stagingControlRef
-	active  bool
 }
 type stagingWindowsScope struct {
 	lease   *bootstrapauth.PreparedLease
@@ -120,9 +119,7 @@ func (k *stagingWindows) call(ctx context.Context, guard func() bool, call func(
 	if !finite(ctx) || guard == nil || !guard() {
 		return ErrDenied
 	}
-	k.active = true
 	e := call()
-	k.active = false
 	if !guard() {
 		return bootstrapauth.ErrFatal
 	}

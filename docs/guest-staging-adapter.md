@@ -24,7 +24,7 @@
    sessionの正規revoke/quiesce sourceがなければ、取得・journal更新・account作成より前に拒否します。
 6. 終了時は既存coreの失効・回収・SID清掃の終端を確認してからaccount source、journal、保持対象、SCM witness、PreparedLeaseを回収します。
    再試行可能な清掃失敗だけでaccount sourceを永久停止しません。
-   unknown queryでは新native照会を再開せず、borrowed対象とscopeを保持します。
+   作成前preflightと作成後inspectorのunknown queryでは新native照会を再開せず、borrowed対象とscopeを保持します。
    実return前の取消、停止要求、Close呼出し自体を回収ackとしません。
 
 既存control pipeは、新しいpipeを作らず、同じService endpoint ownerの検査leaseを必須とします。
