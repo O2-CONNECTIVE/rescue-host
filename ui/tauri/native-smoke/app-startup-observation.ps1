@@ -33,11 +33,15 @@ function Wait-DriverStageTrace([string]$Directory, [Diagnostics.Stopwatch]$Budge
     try {
         [IO.File]::WriteAllText((Join-Path $Directory 'driver-stage.finish'), 'finish')
         $file = Join-Path $Directory 'driver-stage.jsonl'
+        if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
         do {
+            if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
             $stream = $null
             try {
                 $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
-                return $stream.Length -gt 0 -and $stream.Length -le 8192
+                $length = $stream.Length
+                if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
+                return $length -gt 0 -and $length -le 8192
             } catch [IO.IOException] { }
             finally { if ($null -ne $stream) { $stream.Dispose() } }
             if ($Budget.ElapsedMilliseconds -ge 1000) { break }

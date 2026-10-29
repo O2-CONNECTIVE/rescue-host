@@ -13,7 +13,8 @@ try {
     if (-not (Wait-DriverStageTrace $directory $fresh)) { throw 'CLOSED_DRIVER_FILE_NOT_OBSERVED' }
     Remove-Item -LiteralPath (Join-Path $directory 'driver-stage.finish')
     New-Item -ItemType Directory (Join-Path $directory 'driver-stage.finish') -ErrorAction Stop | Out-Null
-    if (Wait-DriverStageTrace $directory $budget) { throw 'MARKER_WRITE_FAILURE_ACCEPTED' }
+    $writeFailureBudget = [Diagnostics.Stopwatch]::new()
+    if (Wait-DriverStageTrace $directory $writeFailureBudget) { throw 'MARKER_WRITE_FAILURE_ACCEPTED' }
     if ($budget.ElapsedMilliseconds -gt 3000) { throw 'SHARED_WAIT_BUDGET_OVERRUN' }
     Write-Output 'DRIVER_STAGE_FINITE_COLLECTION_CONTRACT_PASSED'
 } finally { Remove-Item -LiteralPath $directory -Recurse -Force }
