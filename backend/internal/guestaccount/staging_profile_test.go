@@ -100,27 +100,21 @@ func TestStagingProfileRejectsMissingRolesCollisionsAndUnpinnedIdentity(t *testi
 			f.identity.fileID[0] = 33
 			c.files = append(c.files, f)
 		},
-		"journal-wrong-location":  func(c *stagingProfile) { c.files[6].path = `C:\Rescue\guest-journal-v1.bin` },
-		"journal-root-wrong-role": func(c *stagingProfile) { c.files[2].role = roleConfiguration; c.files[2].directory = false },
-		"root-file":               func(c *stagingProfile) { c.files[0].directory = false },
-		"artifact-dir":            func(c *stagingProfile) { c.files[7].directory = true },
-		"configuration-dir":       func(c *stagingProfile) { c.files[4].directory = true },
-		"path-case-alias":         func(c *stagingProfile) { c.files[5].path = `c:\rescue\CONFIG.bin` },
-		"identity-alias":          func(c *stagingProfile) { c.files[5].identity = c.files[4].identity },
-		"volume-zero":             func(c *stagingProfile) { c.files[4].identity.volume = 0 },
-		"fileid-zero":             func(c *stagingProfile) { c.files[4].identity.fileID = [16]byte{} },
-		"owner-empty":             func(c *stagingProfile) { c.files[4].identity.owner = "" },
-		"security-empty":          func(c *stagingProfile) { c.files[4].identity.security = "" },
-		"owner-noncanonical":      func(c *stagingProfile) { c.files[4].identity.owner = "S-1-5-018" },
-		"security-invalid-utf8":   func(c *stagingProfile) { c.files[4].identity.security = "D:P\xff" },
-		"artifact-missing":        func(c *stagingProfile) { c.files = c.files[:9] },
-		"artifact-path-mismatch":  func(c *stagingProfile) { c.files[7].path = `C:\Rescue\Bin\other.exe` },
-		"extra-artifact": func(c *stagingProfile) {
-			f := c.files[7]
-			f.path = `C:\Rescue\Bin\other.exe`
-			f.identity.fileID[0] = 33
-			c.files = append(c.files, f)
-		},
+		"journal-wrong-location":        func(c *stagingProfile) { c.files[6].path = `C:\Rescue\guest-journal-v1.bin` },
+		"journal-root-wrong-role":       func(c *stagingProfile) { c.files[2].role = roleConfiguration; c.files[2].directory = false },
+		"root-file":                     func(c *stagingProfile) { c.files[0].directory = false },
+		"artifact-dir":                  func(c *stagingProfile) { c.files[7].directory = true },
+		"configuration-dir":             func(c *stagingProfile) { c.files[4].directory = true },
+		"path-case-alias":               func(c *stagingProfile) { c.files[5].path = `c:\rescue\CONFIG.bin` },
+		"identity-alias":                func(c *stagingProfile) { c.files[5].identity = c.files[4].identity },
+		"volume-zero":                   func(c *stagingProfile) { c.files[4].identity.volume = 0 },
+		"fileid-zero":                   func(c *stagingProfile) { c.files[4].identity.fileID = [16]byte{} },
+		"owner-empty":                   func(c *stagingProfile) { c.files[4].identity.owner = "" },
+		"security-empty":                func(c *stagingProfile) { c.files[4].identity.security = "" },
+		"owner-noncanonical":            func(c *stagingProfile) { c.files[4].identity.owner = "S-1-5-018" },
+		"security-invalid-utf8":         func(c *stagingProfile) { c.files[4].identity.security = "D:P\xff" },
+		"artifact-missing":              func(c *stagingProfile) { c.files = c.files[:9] },
+		"artifact-path-mismatch":        func(c *stagingProfile) { c.files[7].path = `C:\Rescue\Bin\other.exe` },
 		"artifact-same-path":            func(c *stagingProfile) { c.native.manifest.Path = c.native.image.Path },
 		"ancestor-drive-missing":        func(c *stagingProfile) { c.files = c.files[1:] },
 		"ancestor-intermediate-missing": func(c *stagingProfile) { c.files = append(c.files[:1], c.files[2:]...) },
@@ -134,6 +128,23 @@ func TestStagingProfileRejectsMissingRolesCollisionsAndUnpinnedIdentity(t *testi
 				t.Fatal("incomplete or colliding manifest accepted")
 			}
 		})
+	}
+}
+
+func TestStagingProfileHoldsServiceArtifactsAlongsidePowerShell(t *testing.T) {
+	p, c := stagingProfileFixture(t)
+	for i, path := range []string{`C:\Rescue\Bin\supervisor.exe`, `C:\Rescue\Bin\backend.exe`} {
+		f := c.files[7]
+		f.path = path
+		f.identity.fileID = [16]byte{byte(33 + i)}
+		c.files = append(c.files, f)
+	}
+	if _, e := newStagingProfile(p, c); e != nil {
+		t.Fatal("保護recordが指定するService/Go imageを保持できない", e)
+	}
+	c.files[7].path = `C:\Rescue\Bin\missing-powershell.exe`
+	if _, e := newStagingProfile(p, c); e == nil {
+		t.Fatal("追加imageで必須PowerShellを代用")
 	}
 }
 

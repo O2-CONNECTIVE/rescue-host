@@ -14,17 +14,19 @@ import (
 )
 
 type stagingWindows struct {
-	plan    Plan
-	config  stagingNativeConfig
-	ready   *serviceready.Factory
-	query   accountQueryWindows
-	scope   *stagingWindowsScope
-	refs    []*stagingWindowsResource
-	control *stagingControlRef
+	plan          Plan
+	config        stagingNativeConfig
+	ready         *serviceready.Factory
+	query         accountQueryWindows
+	scope         *stagingWindowsScope
+	refs          []*stagingWindowsResource
+	control       *stagingControlRef
+	controlReader *permissionObjectReader
 }
 type stagingWindowsScope struct {
 	lease   *bootstrapauth.PreparedLease
 	witness *serviceready.ServiceWitness
+	control *stagingControlRef
 }
 
 func (s *stagingWindowsScope) Recheck(ctx context.Context) error {
@@ -37,6 +39,12 @@ func (s *stagingWindowsScope) Recheck(ctx context.Context) error {
 	return s.witness.RecheckService(ctx)
 }
 func (s *stagingWindowsScope) Close(ctx context.Context) error {
+	if s.control != nil {
+		if e := s.control.close(ctx); e != nil {
+			return e
+		}
+		s.control = nil
+	}
 	if s.witness != nil {
 		if e := s.witness.CloseService(ctx); e != nil {
 			return e
@@ -131,13 +139,6 @@ func (k *stagingWindows) call(ctx context.Context, guard func() bool, call func(
 
 // 開く前に返却slotをkernelへ置く。部分returnやpanicも元adapterが保持する。
 func (k *stagingWindows) open(ctx context.Context, kind permissionObjectKind, file stagingFile, guard func() bool) (stagingResource, error) {
-	if kind == permissionObjectPipe {
-		r := &stagingControlRef{lease: k.config.control}
-		k.control = r
-		// 借用call前からscopeとconfigで同じleaseを保持する。raw endpointは閉じない。
-		e := k.call(ctx, guard, func() error { return r.obtain(ctx) })
-		return r, e
-	}
 	r := &stagingWindowsResource{guard: guard}
 	k.refs = append(k.refs, r)
 	slot := func(service bool) *stagingWindowsSlot {
@@ -225,11 +226,13 @@ func (k *stagingWindows) inspect(ref stagingResource, guard func() bool) (journa
 	return info, e
 }
 func (k *stagingWindows) launch(ctx context.Context, identity accountQueryPrincipal, guard func() bool) error {
-	if k.control != nil {
-		if e := k.control.recheck(ctx); e != nil {
-			return e
-		}
-	} else if e := k.config.control.Recheck(ctx); e != nil {
+	if k.control == nil {
+		// 最初のcall前に同じscopeへ保持する。raw endpointやreaderは移譲しない。
+		k.control = &stagingControlRef{lease: k.config.control}
+		k.scope.control = k.control
+		k.controlReader = newPermissionObjectReader(permissionObjectWindows{})
+	}
+	if e := k.control.verifyAndRelease(ctx, k.plan.binding, k.config.profile.serviceSID, k.controlReader, guard); e != nil {
 		return e
 	}
 	if e := k.config.launch.Recheck(ctx); e != nil {

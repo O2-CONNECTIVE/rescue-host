@@ -78,7 +78,8 @@ func newStaging(ctx context.Context, p Plan, c stagingProfile, session sessionSo
 	if e = o.recheck(ctx); e != nil {
 		return o, e
 	}
-	for _, kind := range []permissionObjectKind{permissionObjectService, permissionObjectProcess, permissionObjectToken, permissionObjectPipe} {
+	// 要求pipeはlaunchの短期照合で返却する。後続stop要求を塞ぐ長期借用をしない。
+	for _, kind := range []permissionObjectKind{permissionObjectService, permissionObjectProcess, permissionObjectToken} {
 		if e = o.acquire(ctx, kind, stagingFile{}); e != nil {
 			return o, e
 		}
