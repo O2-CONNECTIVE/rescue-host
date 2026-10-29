@@ -195,17 +195,13 @@ func TestStagingOwnsFixedObjectsThroughJournalCreatorAndAllCleanup(t *testing.T)
 	if e != nil {
 		t.Fatal(e)
 	}
-	var pipe bool
 	for _, o := range k.profile.objects {
-		if o.kind == permissionObjectPipe && o.role == roleControlPipe {
-			pipe = true
+		if o.kind == permissionObjectPipe || o.role == roleControlPipe {
+			t.Fatal("要求専用pipeを長期session検査へ保持")
 		}
 		if o.role == roleJournal && o.handle != owner.journal.file {
 			t.Fatal("journalを再openしたhandleへ差替え")
 		}
-	}
-	if !pipe {
-		t.Fatal("既存Service control pipeの保持を省略")
 	}
 	if e = owner.Prepare(testContext(t)); e != nil || owner.lifecycle.state != Prepared {
 		t.Fatal("Preparedへ到達せず", e)

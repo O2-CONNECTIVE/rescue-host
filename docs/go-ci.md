@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは207実装、Windowsでは227実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは215実装、Windowsでは237実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -134,7 +134,7 @@ memory/source API seamとcrosscompileを、実Windowsアカウント操作やSSH
 
 
 確認要求の再検査はservicehost/confirmation.goとinternal/serviceprovision/confirmation.goの2実装だけを追加登録します。
-前者の単回予約/opaque ticketと後者の元owner RPC/保持Record再検査を結びますが、成功時もSERVICE_NOT_READYであり、ApprovedPolicy・Challenge・grantを作りません。
+前者の単回予約/opaque ticketと後者の元owner RPC/保持Record再検査を結びます。製品runtime providerが未構成の場合はSERVICE_NOT_READYを維持し、以下の同issuer発行はsource/fake試験でのみ確認しています。
 unit/raceの各レイヤの成功を実native認証と元threadを通したWindows縦断の成功へ合成しません。
 
 
@@ -143,7 +143,11 @@ unit/raceの各レイヤの成功を実native認証と元threadを通したWindo
 
 
 [固定配置から無効guest準備へのadapter](guest-staging-adapter.md)は、guestaccountのstaging.go/staging_borrow.go/staging_native.go/staging_profile.go/staging_query.goと対象OSのstaging_native_other.goまたはstaging_native_windows.goだけを追加登録します。
-bootstrapauth/prepared_lease.goは同じPreparedServiceのprofileと借用gateを保持する共通実装です。正規manifest/control検査lease producer・実guest token/resume前gateは未実装で、source/fakeやcrosscompileを実配置・実account・実SSHの成功へ広げません。
+bootstrapauth/prepared_lease.goは同じPreparedServiceのprofileと借用gateを保持する共通実装です。固定manifest/control検査leaseのsourceは以下へ接続しましたが、stagingへの呼出しと実guest token/resume前gateは未接続・未実装です。source/fakeやcrosscompileを実配置・実account・実SSHの成功へ広げません。
+
+
+[固定guest設定と要求単位の検査借用](guest-fixed-source.md)は、guestaccountのfixed_layout.go/fixed_layout_strict.go/fixed_layout_validate.go/fixed_layout_wire.go、serviceprovision/guest_source.go、servicereadyのinspection_lease.go/inspection_lease_security.go/inspection_lease_token.goを共通で追加登録します。
+Windowsだけinspection_lease_identity_windows.go/inspection_lease_windows.goを選択し、他OS・欠落・fixture混入を拒否します。固定配置の読取は強token取得前へ接続しますが、正規承認→同issuer Plan/session→staging、動的SIDの鍵設定と実sshd token/shell停止は未接続・未実装です。実配置・OS操作・実SSHの合格には広げません。
 
 
 承認確認から同issuerのbinding発行へ進む共通実装は、servicehost/confirmed_grant.goとconfirmed_grant_snapshot.goだけを追加登録します。

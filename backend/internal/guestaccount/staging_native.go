@@ -15,7 +15,7 @@ type stagingLaunch interface {
 }
 
 // 同じService endpoint ownerが発行する検査借用。新listenerやreaderを作らない。
-// producerは未接続であり、raw番号から正規leaseを生成してはならない。
+// private試験seam。production設定はservicereadyのopaque leaseだけを受け入れる。
 type stagingControlLease interface {
 	Borrow(context.Context) (uintptr, error)
 	Recheck(context.Context) error
@@ -26,7 +26,7 @@ type stagingNativeConfig struct {
 	prepared *bootstrapauth.PreparedService
 	ready    serviceready.Config
 	launch   stagingLaunch
-	control  stagingControlLease
+	control  *serviceready.InspectionLease
 }
 
 // 固定provisioningからだけ接続する内部候補。Record schemaやUI経路は追加しない。
@@ -34,7 +34,7 @@ type stagingNativeConfig struct {
 func newNativeStaging(ctx context.Context, p Plan, c stagingNativeConfig, session sessionSource, s *seal) (*stagingOwner, error) {
 	profile, e := newStagingProfile(p, c.profile)
 	keys := c.ready.Profile.Keys
-	if e != nil || c.prepared == nil || c.launch == nil || c.control == nil || session == nil || s == nil || !finite(ctx) || c.ready.Profile.ServiceName != profile.serviceName || keys.ProcessUserSID != p.binding.service || keys.OperatorSID != p.binding.operator || keys.ServiceSID != profile.serviceSID || c.ready.PrimaryToken != profile.native.token {
+	if e != nil || c.prepared == nil || c.launch == nil || c.control == nil || !c.control.MatchesProfile(c.ready.Profile) || session == nil || s == nil || !finite(ctx) || c.ready.Profile.ServiceName != profile.serviceName || keys.ProcessUserSID != p.binding.service || keys.OperatorSID != p.binding.operator || keys.ServiceSID != profile.serviceSID || c.ready.PrimaryToken != profile.native.token {
 		return nil, ErrUnconfigured
 	}
 	factory, e := serviceready.NewNative(c.ready)
