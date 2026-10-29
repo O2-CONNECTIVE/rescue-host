@@ -150,10 +150,6 @@ jobs:
     if: always()
     runs-on: windows-2022
     timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        contrast: [sequential, positive]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -240,9 +236,7 @@ jobs:
       - name: Sequential isolated 15 second sessions and owned cleanup
         timeout-minutes: 7
         run: |
-          $positive = @()
-          if ('${{ matrix.contrast }}' -eq 'positive') { $positive = @('--positive') }
-          node ui/tauri/native-smoke/run-baseline-sequential.ts @positive --toolsA "$env:BASELINE_ROOT/baseline-tools" --toolsB "$env:BASELINE_ROOT/baseline-tools-b" --outputA "$env:BASELINE_ROOT/baseline-a-evidence" --outputB "$env:BASELINE_ROOT/baseline-b-evidence" --exe "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe" --manifest "$env:BASELINE_ROOT/baseline-build.json" --summary "$env:BASELINE_ROOT/baseline-sequential.json" --supervisor "$env:GITHUB_WORKSPACE/tools/wry-creation-baseline/supervise.ps1" --config "$env:GITHUB_WORKSPACE/ui/tauri/native-smoke/tools.json"
+          node ui/tauri/native-smoke/run-baseline-sequential.ts --toolsA "$env:BASELINE_ROOT/baseline-tools" --toolsB "$env:BASELINE_ROOT/baseline-tools-b" --outputA "$env:BASELINE_ROOT/baseline-a-evidence" --outputB "$env:BASELINE_ROOT/baseline-b-evidence" --exe "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe" --manifest "$env:BASELINE_ROOT/baseline-build.json" --summary "$env:BASELINE_ROOT/baseline-sequential.json" --supervisor "$env:GITHUB_WORKSPACE/tools/wry-creation-baseline/supervise.ps1" --config "$env:GITHUB_WORKSPACE/ui/tauri/native-smoke/tools.json"
           exit $LASTEXITCODE
       - name: Validate Wry stage and independent contrast decision
         if: always()
@@ -255,7 +249,6 @@ jobs:
             node ui/tauri/native-smoke/inspect-wry-startup.ts --directory "$env:BASELINE_ROOT/$($arm.Tools)/baseline-trace" --provenance "$env:BASELINE_ROOT/wry-provenance.json" --exe $exe --source $env:STARTUP_SOURCE --collection "$out/native-result.json" > "$out/wry-startup-report.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
             $mode = if ($arm.Name -eq 'a') { 'with-html' } else { 'load-html' }
-            if ('${{ matrix.contrast }}' -eq 'positive' -and $arm.Name -eq 'a') { $mode = 'blank-script' }
             node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory $out --source $env:STARTUP_SOURCE --exe $exe --build "$env:BASELINE_ROOT/baseline-build.json" --mode $mode --runId $env:BASELINE_RUN_ID > "$out/contrast-decision.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
           }
@@ -284,7 +277,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: direct-wry-contrast-${{ matrix.contrast }}-evidence
+          name: direct-wry-contrast-evidence
           path: |
             ${{ env.BASELINE_ROOT }}/baseline-a-evidence/*.json
             ${{ env.BASELINE_ROOT }}/baseline-b-evidence/*.json
@@ -303,7 +296,164 @@ jobs:
         if: ${{ always() && steps.save_contrast_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: direct-wry-contrast-${{ matrix.contrast }}-cleanup
+          name: direct-wry-contrast-cleanup
+          path: ${{ runner.temp }}/baseline-cleanup-${{ env.BASELINE_RUN_ID }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  direct-wry-positive:
+    # 既存2profileの合否を保持し、その後の別runnerで1回だけ実行する。
+    needs: startup-diagnostic
+    if: always()
+    runs-on: windows-2022
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13.17'
+          architecture: x64
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '24.22.1'
+      - name: Verify baseline generation and decision contracts
+        run: |
+          python -I -m unittest discover -s scripts/tests -p test_wry_baseline.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Push-Location ui/tauri
+          try { node --test tests/baseline-document.test.ts tests/baseline-blank-script.test.ts tests/baseline-navigation.test.ts tests/baseline-navigation-pairs.test.ts tests/baseline-sequential.test.ts tests/baseline-process.test.ts tests/baseline-tools-copy.test.ts tests/baseline-cleanup.test.ts tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
+          if ($code -ne 0) { exit $code }
+          ./.github/tests/driver-trace-contract.ps1
+      - name: Record fixed source and existing runtime only
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -cnotmatch '^[0-9a-f]{40}$') { throw 'NATIVE_DIAGNOSTIC_SOURCE_INVALID' }
+          "STARTUP_SOURCE=$sha" >> $env:GITHUB_ENV
+          $runId = [Guid]::NewGuid().ToString('D').ToLowerInvariant()
+          $root = Join-Path $env:RUNNER_TEMP ("rescue-wry-" + $runId)
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          [IO.File]::WriteAllText((Join-Path $root 'owner.json'), ([ordered]@{ schema = 1; purpose = 'wry-sequential-owned'; runId = $runId } | ConvertTo-Json -Compress))
+          "BASELINE_ROOT=$root" >> $env:GITHUB_ENV
+          "BASELINE_RUN_ID=$runId" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=$root/baseline-target" >> $env:GITHUB_ENV
+          ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$root/baseline-inventory.json"
+          rustup toolchain install 1.99.1 --profile minimal --no-self-update
+          exit $LASTEXITCODE
+      - name: Prepare same pinned Wry source and isolated baseline graph
+        run: |
+          Invoke-WebRequest 'https://static.crates.io/crates/wry/wry-0.57.1.crate' -OutFile "$env:BASELINE_ROOT/wry.crate" -TimeoutSec 60
+          Invoke-WebRequest 'https://static.crates.io/crates/webview2-com/webview2-com-0.39.1.crate' -OutFile "$env:BASELINE_ROOT/pump.crate" -TimeoutSec 60
+          Invoke-WebRequest 'https://static.crates.io/crates/webview2-com-macros/webview2-com-macros-0.8.1.crate' -OutFile "$env:BASELINE_ROOT/macro.crate" -TimeoutSec 60
+          python scripts/apply_wry_trace.py --archive "$env:BASELINE_ROOT/wry.crate" --pump-archive "$env:BASELINE_ROOT/pump.crate" --macro-archive "$env:BASELINE_ROOT/macro.crate" --bundle tools/wry-startup-trace --source "$env:BASELINE_ROOT/wry-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:BASELINE_ROOT/wry-prepared.json" --source-commit $env:STARTUP_SOURCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/prepare_wry_baseline.py --manifest ui/tauri/src-tauri/Cargo.toml --lock ui/tauri/src-tauri/Cargo.lock --fixture tools/wry-creation-baseline/main.rs --output "$env:BASELINE_ROOT/baseline-project" --report "$env:BASELINE_ROOT/baseline-provenance.json" --source-commit $env:STARTUP_SOURCE
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $sourcePath = "$env:BASELINE_ROOT/wry-source".Replace('\', '/')
+          "STARTUP_WRY_CONFIG=patch.crates-io.wry.path='$sourcePath'" >> $env:GITHUB_ENV
+      - name: Compare existing Wry and Tao feature graph then build release contrast
+        timeout-minutes: 12
+        run: |
+          $common = @('+1.99.1', 'metadata', '--locked', '--format-version', '1', '--config', $env:STARTUP_WRY_CONFIG, '--filter-platform', 'x86_64-pc-windows-msvc', '--features', 'custom-protocol,startup-diagnostics')
+          $appText = & cargo @common --manifest-path ui/tauri/src-tauri/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $baselineText = & cargo @common --manifest-path "$env:BASELINE_ROOT/baseline-project/Cargo.toml"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $app = ($appText -join "`n") | ConvertFrom-Json -Depth 100
+          $baseline = ($baselineText -join "`n") | ConvertFrom-Json -Depth 100
+          $features = [ordered]@{}
+          foreach ($crate in @('wry', 'tao')) {
+            $left = @($app.packages | Where-Object name -eq $crate)
+            $right = @($baseline.packages | Where-Object name -eq $crate)
+            if ($left.Count -ne 1 -or $right.Count -ne 1 -or $left[0].version -cne $right[0].version) { throw 'NATIVE_BASELINE_FEATURE_GRAPH_DRIFT' }
+            $leftNode = @($app.resolve.nodes | Where-Object id -eq $left[0].id)
+            $rightNode = @($baseline.resolve.nodes | Where-Object id -eq $right[0].id)
+            if ($leftNode.Count -ne 1 -or $rightNode.Count -ne 1 -or (($leftNode[0].features | Sort-Object) -join ',') -cne (($rightNode[0].features | Sort-Object) -join ',')) { throw 'NATIVE_BASELINE_FEATURE_GRAPH_DRIFT' }
+            $features[$crate] = @($leftNode[0].features | Sort-Object)
+          }
+          [IO.File]::WriteAllText("$env:BASELINE_ROOT/baseline-feature-check.json", ([ordered]@{ schema = 1; matched = $true; features = $features; manifestParity = 'not-proven' } | ConvertTo-Json -Depth 6 -Compress))
+          cargo +1.99.1 build --locked --release --config $env:STARTUP_WRY_CONFIG --manifest-path "$env:BASELINE_ROOT/baseline-project/Cargo.toml" --features custom-protocol,startup-diagnostics --bin rescue-wry-creation-baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.99.1 test --locked --release --config $env:STARTUP_WRY_CONFIG --manifest-path "$env:BASELINE_ROOT/baseline-project/Cargo.toml" --features custom-protocol,startup-diagnostics --bin rescue-wry-creation-baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/prepare_wry_baseline.py --verify --manifest ui/tauri/src-tauri/Cargo.toml --lock ui/tauri/src-tauri/Cargo.lock --fixture tools/wry-creation-baseline/main.rs --output "$env:BASELINE_ROOT/baseline-project" --report "$env:BASELINE_ROOT/baseline-provenance.json" --source-commit $env:STARTUP_SOURCE
+          exit $LASTEXITCODE
+      - name: Bind source and binary to diagnostic-only build
+        run: |
+          $exe = "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe"
+          python scripts/apply_wry_trace.py --verify --archive "$env:BASELINE_ROOT/wry.crate" --pump-archive "$env:BASELINE_ROOT/pump.crate" --macro-archive "$env:BASELINE_ROOT/macro.crate" --bundle tools/wry-startup-trace --source "$env:BASELINE_ROOT/wry-source" --app-lock ui/tauri/src-tauri/Cargo.lock --report "$env:BASELINE_ROOT/wry-provenance.json" --source-commit $env:STARTUP_SOURCE --exe $exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $build = [ordered]@{ schema = 1; kind = 'direct-wry-controller-contrast'; sourceCommit = $env:STARTUP_SOURCE; exeSha256 = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant(); featureTreeMatched = $true; distribution = $false }
+          [IO.File]::WriteAllText("$env:BASELINE_ROOT/baseline-build.json", ($build | ConvertTo-Json -Compress))
+      - name: Prepare existing verified driver path
+        timeout-minutes: 6
+        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:BASELINE_ROOT/baseline-tools" -InventoryPath "$env:BASELINE_ROOT/baseline-inventory.json"
+      - name: Single blank positive control and owned cleanup
+        timeout-minutes: 7
+        run: |
+          node ui/tauri/native-smoke/run-baseline-sequential.ts --positive --toolsA "$env:BASELINE_ROOT/baseline-tools" --toolsB "$env:BASELINE_ROOT/baseline-tools-b" --outputA "$env:BASELINE_ROOT/baseline-a-evidence" --outputB "$env:BASELINE_ROOT/baseline-b-evidence" --exe "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe" --manifest "$env:BASELINE_ROOT/baseline-build.json" --summary "$env:BASELINE_ROOT/baseline-sequential.json" --supervisor "$env:GITHUB_WORKSPACE/tools/wry-creation-baseline/supervise.ps1" --config "$env:GITHUB_WORKSPACE/ui/tauri/native-smoke/tools.json"
+          exit $LASTEXITCODE
+      - name: Validate Wry stage and independent contrast decision
+        if: always()
+        run: |
+          $exe = "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe"
+          $result = 0
+          foreach ($arm in @(@{ Name = 'a'; Tools = 'baseline-tools' }, @{ Name = 'b'; Tools = 'baseline-tools-b' })) {
+            $out = "$env:BASELINE_ROOT/baseline-$($arm.Name)-evidence"
+            if (-not (Test-Path "$out/native-result.json" -PathType Leaf)) { if ($arm.Name -eq 'a') { $result = 1 }; continue }
+            node ui/tauri/native-smoke/inspect-wry-startup.ts --directory "$env:BASELINE_ROOT/$($arm.Tools)/baseline-trace" --provenance "$env:BASELINE_ROOT/wry-provenance.json" --exe $exe --source $env:STARTUP_SOURCE --collection "$out/native-result.json" > "$out/wry-startup-report.json"
+            if ($LASTEXITCODE -ne 0) { $result = 1 }
+            $mode = if ($arm.Name -eq 'a') { 'blank-script' } else { 'load-html' }
+            node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory $out --source $env:STARTUP_SOURCE --exe $exe --build "$env:BASELINE_ROOT/baseline-build.json" --mode $mode --runId $env:BASELINE_RUN_ID > "$out/contrast-decision.json"
+            if ($LASTEXITCODE -ne 0) { $result = 1 }
+          }
+          exit $result
+      - name: Validate anonymous contrast driver trace
+        if: always()
+        timeout-minutes: 1
+        run: |
+          $result = 0
+          foreach ($arm in @(@{ Name = 'a'; Tools = 'baseline-tools' }, @{ Name = 'b'; Tools = 'baseline-tools-b' })) {
+            $out = "$env:BASELINE_ROOT/baseline-$($arm.Name)-evidence"
+            if (-not (Test-Path "$out/native-result.json" -PathType Leaf)) { if ($arm.Name -eq 'a') { $result = 1 }; continue }
+            try {
+              $collection = Get-Content "$out/native-result.json" -Raw | ConvertFrom-Json
+              if ($collection.driverStageFileClosed -ne $true) { throw 'TRACE_NOT_CLOSED_IN_BUDGET' }
+              & (Get-Command pwsh).Source -NoProfile -NonInteractive -File ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:BASELINE_ROOT/$($arm.Tools)" -OutputDirectory $out
+              if ($LASTEXITCODE -ne 0) { $result = 1 }
+            } catch {
+              '{"check":"native-driver-stage","diagnostic":"incomplete","code":"TRACE_NOT_CLOSED_IN_BUDGET","events":[],"summary":null}' | Set-Content "$out/driver-stage-report.json" -Encoding utf8
+              $result = 1
+            }
+          }
+          exit $result
+      - name: Save safe contrast evidence without EXE or profile
+        id: save_contrast_evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: direct-wry-positive-evidence
+          path: |
+            ${{ env.BASELINE_ROOT }}/baseline-a-evidence/*.json
+            ${{ env.BASELINE_ROOT }}/baseline-b-evidence/*.json
+            ${{ env.BASELINE_ROOT }}/baseline-sequential.json
+            ${{ env.BASELINE_ROOT }}/baseline-build.json
+            ${{ env.BASELINE_ROOT }}/baseline-feature-check.json
+            ${{ env.BASELINE_ROOT }}/baseline-provenance.json
+            ${{ env.BASELINE_ROOT }}/baseline-inventory.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only confirmed owned arm resources
+        if: ${{ always() && steps.save_contrast_evidence.outcome == 'success' }}
+        timeout-minutes: 5
+        run: node ui/tauri/native-smoke/cleanup-baseline-sequential.ts "$env:BASELINE_ROOT"
+      - name: Save bounded cleanup result
+        if: ${{ always() && steps.save_contrast_evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: direct-wry-positive-cleanup
           path: ${{ runner.temp }}/baseline-cleanup-${{ env.BASELINE_RUN_ID }}.json
           if-no-files-found: error
           retention-days: 7
