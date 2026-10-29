@@ -39,8 +39,10 @@ PCや監督サービスの再起動後は許可をすべて失効させ、再承
 
 GUI評価版の実機起動と表示は利用者から確認済みです。
 固定guest設定の保護Root読取と要求単位の検査leaseは[#147](https://github.com/O2-CONNECTIVE/rescue-host/pull/147)、確認から同issuerの単回発行・status・revokeまでのsource/fake経路は[#148](https://github.com/O2-CONNECTIVE/rescue-host/pull/148)で統合しました。
-main `71b05bb1ef26a91d42cc40efe1ffd6b290e47147` のGo・Python・日本語検査は全7ジョブ成功しています。
+同Endpointの検査leaseを入力分離前に保持するAPIは[#149](https://github.com/O2-CONNECTIVE/rescue-host/pull/149)で統合しました。
+main `d4cb12009cdd80786b26ca18c666a84e6b1f3f3e` のGo・Python・日本語検査は全7ジョブ成功しています。
 発行経路の正例はprivate OS seamを置換したfixtureで、製品runtime providerは未登録、実LaunchとSSHは未接続です。
+未起動guestの準備は、明示入口から元ownerと実stager factoryへのsource配線を追加しました。正規認証policy producerは未構成で、実Windowsの製品入口は拒否を維持します。
 このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。

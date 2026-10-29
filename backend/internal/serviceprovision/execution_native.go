@@ -2,6 +2,7 @@ package serviceprovision
 
 import (
 	"context"
+	"errors"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 )
@@ -14,15 +15,19 @@ type nativeExecutionCalls struct {
 	prepare func(context.Context, Anchor) (*Prepared, error)
 	launch  func(context.Context, *Prepared) (*LaunchToken, error)
 	guest   func(context.Context, *Prepared) (*GuestConfiguration, error)
+	staging func(context.Context, *nativeExecutionStage, servicehost.GuestStagingTicket, servicehost.GuestStagingOwner, *serviceready.InspectionLease) (nativeGuestStager, error)
 }
 type nativeExecutionStage struct {
 	previewSnapshot *servicehost.PreviewDescriptor
+	staging         bool
 	preview         *PreviewLimits
 	calls           nativeExecutionCalls
 	cfg             ExecutionConfig
 	prepared        *Prepared
 	token           *LaunchToken
 	guest           *GuestConfiguration
+	guestAttempt    *nativeGuestAttempt
+	service         *servicehost.Service
 }
 
 func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *servicehost.Service, err error) {
@@ -38,6 +43,23 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 		return nil, ErrRootDenied
 	}
 	if s.preview != nil {
+		if s.staging {
+			guest := s.calls.guest
+			if guest == nil {
+				guest = func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) { return p.LoadFixedGuest(ctx) }
+			}
+			s.guest, err = guest(ctx, s.prepared)
+			if err != nil || s.guest == nil {
+				return nil, errors.Join(ErrRootDenied, err)
+			}
+			service, snapshot, err := s.composeStagingPreview(ctx)
+			if err != nil {
+				return nil, err
+			}
+			s.previewSnapshot = &snapshot
+			s.service = service
+			return service, nil
+		}
 		// query-only rootを借用する。強token/Approval/Launcherは取得しない。
 		service, snapshot, err := s.prepared.composePreviewSnapshot(ctx, *s.preview)
 		if err != nil {
@@ -91,6 +113,9 @@ func prepareExecutionToken(ctx context.Context, prepared *Prepared) (*LaunchToke
 }
 
 func (s *nativeExecutionStage) Close(ctx context.Context) error {
+	if s.guestAttempt != nil && !s.guestAttempt.closed {
+		return ErrRootUnconfirmed
+	}
 	if s.guest != nil {
 		if err := s.guest.Close(ctx); err != nil {
 			return err

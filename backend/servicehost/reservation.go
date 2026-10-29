@@ -26,7 +26,12 @@ type serviceReservation struct {
 	done                        chan struct{}
 	claimed, canceled, finished bool
 	ticket                      *reservationWorkTicket
+	purpose                     reservationPurpose
 }
+
+type reservationPurpose uint8
+
+const reservationGuestPreparation reservationPurpose = 1
 
 func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIntent) (*serviceReservation, error) {
 	if s == nil || !controlBudget(ctx) {

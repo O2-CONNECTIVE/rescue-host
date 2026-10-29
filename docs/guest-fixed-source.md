@@ -58,7 +58,10 @@ guest staging側のnative設定はこのopaque leaseと同じprofileだけを受
 長期sessionのpermission profileにはservice/process/token/filesだけを残し、要求pipeを残さない。
 これにより要求応答・EndpointClosed・次のStopを、セッション終了までの借用で塞がない。
 後続要求ごとの実endpoint検査は、同じ固定listener policyとService側の要求経路で別途行う必要がある。
-Service/issuer ownerからこのleaseと正規Plan/session sourceを同じlaunchへ渡す呼出しは未接続である。
+明示的な`NewNativeStagingExecution`では、同Endpointのleaseを元Execution ownerへ渡し、未起動専用のPlan/sessionと実stager factoryへ接続した。
+この経路は固定Recordとguest設定の結合digestをpreviewへ固定し、実作成receiptからSIDを単回束縛する。
+未起動専用sessionは同Service・owner・namespaceと失効済みの未発行issuerを照合し、実行許可やruntime分離の証拠を返さない。
+正規operator認証policyの供給は未構成のため、製品入口は取得前拒否のままである。
 
 Endpointは部分leaseを含めて所有し、Closeは全leaseの回収確認前に完了を報告しない。
 取消だけなら実return後に健康な同主体で有限回収を試す。
@@ -93,7 +96,7 @@ Service tokenや任意のempty session sourceを代用してgateを開かない�
 | 分類 | 残件 |
 | --- | --- |
 | 未実装 | 固定sshdの実token/shell gateと実作業・子孫の停止owner |
-| 未接続 | 正規承認→同issuer→Plan/session、配置source→staging、実要求endpointからleaseを渡す統合呼出し、動的SIDのkey/sshd設定 |
+| 未接続 | 製品の正規operator認証policy producer、実runtime証跡からのgrant/起動、動的SIDのkey/sshd設定 |
 | 未検証 | 固定配置・SID・ACL・API権限・依存解決、実account操作、Job最後handleと実停止、実SSH・切断/期限・再接続拒否 |
 
 実機承認の対象は固定file/digestと全祖先の配置・保護、service identityとper-service SID、service/process/token/pipe/key/journal ACL、一時guestとsshd/key構成である。

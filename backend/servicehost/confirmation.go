@@ -16,6 +16,8 @@ type PreviewConfirmationResolver interface {
 	ResolvePreviewConfirmation(context.Context, PreviewConfirmationTicket) error
 }
 
+func (r *previewConfirmation) liveLockedNow() bool { return r.liveLocked(time.Now()) }
+
 // PreviewConfirmationTicket is a live display observation, not authentication,
 // guest proof, approval, or authority. A zero ticket cannot observe any Service.
 type PreviewConfirmationTicket struct{ record *previewConfirmation }
@@ -119,7 +121,7 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		return "SERVICE_STALE_CONTEXT", nil
 	}
 	source := p.runtime // static owner reference; no acquisition responsibility yet
-	if source != nil {
+	if source != nil || s.guestOwner != nil {
 		if s.ownerIntent != nil || s.reservation != nil {
 			r.finished = true
 			s.mu.Unlock()
@@ -129,6 +131,9 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		reservation, err := s.reserveOwnerIntentLocked(ctx, s.ownerIntent)
 		if err == nil {
 			r.work, err = s.consumeOwnerReservationLocked(reservation)
+			if err == nil && s.guestOwner != nil {
+				reservation.purpose = reservationGuestPreparation
+			}
 		}
 		if err != nil {
 			r.finished = true
@@ -138,8 +143,10 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		}
 		// Take per-confirm actor responsibility only with a real claimed work
 		// ticket. This remains before Record/Acquire, under the same stop gate.
-		r.runtimeSource = source
-		r.runtimeOwner = source.owner
+		if source != nil {
+			r.runtimeSource = source
+			r.runtimeOwner = source.owner
+		}
 	}
 	resolver := p.resolver
 	s.mu.Unlock()
@@ -152,6 +159,9 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		err = authFailure(err, ErrRuntimeUnconfirmed)
 		s.stopFor(err)
 		return "", err
+	}
+	if s.guestOwner != nil {
+		return r.prepareGuestStaging()
 	}
 	if r.runtimeSource == nil {
 		return "SERVICE_NOT_READY", nil

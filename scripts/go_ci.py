@@ -27,7 +27,7 @@ PRODUCT_FILES = {
         'permission_facts_buffer.go', 'permission_groups.go', 'permission_inspect.go',
         'permission_objects.go', 'permission_objects_buffer.go', 'permission_policy.go',
         'staging.go', 'staging_borrow.go', 'staging_native.go',
-        'staging_profile.go', 'staging_query.go',
+        'staging_profile.go', 'staging_query.go', 'never_created.go', 'never_created_session.go',
         'fixed_layout.go', 'fixed_layout_strict.go', 'fixed_layout_validate.go', 'fixed_layout_wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
@@ -43,7 +43,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go', 'confirmation.go', 'confirmed_grant.go', 'confirmed_grant_snapshot.go'},
+        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go', 'confirmation.go', 'confirmed_grant.go', 'confirmed_grant_snapshot.go', 'guest_staging.go', 'guest_staging_dispatch.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go', 'fixed_command.go'},
@@ -61,7 +61,8 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go', 'preview.go', 'confirmation.go',
-        'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go', 'guest_source.go'},
+        'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go', 'guest_source.go',
+        'staging_execution.go', 'staging_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner': {'owner.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {

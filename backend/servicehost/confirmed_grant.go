@@ -79,6 +79,12 @@ func (o *confirmationEvidenceOwner) revoke() error {
 
 func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, error) {
 	s, source := r.service, r.runtimeSource
+	s.mu.Lock()
+	closed := s.executionClosed
+	s.mu.Unlock()
+	if closed {
+		return r.failGrant(ErrProvisioningRejected)
+	}
 	if source == nil || source.self != source || source.kernel == nil {
 		return "SERVICE_NOT_READY", nil
 	}

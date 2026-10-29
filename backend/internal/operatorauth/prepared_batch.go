@@ -3,8 +3,10 @@ package operatorauth
 import (
 	"context"
 	"errors"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -12,6 +14,11 @@ import (
 // prepare it privately and register it with Service before Start. There is no
 // public factory; the zero value is unconfigured and cannot acquire resources.
 type Batch = nativeBatch
+
+// MatchesSoleInput is immutable provenance only, never authentication/admission.
+func (b *nativeBatch) MatchesSoleInput(input *serviceready.SoleInput) bool {
+	return b != nil && b.self == b && input != nil && b.spec.soleInput == input
+}
 
 // MatchesIssuer compares the immutable issuer retained during preparation.
 // Its concrete Owner always holds this same actual issuer.
@@ -187,4 +194,40 @@ func (b *nativeBatch) Close(ctx context.Context) (result error) {
 		return errors.Join(err, ErrFatal, fatal)
 	}
 	return err
+}
+
+// EndpointFactory is an immutable, pure holder for a protected native policy.
+// There is intentionally no public constructor or policy setter: the canonical
+// expected AuthenticationID producer remains unconfigured. A zero/copy cannot
+// prepare a Batch. Preparation itself is not authentication.
+type EndpointFactory struct {
+	self         *EndpointFactory
+	service      *bootstrapauth.Factory
+	serviceToken uintptr
+	spec         nativeBatchSpec
+	policy       profileProviderPolicy
+}
+
+func newEndpointFactory(s nativeBatchSpec, f *bootstrapauth.Factory, token uintptr, p profileProviderPolicy) (*EndpointFactory, error) {
+	if f == nil || !helperHandle(token) || s.input != 0 || s.soleInput != nil || s.inputLease != nil || s.producer != nil || p.material.launchID != s.launch.launchID || p.material.cleanup != s.launch.cleanup {
+		return nil, ErrUnconfigured
+	}
+	result := &EndpointFactory{service: f, serviceToken: token, spec: s, policy: p}
+	result.self = result
+	return result, nil
+}
+func (f *EndpointFactory) MatchesServiceFactory(service *bootstrapauth.Factory) bool {
+	return f != nil && f.self == f && service != nil && f.service == service
+}
+func (f *EndpointFactory) Prepare(input *serviceready.SoleInput, owner *serviceauthowner.Owner, issuer *ephemeral.Issuer) (*Batch, error) {
+	if f == nil || f.self != f || input == nil || !owner.MatchesIssuer(issuer) {
+		return nil, ErrUnconfigured
+	}
+	return prepareNativeSoleInputProfileBatch(f.spec, input, f.service, f.serviceToken, batchOwner{issuer: issuer, owner: owner}, f.policy)
+}
+
+// MatchesServiceFactory compares only the immutable constructor provenance. It
+// neither authenticates a Read nor converts an observed candidate into policy.
+func (b *nativeBatch) MatchesServiceFactory(service *bootstrapauth.Factory) bool {
+	return b != nil && b.self == b && service != nil && b.serviceFactory == service
 }

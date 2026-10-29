@@ -1,6 +1,9 @@
 package guestaccount
 
-import "context"
+import (
+	"context"
+	"errors"
+)
 
 // Prepareはdisabled accountの所有記録と限定snapshot検査までを順序づける。
 // SSH接続、有効化、資格情報生成、grant発行を行わない。
@@ -33,6 +36,9 @@ func (l *Lifecycle) Prepare(ctx context.Context) (result error) {
 	if bound {
 		// 部分成功のSIDも、error/cancelを見るより先に所有者へ残す。
 		l.record.binding = r.binding
+		if session, ok := l.sources.session.(creatorSessionBinder); ok {
+			err = errors.Join(err, session.bindCreated(r, l.sources.accountSeal))
+		}
 	}
 	// SIDを保持したまま、期限切れによる保存中止にも元の不確定性を残す。
 	if err != nil {

@@ -58,6 +58,10 @@ type Service struct {
 	plane                                     servicePlane
 	control                                   *serviceControlReadiness
 	preview                                   *servicePreview
+	guestOwner                                GuestStagingOwner
+	staging                                   *guestStagingRecord
+	executionClosed                           bool
+	executionAdmissions                       uint64
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
 	innerCleanupConfirmed, outerConfirmed     bool
@@ -346,6 +350,9 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			deadline, _ := cleanup.Deadline()
 			workload, endWorkload := context.WithTimeout(cleanup, time.Until(deadline)/2)
 			closeErr := s.reclaimWorkload(workload)
+			if closeErr == nil {
+				closeErr = s.reclaimGuestStaging(workload)
+			}
 			if closeErr == nil {
 				closeErr = s.reclaimConfirmationRuntime(workload)
 			}

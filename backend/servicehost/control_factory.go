@@ -2,6 +2,7 @@ package servicehost
 
 import (
 	"context"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
@@ -15,6 +16,7 @@ type serviceNativeFactories struct {
 	self  *serviceNativeFactories
 	ready *serviceready.Factory
 	auth  *bootstrapauth.Factory
+	batch *operatorauth.EndpointFactory // independently protected operator policy remains unconfigured
 }
 
 func newServiceNativeFactories(c serviceready.Config) (*serviceNativeFactories, error) {

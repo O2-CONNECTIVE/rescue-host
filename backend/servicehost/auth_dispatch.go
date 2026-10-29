@@ -118,10 +118,14 @@ func (a *serviceAuthAdapter) previousAcknowledgedLocked() bool {
 	if a.active == nil {
 		return true
 	}
-	// Fresh SCM witness and Native SoleInput provenance are not connected yet.
-	// Endpoint cleanup alone must never authorize another physical exchange.
+	// Actual helper consumption, exact source/factory, physical write/close
+	// receipts and final worker return are all required. The next worker still
+	// requests a fresh SCM observation before acquiring its own Endpoint.
 	if a.active.endpointExchange {
-		return false
+		held := a.active.endpoint
+		if !a.active.authenticatedEndpointLocked() || held == nil || !held.cleaned || held.uncertain || !held.ops.concrete.MatchesCompletion(held.written, held.closed) {
+			return false
+		}
 	}
 	if !a.active.finished {
 		return false
@@ -160,14 +164,19 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 }
 
 func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) error) error {
-	// Typed SoleInput/Batch source matching and fresh SCM witness are not wired.
-	// Merely attaching an input pointer must not open the Endpoint Start path.
-	if r.endpointExchange {
+	s := r.adapter.service
+	s.mu.Lock()
+	endpointPath := r.endpointExchange
+	bound := r.endpointInputBoundLocked()
+	s.mu.Unlock()
+	if endpointPath && !bound {
 		return ErrProvisioningUnconfigured
 	}
 	a, batch := r.adapter, r.batch
-	if err := r.observeControl(r.worker, controlBeforeAcquire); err != nil {
-		return err
+	if !endpointPath {
+		if err := r.observeControl(r.worker, controlBeforeAcquire); err != nil {
+			return err
+		}
 	}
 	if err := batch.start(r.worker); err != nil {
 		return authFailure(err, ErrProvisioningRejected)
@@ -182,7 +191,7 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 	if err != nil || read == nil {
 		return authFailure(err, ErrProvisioningRejected)
 	}
-	s := a.service
+	s = a.service
 	s.mu.Lock()
 	if !r.liveLocked() {
 		s.mu.Unlock()

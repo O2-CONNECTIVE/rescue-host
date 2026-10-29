@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 )
 
@@ -40,6 +41,9 @@ type executionReady struct {
 	err     error
 }
 type executionRequest struct {
+	guest        *servicehost.GuestStagingTicket
+	lease        *serviceready.InspectionLease
+	closeGuest   bool
 	confirmation *servicehost.PreviewConfirmationTicket
 	ctx          context.Context
 	proof        servicehost.InnerCleanupProof
@@ -51,6 +55,7 @@ type executionRequest struct {
 type Execution struct {
 	configured bool
 	cfg        ExecutionConfig
+	staging    bool           // explicit disabled-guest mode; never selects runtime grants
 	preview    *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
 	calls      executionCalls
 	used       atomic.Bool
@@ -88,6 +93,17 @@ func NewNativePreviewExecution(c PreviewExecutionConfig) (*Execution, error) {
 	return e, nil
 }
 
+// NewNativeStagingExecution explicitly prepares a disabled guest after an
+// authenticated confirmation. Query-only preview and RunFixed remain unchanged.
+func NewNativeStagingExecution(c PreviewExecutionConfig) (*Execution, error) {
+	e, err := NewNativePreviewExecution(c)
+	if err != nil {
+		return nil, err
+	}
+	e.staging = true
+	return e, nil
+}
+
 func newExecutionOwner(c ExecutionConfig) *Execution {
 	return &Execution{configured: true, cfg: c, requests: make(chan executionRequest), cleaned: make(chan struct{})}
 }
@@ -108,7 +124,9 @@ func (e *Execution) Run(ctx context.Context) error {
 		calls.guard = executionCaller
 	}
 	if calls.stage == nil {
-		calls.stage = func() executionStage { return &nativeExecutionStage{cfg: e.cfg, preview: e.preview} }
+		calls.stage = func() executionStage {
+			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging}
+		}
 	}
 	if calls.runSCM == nil {
 		calls.runSCM = servicehost.RunReadySCM
