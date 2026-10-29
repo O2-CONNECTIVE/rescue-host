@@ -242,6 +242,11 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	if e = c.recheck(ctx); e != nil {
 		return e
 	}
+	// The recheck was already admitted, but profile transfer starts a separate
+	// acquisition. A late recheck cannot carry admission across revocation.
+	if !b.admitted(ctx) {
+		return ErrDenied
+	}
 	if e = profile.sendAfterResume(ctx); e != nil {
 		return e
 	}

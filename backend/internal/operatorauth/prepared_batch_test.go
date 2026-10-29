@@ -392,3 +392,75 @@ func TestPreparedBatchConcreteOwnerRevokeRetainsLateConstructor(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+type recheckBarrierChild struct {
+	*memoryBatchChild
+	entered chan struct{}
+	release <-chan struct{}
+}
+
+func (c *recheckBarrierChild) recheck(ctx context.Context) error {
+	close(c.entered)
+	select {
+	case <-c.release:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	return c.memoryBatchChild.recheck(ctx)
+}
+
+type transferCountingProfile struct {
+	*memoryBatchProfile
+	transfers int
+}
+
+func (p *transferCountingProfile) sendAfterResume(ctx context.Context) error {
+	p.transfers++
+	return p.memoryBatchProfile.sendAfterResume(ctx)
+}
+
+func TestPreparedBatchRechecksAdmissionBeforeProfileTransferAfterLateRecheck(t *testing.T) {
+	s, owner, ops, events, _, child := batchFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	entered, release := make(chan struct{}), make(chan struct{})
+	profile := &transferCountingProfile{memoryBatchProfile: &memoryBatchProfile{events: events}}
+	ops.newProfile = func(context.Context) (batchProfile, error) { return profile, nil }
+	originalStart := ops.start
+	ops.start = func(c context.Context, l nativeLaunchSpec) (batchChild, error) {
+		if _, err := originalStart(c, l); err != nil {
+			return nil, err
+		}
+		return &recheckBarrierChild{memoryBatchChild: child, entered: entered, release: release}, nil
+	}
+	b, err := prepareBatch(s, owner, ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := make(chan error, 1)
+	go func() { started <- b.Start(ctx) }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("post-resume recheck did not enter memory barrier")
+	}
+	revokeErr := owner.owner.Revoke()
+	close(release)
+	select {
+	case err := <-started:
+		if err == nil {
+			t.Fatal("revoked batch start succeeded")
+		}
+	case <-ctx.Done():
+		t.Fatal("late recheck owner did not join")
+	}
+	if revokeErr != nil {
+		t.Fatal(revokeErr)
+	}
+	if profile.transfers != 0 {
+		t.Fatal("profile transfer acquired after owner admission closed", profile.transfers)
+	}
+	if err := b.Close(requestContext(t)); err != nil {
+		t.Fatal("same batch failed retained cleanup", err)
+	}
+}
