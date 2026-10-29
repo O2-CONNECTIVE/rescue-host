@@ -208,3 +208,19 @@ fatalなworkerのjoin後は、別threadでnative回収を再開せず、同じ�
 
 既定のprovisioning/native providerと製品gateは未設定・閉鎖のままである。
 このsource接続を、実HostのWindows起動・SSH・実workerからの制御面receipt・受理transportの成立へ読み替えない。
+
+## 認証交換の取得前所有予約
+
+`reserveExchange`はnative取得前に同じService/issuer/canonical Ownerの所有記録を登録し、試行を単回消費する。
+旧Batch登録の不正issuer/collector拒否では試行を消費しない。
+部分Endpointと取消後に返った同OwnerのBatchは回収用に保持する。別OwnerのBatchは閉じず、拒否したcallerが保持する。
+`runOwner`は同じ固定workerで取得から回収までを囲み、最外側の最後にだけ`ownerDone`を出す。
+回収確認とworker終了は別のackで、空の予約でもworker終了を省略しない。
+
+正常なCollect/Consume後はEndpointだけを閉じ、Ownerを失効させる`Batch.Close`を無条件に呼ばない。
+失敗時はOwner失効後に取消し、同workerの有限回収へ進む。両所有者がある場合は元deadline内の予算を分け、unknownや片方のpanicで他方の参照を忘れない。
+既知fatal後は別のnative回収を再開せず、参照と未確認状態を保持して原threadを退役させる。
+
+この所有記録は認証・入力来歴・readinessの許可ではない。
+typed SoleInput factory、same-Service/profile照合、SCM fresh Witness、Endpoint応答writeは未接続であり、新Endpoint経路のStartと次要求受理は明示拒否する。
+認証根の選択やguest方針をこの変更で採用・実装せず、製品gate閉鎖、実機・実SSH未実証を維持する。
