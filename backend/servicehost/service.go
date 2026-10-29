@@ -346,7 +346,12 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			deadline, _ := cleanup.Deadline()
 			workload, endWorkload := context.WithTimeout(cleanup, time.Until(deadline)/2)
 			closeErr := s.reclaimWorkload(workload)
+			if closeErr == nil {
+				closeErr = s.reclaimConfirmationRuntime(workload)
+			}
 			endWorkload()
+			// Collector.Close may await whole-workload completion. Guest cleanup
+			// and its real ack therefore precede this join, within the same budget.
 			closeErr = errors.Join(closeErr, s.waitAuthRequest(cleanup))
 			if closeErr == nil {
 				if approvalDone != nil {

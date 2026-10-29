@@ -19,6 +19,7 @@ type serviceReservation struct {
 	owner                       *Service
 	issuer                      *ephemeral.Issuer
 	intent                      *serviceOwnerIntent
+	request                     context.Context // original finite request; immutable
 	requestDone                 <-chan struct{}
 	worker                      context.Context
 	cancel                      context.CancelFunc
@@ -31,16 +32,17 @@ func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIn
 	if s == nil || !controlBudget(ctx) {
 		return nil, ErrProvisioningRejected
 	}
-	requestDone := ctx.Done()
-	worker, cancel := context.WithCancel(context.Background())
-	keep := false
-	defer func() {
-		if !keep {
-			cancel()
-		}
-	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.reserveOwnerIntentLocked(ctx, intent)
+}
+
+// The caller holds the same stop gate; construction has no native callbacks.
+func (s *Service) reserveOwnerIntentLocked(ctx context.Context, intent *serviceOwnerIntent) (*serviceReservation, error) {
+	if !controlBudget(ctx) {
+		return nil, ErrProvisioningRejected
+	}
+	requestDone := ctx.Done()
 	if !s.authWriter.OpenLocked() || s.stopping || s.state != Running || s.dispatch == nil || s.issuer == nil || intent == nil || intent.owner != s || intent.issuer != s.issuer || s.ownerIntent != intent || intent.burned || s.reservation != nil {
 		return nil, ErrProvisioningRejected
 	}
@@ -54,8 +56,8 @@ func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIn
 		return nil, ErrProvisioningRejected
 	}
 	intent.burned = true
-	r := &serviceReservation{owner: s, issuer: s.issuer, intent: intent, requestDone: requestDone, worker: worker, cancel: cancel, done: make(chan struct{})}
-	keep = true
+	worker, cancel := context.WithCancel(context.Background())
+	r := &serviceReservation{owner: s, issuer: s.issuer, intent: intent, request: ctx, requestDone: requestDone, worker: worker, cancel: cancel, done: make(chan struct{})}
 	s.reservation = r
 	return r, nil
 }
@@ -80,7 +82,15 @@ func (s *Service) consumeOwnerReservation(r *serviceReservation) (serviceReserva
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.consumeOwnerReservationLocked(r)
+}
+func (s *Service) consumeOwnerReservationLocked(r *serviceReservation) (serviceReservationWork, error) {
 	if r == nil || r.owner != s || s.reservation != r || r.issuer != s.issuer || !s.authWriter.OpenLocked() || s.stopping || r.canceled || r.claimed || r.finished {
+		return serviceReservationWork{}, ErrProvisioningRejected
+	}
+	// Cancellation delivery may lag its actual deadline. Claim only within the
+	// same original finite request, rather than relying on Done notification alone.
+	if !authBudget(r.request) {
 		return serviceReservationWork{}, ErrProvisioningRejected
 	}
 	select {
