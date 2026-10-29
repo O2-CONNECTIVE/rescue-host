@@ -48,6 +48,7 @@ PRODUCT_FILES = {
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
         'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner': {'owner.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
