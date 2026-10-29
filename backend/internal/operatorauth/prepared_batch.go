@@ -179,5 +179,12 @@ func (b *nativeBatch) Close(ctx context.Context) (result error) {
 		return ErrUnconfirmed
 	}
 	defer func() { <-b.operation }()
-	return b.collector.Close(ctx)
+	err := b.collector.Close(ctx)
+	b.mu.Lock()
+	fatal := b.fatal
+	b.mu.Unlock()
+	if fatal != nil {
+		return errors.Join(err, ErrFatal, fatal)
+	}
+	return err
 }

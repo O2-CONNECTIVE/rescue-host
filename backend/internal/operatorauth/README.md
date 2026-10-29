@@ -57,7 +57,9 @@ OS APIが呼出し中に既存privilegeを一時enableする可能性は、変�
 Jobのkill-on-closeとactive process上限1は寿命制御であり、privilege隔離やhandleの第三者複製防止ではない。
 leafの固定hashはancestor directoryのACL/保護を証明しない。
 
-`startNativeBatch`は同じ起動の`ServiceScope`を保持する元threadからだけ呼ぶprivate接続である。
+`prepareNativeBatch`は保護Factoryと借用primary tokenを保持し、Service登録後の`Start`で認証worker自身が`ServiceScope`を取得するprivate接続である。
+取得・再検査・回収は同じ固定workerで行い、SCM側のscopeを移送しない。部分取得と回収の契約は[batch-scope.md](batch-scope.md)に記す。
+候補queryと固定policyを分離するprivate providerのsourceは[profile-provider.md](profile-provider.md)に記す。正規policyとendpoint lease発行元は未接続であり、query成功から認証を作らない。
 service自己認証をoperator用server認証には流用しない。
 sole readerの所有移譲が事前条件で、service側に別のread/duplex複製が残る場合は呼び出せない。
 reportを実EOFまでdrainし、保持helperの終了waitとbinding再照合の後、I/OとJob/process/imageの回収を有限context内で確認する。
