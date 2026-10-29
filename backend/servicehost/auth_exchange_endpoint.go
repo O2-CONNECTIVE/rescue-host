@@ -218,7 +218,7 @@ func (a *serviceAuthAdapter) exchangeControlEndpoint(ctx context.Context) error 
 		factories = control.factories
 	}
 	s.mu.Unlock()
-	if !factories.canonical() || !factories.batch.MatchesServiceFactory(factories.auth) {
+	if !factories.canonical() || !factories.batch.MatchesServiceFactory(factories.auth) || !factories.batch.RuntimeConfigured() {
 		return ErrProvisioningUnconfigured
 	}
 	r, err := a.reserveExchange(ctx)

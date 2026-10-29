@@ -44,7 +44,7 @@ main `d4cb12009cdd80786b26ca18c666a84e6b1f3f3e` のGo・Python・日本語検査
 発行経路の正例はprivate OS seamを置換したfixtureで、製品runtime providerは未登録、実LaunchとSSHは未接続です。
 未起動guestの準備は、明示入口から元ownerと実stager factoryへのsource配線を追加しました。正規認証policy producerは未構成で、実Windowsの製品入口は拒否を維持します。
 承認主体は[方式B](docs/adr/0002-operator-sid-policy.md)を採用しました。指定Windowsユーザーの再ログイン後も新規承認資格はありますが、既存許可や接続を引き継ぎません。
-認証coreは固定SIDと実message主体を分離し、専用helper資源の未構成拒否を維持します。保護Root・Service側への供給接続は後続です。
+認証coreは固定SIDと実message主体を分離し、専用helper資源の未構成拒否を維持します。保持RootからServiceへの供給と、同一channelでのAuthId完全一致・別ログオンへの移譲拒否をsource/fakeで検証しました。
 このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。

@@ -16,14 +16,15 @@
 統合main `d4cb12009cdd80786b26ca18c666a84e6b1f3f3e` の[Go 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40927998417)、[Python 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40927998519)、[日本語検査](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40927998372)は全7ジョブ成功です。
 正例の認証・Record再検査・OS来歴にはmemory modelを使い、製品runtime sourceは未登録です。保持ChallengeからのLaunchや実SSHを実装済みとは判定しません。
 未起動専用の明示入口では、固定guest bundle→同Endpointの検査lease→元Execution owner→実stager factoryのsource呼出しを接続しました。
-private OS/owner memory seamによる各層の正例と、製品の同一caller正例は別です。正規operator認証policy producerは未構成で、実Windowsの入口は拒否を維持します。
+private OS/owner memory seamによる各層の正例と、製品の同一caller正例は別です。固定SID policyは元ownerが保持Recordから供給しますが、実message認証用helperの起動資源は未構成で、実Windowsの入口は拒否を維持します。
 実runtime証跡からのgrant/起動、内側sshdの実token/shellと停止owner、実Windows配置と保護は未接続・未実装・未検証です。
 以下の#72当時の配布/native証跡は履歴であり、この新sourceの実機検証結果へ合成しません。
 
 ## 方式Bの採用とcore実装
 
 [ADR-0002](adr/0002-operator-sid-policy.md)は、固定OperatorSIDの新規承認資格と認証後AuthId bindingを分けます。
-profile/reportの明示v2と単回消費を追加しましたが、Root供給とlogical channel登録は後続です。
+profile/reportの明示v2と単回消費に、元Execution threadの保持Recordからのpolicy供給とService stop gate内のlogical channel登録を接続しました。
+各層のprivate memory modelで、同じSIDのAuthId変更は既存channel/Record/grantを引き継がず失効し、新しいServiceでも新規承認が必要なことを検証しました。
 helper tokenと保護sourceは未構成で、policy構成だけでは取得を開始しません。実機機能や実SSHの成功は増えていません。
 
 ## 提供段階と証拠の読み方

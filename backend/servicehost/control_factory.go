@@ -13,10 +13,11 @@ import (
 // or readiness evidence. Both concrete factories are immutable after creation;
 // no external Factory/Scope or setter can substitute for this pair's members.
 type serviceNativeFactories struct {
-	self  *serviceNativeFactories
-	ready *serviceready.Factory
-	auth  *bootstrapauth.Factory
-	batch *operatorauth.EndpointFactory // independently protected operator policy remains unconfigured
+	operatorSID, guestSID string // immutable copy of this composition's fixed profile
+	self                  *serviceNativeFactories
+	ready                 *serviceready.Factory
+	auth                  *bootstrapauth.Factory
+	batch                 *operatorauth.EndpointFactory // independently protected operator policy remains unconfigured
 }
 
 func newServiceNativeFactories(c serviceready.Config) (*serviceNativeFactories, error) {
@@ -43,7 +44,7 @@ func buildServiceNativeFactories(c serviceready.Config, constructors serviceNati
 	if err != nil || auth == nil {
 		return nil, ErrProvisioningRejected
 	}
-	p := &serviceNativeFactories{ready: ready, auth: auth}
+	p := &serviceNativeFactories{ready: ready, auth: auth, operatorSID: c.Profile.Keys.OperatorSID, guestSID: c.Profile.Keys.GuestSID}
 	p.self = p
 	return p, nil
 }

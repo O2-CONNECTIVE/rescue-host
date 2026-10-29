@@ -66,6 +66,7 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 			return nil, err
 		}
 		s.previewSnapshot = &snapshot
+		s.service = service
 		return service, nil
 	}
 	// Full構成は固定guest recordを必須とし、未配置なら強取得前に閉じる。

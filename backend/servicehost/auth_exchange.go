@@ -39,7 +39,7 @@ func authBatchOperationsValid(batch serviceAuthBatchOps) bool {
 }
 func (a *serviceAuthAdapter) matchesBatchLocked(batch serviceAuthBatchOps) bool {
 	s := a.service
-	return batch.owner == s.authOwner && batch.issuer == s.issuer && s.authWriter.MatchesLocked(batch.owner, batch.issuer)
+	return batch.owner == s.authOwner && batch.issuer == s.issuer && s.authWriter.MatchesLocked(batch.owner, batch.issuer) && (!a.sidRequired || batch.consumeAuthenticated != nil)
 }
 func (a *serviceAuthAdapter) retainBatchLocked(r *serviceAuthRequest, batch serviceAuthBatchOps) {
 	r.batch = batch
