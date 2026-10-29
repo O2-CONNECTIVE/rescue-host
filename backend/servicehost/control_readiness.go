@@ -72,6 +72,15 @@ func newControlledService(c ServiceConfig, f *serviceNativeFactories, p serviceD
 	if err != nil {
 		return nil, err
 	}
+	if err := bindServiceControl(s, f, p, limit); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+func bindServiceControl(s *Service, f *serviceNativeFactories, p serviceDispatchProfile, limit uint64) error {
+	if s == nil || !f.canonical() || p.RequestLimit == 0 || p.RequestLimit >= limit || limit > 1024 {
+		return ErrProvisioningUnconfigured
+	}
 	control := &serviceControlReadiness{factories: f, requests: make(chan serviceControlReadinessRequest, 1)}
 	control.prepare = func(ctx context.Context) (serviceControlWitness, error) {
 		w, err := f.prepareWitness(ctx)
@@ -83,10 +92,11 @@ func newControlledService(c ServiceConfig, f *serviceNativeFactories, p serviceD
 	s.control = control
 	s.callerGuard = f.ready.CheckServiceCaller
 	if _, err := newServiceAuthAdapter(s, p, limit); err != nil {
-		return nil, err
+		return err
 	}
-	return s, nil
+	return nil
 }
+
 func (c *serviceControlReadiness) prepareOnOwner(ctx context.Context) (err error) {
 	if c.prepare == nil || c.prepared {
 		return ErrProvisioningUnconfigured

@@ -84,7 +84,9 @@ phaseとbindingの構造整合を検査するだけで、現在の同一owner観
 targetは`127.0.0.1`、文字列`"22"`、`direct-tcpip`だけ、guestClassはpermissionSummary内の`nonadmin`だけである。
 鍵fingerprintは32byteのSHA-256を表すunpadded標準base64を使い、1..8件、重複なしのASCII昇順とする。
 `PreviewDigest`は`rescue-host-service/1:preview` + NUL 1byte + LFなしのcanonical bytesをSHA-256にする。
-これは内容相関であり、署名、同意、raw鍵とkeySetDigestの対応、未決のconfigDigest producer、現在時刻や期限内を証明しない。
+これは内容相関であり、署名、同意、raw鍵とkeySetDigestの対応、現在時刻や期限内を証明しない。
+保護Recordからpreviewを構成する経路では、configDigestを保持・照合したexact record bytesのSHA-256とする。
+再marshalせず任意の単一LFも含める。この内容fingerprint自体を配置元の認証や人の承認へ昇格させない。
 
 応答の共通vectorは`testdata/response-vectors.json`の無変更コピーで、SHA-256は`9905eccb3a7d646f357b502ebe27510d3e7b0bada2d5ef9275b24e01f49068d8`。
 この1ファイルは`.gitattributes`で改行変換を抑止し、Windows checkoutでも固定bytesを保持する。
