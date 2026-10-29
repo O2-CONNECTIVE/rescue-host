@@ -19,6 +19,11 @@ def sha(data):
     return hashlib.sha256(data).hexdigest()
 
 class PayloadTests(unittest.TestCase):
+    def test_fixed_mit_source_bytes_are_protected_from_checkout_conversion(self):
+        result = subprocess.run(['git', 'check-attr', 'text', '--', 'docs/third-party/tauri-driver-LICENSE-MIT'], cwd=ROOT, capture_output=True, text=True, check=True)
+        self.assertTrue(result.stdout.strip().endswith(': unset'), result.stdout)
+        self.assertEqual(sha(MIT.read_bytes()), '9dd42ea92cff2ede5cd477cbfcce051b2d0115c0ac7f368ee88cb545055dff1d')
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -40,6 +40,11 @@ class CrossRunnerWorkflowTests(unittest.TestCase):
         self.assertIn("if: ${{ steps.preflight.outcome == 'success' }}", workflow)
         self.assertNotIn('payload/*', workflow)
 
+    def test_fixed_collector_is_read_from_source_git_object_without_eol_conversion(self):
+        workflow = pathlib.Path('.github/workflows/main-timeout-cross-runner.yml').read_text(encoding='utf-8')
+        self.assertIn("['git','show','HEAD:scripts/collect_tauri_licenses.py']", workflow)
+        self.assertIn('--app-collector "$env:REPRO_ROOT/fixed-collector.py"', workflow)
+
 
 if __name__ == '__main__':
     unittest.main()

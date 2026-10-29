@@ -122,7 +122,9 @@ jobs:
         run: |
           $sysroot = (rustc +1.99.1 --print sysroot).Trim()
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python ../control/scripts/collect_driver_license_material.py --driver-source "$env:REPRO_ROOT/evaluation-tools/tauri-driver-2.1.0" --driver-crate "$env:REPRO_ROOT/evaluation-tools/tauri-driver.crate" --mit-license ../control/docs/third-party/tauri-driver-LICENSE-MIT --app-collector scripts/collect_tauri_licenses.py --rust-docs "$sysroot/share/doc/rust" --output "$env:REPRO_ROOT/driver-licenses"
+          python -c "import os,pathlib,subprocess; (pathlib.Path(os.environ['REPRO_ROOT'])/'fixed-collector.py').write_bytes(subprocess.check_output(['git','show','HEAD:scripts/collect_tauri_licenses.py']))"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python ../control/scripts/collect_driver_license_material.py --driver-source "$env:REPRO_ROOT/evaluation-tools/tauri-driver-2.1.0" --driver-crate "$env:REPRO_ROOT/evaluation-tools/tauri-driver.crate" --mit-license ../control/docs/third-party/tauri-driver-LICENSE-MIT --app-collector "$env:REPRO_ROOT/fixed-collector.py" --rust-docs "$sysroot/share/doc/rust" --output "$env:REPRO_ROOT/driver-licenses"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path "$env:REPRO_ROOT/driver-licenses/*" -DestinationPath "$env:REPRO_ROOT/driver-licenses.zip"
       - name: Stage only approved diagnostic files and bind hashes
