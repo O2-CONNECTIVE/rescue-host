@@ -21,14 +21,14 @@ type sidSource struct {
 	plan                       Plan
 	binding                    binding
 	seal                       *seal
-	inspector                  accountSource
+	inspector                  accountInspector
 	issue                      func() (sidExecutor, error)
 	owners                     []sidExecutor
 	disabled, deleted, unknown bool
 	verified                   accountSnapshot
 }
 
-func newSIDSource(p Plan, b binding, s *seal, inspector accountSource, issue func() (sidExecutor, error)) (*sidSource, error) {
+func newSIDSource(p Plan, b binding, s *seal, inspector accountInspector, issue func() (sidExecutor, error)) (*sidSource, error) {
 	if !p.validBinding(b) || s == nil || inspector == nil || issue == nil {
 		return nil, ErrUnconfigured
 	}
