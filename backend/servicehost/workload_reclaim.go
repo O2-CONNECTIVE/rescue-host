@@ -79,7 +79,7 @@ func (s *Service) reclaimWorkload(ctx context.Context) error {
 	}
 	if err == nil {
 		r.hostJoined = true
-		if !s.hasConfirmationRuntimeLocked() && s.authWriter.ConfirmWorkloadLocked() != nil {
+		if s.staging == nil && !s.hasConfirmationRuntimeLocked() && s.authWriter.ConfirmWorkloadLocked() != nil {
 			err = ErrRuntimeUnconfirmed
 		}
 	} else {

@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは216実装、Windowsでは238実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは218実装、Windowsでは240実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -46,7 +46,7 @@ operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
 serviceauthownerは共通owner.goだけを許可し、実issuerと共通gateの状態を扱います。正規profile sourceや実OSの認証は提供しません。
-servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.go/preview.go/preview_dispatch.go/confirmation.go/confirmed_grant.go/confirmed_grant_snapshot.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
+servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.go/preview.go/preview_dispatch.go/confirmation.go/confirmed_grant.go/confirmed_grant_snapshot.go/guest_staging.go/guest_staging_dispatch.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
 SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
@@ -156,3 +156,7 @@ private OS seamをfakeへ置換した実confirm/codec/issuer経路であり、�
 
 同Endpointの入力分離に先立つ検査借用はserviceready/endpoint_staging.goだけを共通登録します。
 NewInspectionLeaseをduplexが残るSplit前に取得し、後段の失敗・取消でも部分leaseを返します。認証や承認の証拠を生成せず、実機のpipe/ACL/SSH成功を示しません。
+
+
+未起動準備用の所有ticketとdispatchはservicehost/guest_staging.go/guest_staging_dispatch.goだけを共通登録します。
+同Service・issuer・確認予約・初回期限へ束縛し、実行受付を閉鎖したまま対象限定の失効・未起動確認を行います。ticket自体は認証やruntime保護の証拠ではなく、実Native stagerと元ownerの回収接続は各sourceの検証範囲を別に確認します。
