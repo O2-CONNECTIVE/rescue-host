@@ -9,7 +9,7 @@ tokenやACLの承認・取得、service登録、公開listener、認証情報や
 
 - ローカルdriveの正規絶対exe pathとSHA-256を保護provisioningから固定する。
   artifactはread-onlyかつread sharingだけで開き、hashからresumeまでhandleを保持する。
-  directory/reparse file、UNC/device/search path、余分なstream指定を拒否する。
+  directory/reparse file、複数link、UNC/device/search path、余分なstream指定を拒否する。
 - 既存の承認済primary tokenが必須で、typeを照合する。
   起動threadにimpersonation tokenがある場合や確認不能の場合は拒否する。
   token取得やprivilegeの有効化、別API/LocalSystemへのfallbackはしない。
@@ -18,8 +18,22 @@ tokenやACLの承認・取得、service登録、公開listener、認証情報や
 - `STARTUPINFOEX/HANDLE_LIST`へ標準pipe 3本だけを列挙する。
   pipeはcallerが既に所有するinheritableなものだけを借用し、元handleを変更/閉鎖しない。
   Job、artifact、token、process/thread handleは子へ継承しない。
-- argvは固定imageと`--supervised-internal`だけ、environmentは空のUnicode block、cwdは固定image所在directory。
+- Command/Bootstrap未指定のargvは固定imageと`--supervised-internal`だけ。
+  environmentは空のUnicode block、cwdは固定image所在directory。
   親の秘密環境、任意引数、検索pathを引き継がない。
+
+Go側の信頼済profileは、`NewFixedCommand(args, pinnedDependencies)`で固定した
+`Spec.Command`を指定できる。これは認証proofではなく、UI等からの任意argvの入口にしない。
+constructorとStartはsliceをcopyし、zero値とBootstrapとの併用を拒否する。
+nil Commandの既存supervised/Bootstrap起動契約は変えない。
+固定argvはWindows EscapeArg規則で引用し、最大64引数、32依存file、
+command lineは末尾NULを除き32766 UTF-16文字までとする。
+依存fileは正規絶対pathと非0 SHA-256を指定し、caseを無視した同pathとimage重複を拒否する。
+異なるpathの同leaf名や同内容は許可する。この構文照合は物理file同一性の証明ではない。
+各依存fileをimageと同じread-only/non-inheritable verifierで開き、hashを検査する。
+write/delete sharingを許さない同じ依存handleをprocess退出かつJob active=0まで保持する。
+module import、resume、leader退出だけでは解放しない。
+部分検証の返却handleと閉鎖失敗の参照もChildに保持する。
 
 `Start`成功はresumeまでの確認で、Go readyやSSH接続許可ではない。
 起動contextはdeadline必須で、失敗時は独立した`CleanupTimeout`内で回収する。

@@ -38,8 +38,8 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは159実装、Windowsでは176実装ファイルを照合します。
-guestaccountは共通8実装を限定登録し、memoryでの準備・失効・清掃順序だけを検査します。実account・保護journal・動的GuestSID・有効化は未接続です。
+通常buildに選択される26package、Linux/macOSでは173実装、Windowsでは192実装ファイルを照合します。
+guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
@@ -55,7 +55,7 @@ localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応す�
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
-runbackendはruntime.goだけ、childjobは共通child.go/plan.goと、非Windowsのnative_other.go、
+runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/artifact_windows.goだけを許可します。
 protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/validation.goと、
 非Windowsのnative_other.goまたはWindowsのnative_windows.goの1件だけを許可します。
@@ -119,3 +119,9 @@ operatorauthの共通・OS別実装は[検証入口](../scripts/go_ci.py)のPROD
 operatorauthのprofile照会は共通batch_scope.go/profile_provider.go/profile_query.goと、対象OSのprofile_query_other.goまたはprofile_query_windows.goの1件だけを追加します。正規policy/query leaseの供給や実Windows保護の検証を意味しません。
 
 候補取得は共通endpoint_candidate.goと、非Windowsのendpoint_profile_other.go、Windowsのendpoint_candidate_windows.go/endpoint_profile_windows.goだけを追加します。正規AuthenticationId供給やSoleInputとの結合を実装済みと扱いません。
+
+
+guestaccountは既存のcore 8件とaccount_query.go/account_query_buffer.go/account_query_read.go、
+journal.go/journal_codec.go/journal_security.go、sid_codec.go/sid_run.go/sid_run_io.go/sid_script.go/sid_source.goを共通で選択します。
+Linux/macOSではaccount_query_other.go/journal_other.go、Windowsではaccount_query_windows.go/account_query_windows_machine.go/journal_windows.go/journal_windows_pin.goだけを追加します。
+childjobの固定commandは固定argvと依存file保持の構成を扱います。登録成功はguest作成・無効化・削除や実Windows保護の成立を証明せず、公開NewNativeの未設定拒否は維持します。
