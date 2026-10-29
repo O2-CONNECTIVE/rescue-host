@@ -1,6 +1,7 @@
 """一時projectの生成と来歴検査を実CLI境界で検証する。"""
 import hashlib
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -71,7 +72,7 @@ class WryBaselineTests(unittest.TestCase):
 
     def rejected(self, result):
         self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stdout, b'WRY_BASELINE_PROVENANCE_REJECTED\n')
+        self.assertEqual(result.stdout, ('WRY_BASELINE_PROVENANCE_REJECTED' + os.linesep).encode('ascii'))
         self.assertEqual(result.stderr, b'')
 
     def test_empty_existing_output_is_allowed(self):
@@ -165,13 +166,13 @@ class WryBaselineTests(unittest.TestCase):
     def test_verify_rejects_checksum_and_nonroot_edge_drift(self):
         self.assertEqual(self.cli().returncode, 0)
         target = self.output / 'Cargo.lock'
-        original = target.read_text()
-        for old, new in [('d5777b06', 'a5777b06'), (' "bitflags 2.13.2",', ' "PRIVATE_FIXTURE",')]:
+        original = target.read_bytes()
+        for old, new in [(b'd5777b06', b'a5777b06'), (b' "bitflags 2.13.2",', b' "PRIVATE_FIXTURE",')]:
             with self.subTest(kind=old):
                 self.assertIn(old, original)
-                target.write_text(original.replace(old, new, 1))
+                target.write_bytes(original.replace(old, new, 1))
                 self.rejected(self.cli('--verify'))
-        target.write_text(original)
+        target.write_bytes(original)
 
     def test_verify_rejects_extra_files_and_symlinks(self):
         self.assertEqual(self.cli().returncode, 0)
