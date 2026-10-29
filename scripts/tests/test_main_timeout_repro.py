@@ -8,6 +8,7 @@ class MainTimeoutWorkflowContract(unittest.TestCase):
         self.assertIn('foreach ($trial in 1..3)', workflow)
         self.assertIn('three-trials.json', workflow)
         self.assertIn('TRIAL_CLEANUP_UNCONFIRMED', workflow)
+        self.assertIn('[IO.File]::Replace($temp, $summaryPath, $backup)', workflow)
         self.assertIn('evaluation-trial-$trial-tools', workflow)
         self.assertIn('session-startup-timing.json', workflow)
 

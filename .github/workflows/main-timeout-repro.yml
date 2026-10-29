@@ -114,10 +114,15 @@ jobs:
           $summary = Get-Content -LiteralPath $summaryPath -Raw | ConvertFrom-Json
           function Save-Trials($Value) {
             $temp = $summaryPath + '.tmp-' + [Guid]::NewGuid().ToString('D')
+            $backup = $temp + '.bak'
+            $replaced = $false
             try {
               [IO.File]::WriteAllText($temp, ($Value | ConvertTo-Json -Depth 8 -Compress))
-              [IO.File]::Replace($temp, $summaryPath, $null)
-            } finally { if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue } }
+              [IO.File]::Replace($temp, $summaryPath, $backup)
+              $replaced = $true
+            } finally {
+              if ($replaced) { foreach ($owned in @($temp, $backup)) { if (Test-Path -LiteralPath $owned) { Remove-Item -LiteralPath $owned -Force -ErrorAction SilentlyContinue } } }
+            }
           }
           $summary | Add-Member -NotePropertyName exeSha256 -NotePropertyValue (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $summary | Add-Member -NotePropertyName tauriSha256 -NotePropertyValue (Get-FileHash -LiteralPath "$template/tauri/bin/tauri-driver.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
