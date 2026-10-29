@@ -5,9 +5,30 @@ use startup_probe::{begin_script, observe_script, ScriptSignal as S};
 use startup_probe::{observe_pump, record, PumpScope, PumpSignal::*, Stage::*};
 use std::{
     path::PathBuf,
+    sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::{Duration, Instant},
 };
+static NAV_COUNT: AtomicUsize = AtomicUsize::new(0);
+fn classify_navigation(_: &str) -> u8 { 2 }
+fn record_navigation_start(id: Option<u64>, class: u8, allow: bool, applied: bool) {
+    assert_eq!((id, class, allow, applied), (Some(5), 2, false, true));
+    NAV_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+fn record_navigation_complete(id: Option<u64>, success: Option<bool>) {
+    assert_eq!((id, success), (Some(5), Some(false)));
+    NAV_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+fn navigation_hook_contract() {
+    assert!(startup_probe::install_navigation_hooks(startup_probe::NavigationHooks {
+        classify: classify_navigation, start: record_navigation_start, complete: record_navigation_complete,
+    }));
+    let class = startup_probe::classify_navigation("fixture");
+    assert_eq!(class, 2);
+    startup_probe::record_navigation_start(Some(5), class, false, true);
+    startup_probe::record_navigation_complete(Some(5), Some(false));
+    assert_eq!(NAV_COUNT.load(Ordering::SeqCst), 2);
+}
 fn script(mode: &str) -> u32 {
     let ordinal = begin_script();
     observe_script(ordinal, S::ApiStart);
@@ -75,6 +96,7 @@ fn wait_writer() {
     }
 }
 fn main() {
+    navigation_hook_contract();
     let args: Vec<_> = std::env::args().collect();
     assert_eq!(args.len(), 3);
     let mode = args[2].as_str();
