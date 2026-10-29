@@ -242,7 +242,16 @@ jobs:
       - name: Validate anonymous contrast driver trace
         if: always()
         timeout-minutes: 1
-        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/baseline-tools" -OutputDirectory "$env:RUNNER_TEMP/baseline-evidence"
+        run: |
+          try {
+            $collection = Get-Content "$env:RUNNER_TEMP/baseline-evidence/native-result.json" -Raw | ConvertFrom-Json
+            if ($collection.driverStageFileClosed -ne $true) { throw 'TRACE_NOT_CLOSED_IN_BUDGET' }
+            ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/baseline-tools" -OutputDirectory "$env:RUNNER_TEMP/baseline-evidence"
+            exit $LASTEXITCODE
+          } catch {
+            '{"check":"native-driver-stage","diagnostic":"incomplete","code":"TRACE_NOT_CLOSED_IN_BUDGET","events":[],"summary":null}' | Set-Content "$env:RUNNER_TEMP/baseline-evidence/driver-stage-report.json" -Encoding utf8
+            exit 1
+          }
       - name: Save safe contrast evidence without EXE or profile
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f

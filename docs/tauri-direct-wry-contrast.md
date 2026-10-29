@@ -83,3 +83,13 @@ stage writer/2KiB/既存回収budgetは維持し、secret、path、PID、URL、s
 - [WebView2のthreading model](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model)
 - [WebDriverでのlaunch](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/webdriver)
 - [固定runtime-wry2.12.3 source](https://static.crates.io/crates/tauri-runtime-wry/tauri-runtime-wry-2.12.3.crate)
+
+## Driver応答境界の回収条件
+
+#124のInit対照はWry退出guard後もsession timeoutとなり、Driver応答headerは未観測だった。
+元のsession verdict確定後、所有Driverを停止する前にfinishを送り、Wry回収と共有の1秒budget内で完了fileを確認する。
+予算を使い切った場合は追加待機せず一度だけ確認し、欠測・未完了・不整合はincompleteでありheader不在を証明しない。
+既存の固定source/binary来歴と匿名stage verifierだけを使い、原JSONL・stdout/stderr・URL・payload・端末情報は公開しない。
+header観測はnative driverの応答header受信であり、session成功やbody完了ではない。header前のdropには取消も含む。
+Wry退出guardは呼出元への物理returnを証明しない。Driver traceはEdgeDriver内部のWebView生成・検出を分離せず、異なる時計・別runnerを混算しない。
+この観測の終了条件は、完了traceまたはincompleteを記録し、元FAILと所有cleanupの結果を保持すること。
