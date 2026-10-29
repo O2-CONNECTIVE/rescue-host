@@ -34,9 +34,10 @@ export function classifyWryStartup(input: unknown) {
   for (const [scope, pump] of Object.entries(pumps)) {
     const api = events.find(e => e.stage === `${scope}-api-return`);
     const returned = events.find(e => e.stage === `${scope}-wait-return`);
+    const callback = events.find(e => e.stage === `${scope}-callback`);
     if ((pump.entered && (!api || pump.lastUs < api.elapsedUs))
       || (returned && (pump.phase !== 'receiver-ready' || pump.lastUs > returned.elapsedUs))
-      || (pump.phase === 'receiver-ready' && !events.some(e => e.stage === `${scope}-callback`))) return incomplete;
+      || (pump.phase === 'receiver-ready' && (!callback || pump.lastUs < callback.elapsedUs))) return incomplete;
   }
   if (seen.has('environment-reused') && pumps.environment.entered) return incomplete;
   let phase = 'webview-entry-not-observed';
