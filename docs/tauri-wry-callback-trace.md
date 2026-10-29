@@ -135,6 +135,7 @@ InSendMessageExは送信contextかどうかの固定値にだけ変換し、ID/h
 自己所有workerはSendMessageTimeout 1秒と同期channelで制御し、sleepや成功までの反復を使わない。
 観測後のWM_NULL/自己threadへのWM_QUITはfixtureだけの終了操作で、製品pumpをwakeさせない。
 各processは5秒で直接の自己所有子だけを回収し、通常成功ではworker join/window破棄/class解除を検査する。
+5秒はtimeoutの設定値で、異常時の強制終了は通常join/破棄の証明ではなく、全回収の厳密な5秒保証でもない。
 一時directory消去を確認して匿名JSONのみ保存する。通常配布workflowと診断対象のアプリは変更しない。
 
 分類はcallback済みのwait-return未観測にも既存pumpHintを残す。先行RED4e02d79 → GREENf34bb30。
