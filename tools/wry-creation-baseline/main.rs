@@ -139,6 +139,18 @@ mod tests {
     use super::begin_on_initial_event;
 
     #[test]
+    fn 固定htmlだけに対応する非network_uriを厳密に識別する() {
+        const HTML: &str = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>";
+        let encoded = HTML.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
+        let exact = format!("data:text/html;charset=UTF-8,{encoded}");
+        assert!(super::navigation_uri_matches_fixture(&exact));
+        assert!(!super::navigation_uri_matches_fixture(&(exact + "%20")));
+        assert!(!super::navigation_uri_matches_fixture("data:text/html,other"));
+        assert!(!super::navigation_uri_matches_fixture("https://example.invalid/"));
+        assert!(!super::navigation_uri_matches_fixture("about:blank"));
+    }
+
+    #[test]
     fn 初回初期化だけで作成し以後は繰り返さない() {
         let mut attempted = false;
         let mut calls = 0;
