@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される25package、Linux/macOSでは131実装、Windowsでは145実装ファイルを照合します。
+通常buildに選択される25package、Linux/macOSでは132実装、Windowsでは146実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
@@ -61,7 +61,7 @@ bootstrapはcodec.go/launch.go/native_receiver.go/strict.go/types.go/validate.go
 bootstrapioはio.goとnative_other.go/native_windows.goの対象別1件、
 bootstrapauthはauth.go/image.go/kernel.go/profile.go/validation.go/prepared_service.goと、非Windowsのnative_other.go、Windowsのnative_windows.go/image_windows.goを厳密選択します。
 childstdioはoperation.go/pipes.go/streams.goと、非Windowsのnative_other.goまたはWindowsのnative_windows.goを厳密選択します。
-servicereadyはconfig.go/operation.go/plane.go/security.go/preflight.goと、非Windowsのnative_other.go、
+servicereadyはconfig.go/operation.go/plane.go/security.go/preflight.go/service_witness.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/connect_windows.go/listener_windows.goを厳密選択します。
 cmd/rescue-backendはmain.go/native.goの2件です。通常buildに試験用adapterを混ぜません。
 serviceprovisionはcompose.go/errors.go/record.go/record_decode.go/record_strict.go/record_validate.go/root.go/root_doc.go/root_io.go/root_validate.go/service.goと、

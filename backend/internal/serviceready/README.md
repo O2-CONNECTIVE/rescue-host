@@ -51,6 +51,20 @@ ctx/admission失敗、query不一致、元thread・主体の変化で受理をst
 失敗時のBindingはzero値であり、部分取得のPreflightも同じpointerを保持してCloseする。
 PreflightのCloseはlistenerを持たない同じ有限cleanup経路を使う。
 
+`PrepareServiceWitness(ctx)`もquery-only prefixを保持するが、SCM RUNNINGの確認を独立して提供する。
+`ConfirmServiceRunning(ctx)`はSTART_PENDINGを有限期限内で待ち、held serviceの実RUNNINGとcurrent PIDの一致を確認する。
+`RecheckService(ctx)`は確認済みの同じservice/process/auth scopeを再照合し、元thread・主体・image・設定・ACL・process creationの変化を拒否する。
+実deadlineを入口・query後・成功直前に検査し、canonical witnessのctx/admission/query失敗はstickyに失効する。
+value copyを拒否し、copyから元witnessの失効や回収を行わない。部分取得や回収不明ではcanonical pointerを保持して`CloseService(ctx)`を再試行する。
+method名を分離しているため、既存のlistener込み`Plane`やservicehostの`servicePlane`の代わりにはならない。
+listenerを作成・保持せず、operator認証、sole-reader移譲、応答書込み、次要求の受入可能性を証明しない。
+現在のServiceへこのwitnessだけを接続してreadinessを成功扱いする変更は含まない。
+
+sole-reader移譲中はhelperが読取端点を所有し、SCMのservice再照会だけで端点全体を再検査したとは扱わない。
+次要求の受理には、同じ交換の認証済み読取消費・応答書込みの実完了・worker終了・端点閉鎖の確認と、fresh service再照会・同一issuer/Ownerの有効性が必要である。
+現在は端点のwrite/close所有APIが未接続であり、状態boolや任意callbackでこれらの確認を生成しない。
+既存のlistener込み`Prepare`/`ConfirmRunning`/`Recheck`契約は維持する。
+
 listenerは非継承、DUPLEX、OVERLAPPED、FIRST_INSTANCE、REJECT_REMOTE_CLIENTS、MESSAGE/READMODE_MESSAGE/WAIT、単一instanceで作る。
 ownerはProfileのProcessUserSID、protected DACLはGuest DENY0x1f01ff、Service ALLOW0x1f01ff、Operator ALLOW0x120183の順序とする。
 OperatorにFILE_CREATE_PIPE_INSTANCE0x4やgeneric WRITEを与えない。
