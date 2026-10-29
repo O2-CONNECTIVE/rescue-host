@@ -53,7 +53,7 @@ PRODUCT_FILES = {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
         'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go',
-        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go'},
+        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go'},
 }
 
 
@@ -135,11 +135,11 @@ SERVICE_PROVISION_FILES = {
 
 
 OPERATOR_AUTH_FILES = {
-    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go'},
-    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go'},
+    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go'},
+    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go'},
     'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go', 'native_batch_windows.go',
                 'native_launch_binding_windows.go', 'native_launch_image_windows.go', 'native_launch_windows.go',
-                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go', 'profile_sync_windows.go', 'profile_pipe_windows.go', 'profile_receiver_windows.go', 'helper_entry_windows.go'},
+                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go', 'profile_sync_windows.go', 'profile_pipe_windows.go', 'profile_receiver_windows.go', 'helper_entry_windows.go', 'profile_query_windows.go'},
 }
 
 

@@ -42,6 +42,7 @@ type batchChild interface {
 	close(context.Context) error
 }
 type nativeBatchOps struct {
+	scope         *batchScope
 	parent        func(context.Context) error
 	clean         func() error
 	newReport     func(context.Context, reportConfig) (batchReport, error)
@@ -167,6 +168,19 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 			err = errors.Join(err, b.Close(cleanup))
 		}
 	}()
+	if p, ok := s.producer.(*protectedProfileProvider); ok {
+		if e := p.bindRequest(b.request); e != nil {
+			return e
+		}
+	}
+	if !b.admitted(ctx) {
+		return ErrDenied
+	}
+	if ops.scope != nil {
+		if e := ops.scope.acquire(ctx); e != nil {
+			return b.retainScopeFailure(e)
+		}
+	}
 	if e := b.parent(ctx); e != nil {
 		return e
 	}
@@ -175,7 +189,7 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	b.profile = profile
 	b.mu.Unlock()
 	if e != nil || profile == nil {
-		return ErrUnconfigured
+		return errors.Join(ErrUnconfigured, b.retainScopeFailure(e))
 	}
 	if e = b.parent(ctx); e != nil {
 		return e
@@ -265,6 +279,11 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 	if !b.admitted(ctx) {
 		return ErrDenied
 	}
+	if b.ops.scope != nil {
+		if e := b.ops.scope.recheck(ctx); e != nil {
+			return b.retainScopeFailure(e)
+		}
+	}
 	if e := b.ops.parent(ctx); e != nil {
 		if errors.Is(e, ErrFatal) {
 			b.mu.Lock()
@@ -272,6 +291,11 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 			b.mu.Unlock()
 		}
 		return e
+	}
+	if p, ok := b.spec.producer.(*protectedProfileProvider); ok {
+		if e := p.recheck(ctx); e != nil {
+			return b.retainScopeFailure(e)
+		}
 	}
 	if !b.admitted(ctx) {
 		return ErrDenied
@@ -282,12 +306,19 @@ func (b *nativeBatch) cleanupGuard() error {
 	b.mu.Lock()
 	e := b.fatal
 	starting := b.starting
+	uncertain := b.uncertain
 	b.mu.Unlock()
 	if starting {
 		return ErrUnconfirmed
 	}
 	if e != nil {
 		return e
+	}
+	if b.ops.scope != nil {
+		if uncertain {
+			return ErrUnconfirmed
+		}
+		return b.retainScopeFailure(b.ops.scope.clean())
 	}
 	if e = b.ops.clean(); e != nil {
 		fatal := errors.Join(ErrFatal, e)
@@ -297,6 +328,15 @@ func (b *nativeBatch) cleanupGuard() error {
 		return fatal
 	}
 	return nil
+}
+
+func (b *nativeBatch) retainScopeFailure(err error) error {
+	if errors.Is(err, ErrFatal) {
+		b.mu.Lock()
+		b.fatal = err
+		b.mu.Unlock()
+	}
+	return err
 }
 func (b *nativeBatch) recheck(ctx context.Context) error {
 	b.mu.Lock()
@@ -371,6 +411,16 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 	if b.child != nil {
 		if e := b.child.close(ctx); e != nil {
 			return e
+		}
+	}
+	if p, ok := b.spec.producer.(*protectedProfileProvider); ok {
+		if e := p.close(ctx); e != nil {
+			return b.retainScopeFailure(e)
+		}
+	}
+	if b.ops.scope != nil {
+		if e := b.ops.scope.close(ctx); e != nil {
+			return b.retainScopeFailure(e)
 		}
 	}
 	if !reportContextValid(ctx) {

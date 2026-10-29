@@ -4,47 +4,49 @@ package operatorauth
 
 import (
 	"context"
-	"errors"
-	"sync"
 	"unsafe"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"golang.org/x/sys/windows"
 )
 
-// scopeは同じ固定caller threadで事前取得・保持したservice自身のnative証拠。
-// controller server認証やsole-readの移譲元を証明するものではない。
-// callerはBatch全回収までthreadとscopeを保持する。固定provisioning未接続の
-// RunFixedからは呼ばれず、UI/argv/SID文字列からscopeを生成しない。
-func startNativeBatch(ctx context.Context, s nativeBatchSpec, scope *bootstrapauth.ServiceScope, owner batchOwner) (*nativeBatch, error) {
-	b, err := prepareNativeBatch(s, scope, owner)
+// Service 登録後の Start から全回収まで、caller は同じ固定 worker に留まる。
+// 保護 Factory は service 自身だけを証明し、controller 認証へ流用しない。
+func startNativeBatch(ctx context.Context, s nativeBatchSpec, factory *bootstrapauth.Factory, servicePrimaryToken uintptr, owner batchOwner) (*nativeBatch, error) {
+	b, err := prepareNativeBatch(s, factory, servicePrimaryToken, owner)
 	if err != nil {
 		return nil, err
 	}
 	return b, b.Start(ctx)
 }
 
-// prepareNativeBatch constructs only the same retained owner. No thread query,
-// token/pipe acquisition, or launch occurs before Service can register it.
-func prepareNativeBatch(s nativeBatchSpec, scope *bootstrapauth.ServiceScope, owner batchOwner) (*nativeBatch, error) {
-	if scope == nil || s.producer == nil {
+// prepare は保護 Factory と Service 自身の借用 primary token を pure 保持するだけ。
+// helper 起動用 s.launch.primaryToken は service 認証へ補完しない。
+// scope は Service 登録後の Start admission 内で worker 自身が取得する。
+func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servicePrimaryToken uintptr, owner batchOwner) (*nativeBatch, error) {
+	if factory == nil || s.producer == nil {
 		return nil, ErrUnconfigured
 	}
 	thread := &nativeThread{}
-	var bind sync.Once
-	bindThread := func() { bind.Do(func() { thread.owner = windows.GetCurrentThreadId() }) }
-	return prepareBatch(s, owner, nativeBatchOps{
-		parent: func(c context.Context) error {
-			bindThread()
-			if e := scope.Recheck(c); e != nil {
-				if errors.Is(e, bootstrapauth.ErrFatal) {
-					return errors.Join(ErrFatal, e)
-				}
-				return e
+	scope, err := newBatchScope(servicePrimaryToken, batchScopeOps{
+		threadID: windows.GetCurrentThreadId,
+		clean:    thread.clean,
+		verify: func(c context.Context, token uintptr) (batchServiceScope, error) {
+			thread.owner = windows.GetCurrentThreadId()
+			p, e := factory.VerifyService(c, token)
+			if p == nil {
+				return nil, e
 			}
-			return nil
+			return p, e
 		},
-		clean: func() error { bindThread(); return thread.clean() },
+	})
+	if err != nil {
+		return nil, err
+	}
+	return prepareBatch(s, owner, nativeBatchOps{
+		scope:  scope,
+		parent: func(context.Context) error { return nil },
+		clean:  func() error { return nil },
 		newProfile: func(c context.Context) (batchProfile, error) {
 			p, e := newNativeProfilePipe(c, s.producer)
 			if p == nil {
