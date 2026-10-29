@@ -22,6 +22,9 @@ service自身のimage hashは独立recordに置き、実行fileへそのfile自�
 
 ## 固定record候補
 
+一時guest向け固定sidecarの読取・full入口での必須化は[固定source](../../../docs/guest-fixed-source.md)を参照する。
+このsourceを正規承認や実guest tokenの取得へ接続したとは扱わない。
+
 `rescue-service-provisioning/1`は固定fileの非秘密の形式であり、operator承認wire、既存control/1、bootstrap/1を変更しない。
 UTF-8の単一object、最大256KiB、深さ16、先頭`{`と末尾`}`に任意の単一LFだけを認める。
 未知・重複・欠落・大小文字違いのfield、不正UTF-8、null、余剰record、BOM、範囲外の値は拒否する。

@@ -25,19 +25,21 @@ type endpointKernel interface {
 // It provides no operator authentication or Service readiness proof. The native
 // Factory/profile binding to Batch remains unconnected. Do not copy this owner.
 type Endpoint struct {
-	self            *Endpoint
-	query           *Plane
-	duplex          endpointDuplex
-	connection      *ownedOperation
-	connected       bool
-	split, moved    bool
-	read, writer    endpointHandle
-	input           *SoleInput
-	write           *endpointOwnedWrite
-	writeStarted    bool
-	written         atomic.Pointer[WriteReceipt]
-	failed, closing atomic.Bool
-	closed          atomic.Pointer[EndpointClosed]
+	self             *Endpoint
+	query            *Plane
+	duplex           endpointDuplex
+	connection       *ownedOperation
+	connected        bool
+	split, moved     bool
+	read, writer     endpointHandle
+	input            *SoleInput
+	write            *endpointOwnedWrite
+	writeStarted     bool
+	written          atomic.Pointer[WriteReceipt]
+	failed, closing  atomic.Bool
+	closed           atomic.Pointer[EndpointClosed]
+	inspection       *InspectionLease // q.gate owns issuance; the lease owns its duplicate.
+	inspectionActive atomic.Int32
 }
 
 // WriteReceipt only records this Endpoint's successful physical response write.
@@ -231,6 +233,10 @@ func (e *Endpoint) CloseEndpoint(ctx context.Context) (receipt *EndpointClosed, 
 	cleanup, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
 	if !admit(cleanup, &q.gate) {
+		return nil, q.closeResult(ErrUnconfirmed)
+	}
+	if e.inspectionActive.Load() != 0 {
+		q.gate.Unlock()
 		return nil, q.closeResult(ErrUnconfirmed)
 	}
 	var result error

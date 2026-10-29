@@ -29,15 +29,16 @@
    実return前の取消、停止要求、Close呼出し自体を回収ackとしません。
 
 既存control pipeは、新しいpipeを作らず、同じService endpoint ownerの検査leaseを必須とします。
-借用前後とPrepare前後に有効性・同じhandleを照合し、raw endpointをadapterが閉じることはありません。
-このleaseの正規producerは未接続であり、raw番号・読取成功・自己申告から生成しません。
+要求単位の照合専用複製を同じendpointから発行し、実query returnと再照合後に返却します。
+長期sessionの保持対象へ要求pipeを残さず、raw endpointをadapterが閉じることもありません。
+[固定sourceと要求単位lease](guest-fixed-source.md)がproducer・短期返却・full入口の現状を扱います。
 
 ## 未実装・未接続・未検証
 
 | 分類 | 残件 |
 | --- | --- |
-| 未実装 | 手動provisioningの正規guest manifest producer、同Service control検査lease producer、実guest token producerとresume前runtime gate |
-| 未接続 | 保護record/SCM元ownerから内部adapterへ渡す入口、正規承認→grant/session source、動的SIDを使うkey/helper/sshd構成 |
+| 未実装 | 内側sshdが実際に作るguest token/shellのresume前gateと実作業停止owner |
+| 未接続 | 固定sourceと実要求endpointのleaseを内部adapterへ渡す呼出し、正規承認→grant/session source、動的SIDを使うkey/helper/sshd構成 |
 | 未検証 | 実Windowsの配置・SID・ACL・API権限・依存解決、実account操作、Job最後handleと実停止、実SSHと再接続拒否 |
 
 現Recordは固定GuestSIDを作成前から要求します。

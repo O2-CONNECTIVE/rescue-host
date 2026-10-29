@@ -93,6 +93,10 @@ func TestNativePreviewStageRetainsPartialPreparedAndLegacyLaunchSelection(t *tes
 						strongCalls++
 						return nil, failure
 					},
+					guest: func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) {
+						_, root, _, _ := guestConfigurationFixture(t)
+						return p.loadFixedGuest(ctx, root)
+					},
 				}}
 			if preview {
 				stage.preview = &limits

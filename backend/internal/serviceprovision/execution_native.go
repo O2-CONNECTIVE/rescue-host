@@ -13,6 +13,7 @@ import (
 type nativeExecutionCalls struct {
 	prepare func(context.Context, Anchor) (*Prepared, error)
 	launch  func(context.Context, *Prepared) (*LaunchToken, error)
+	guest   func(context.Context, *Prepared) (*GuestConfiguration, error)
 }
 type nativeExecutionStage struct {
 	previewSnapshot *servicehost.PreviewDescriptor
@@ -21,6 +22,7 @@ type nativeExecutionStage struct {
 	cfg             ExecutionConfig
 	prepared        *Prepared
 	token           *LaunchToken
+	guest           *GuestConfiguration
 }
 
 func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *servicehost.Service, err error) {
@@ -43,6 +45,19 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 		}
 		s.previewSnapshot = &snapshot
 		return service, nil
+	}
+	// Full構成は固定guest recordを必須とし、未配置なら強取得前に閉じる。
+	// 読取は正規承認/grantの発行やguestの有効化を行わない。
+	guest := s.calls.guest
+	if guest == nil {
+		guest = func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) { return p.LoadFixedGuest(ctx) }
+	}
+	s.guest, err = guest(ctx, s.prepared)
+	if err != nil {
+		return nil, err
+	}
+	if s.guest == nil {
+		return nil, ErrRootDenied
 	}
 	launch := s.calls.launch
 	if launch == nil {
@@ -76,6 +91,12 @@ func prepareExecutionToken(ctx context.Context, prepared *Prepared) (*LaunchToke
 }
 
 func (s *nativeExecutionStage) Close(ctx context.Context) error {
+	if s.guest != nil {
+		if err := s.guest.Close(ctx); err != nil {
+			return err
+		}
+		s.guest = nil
+	}
 	if s.token != nil {
 		if err := s.token.Close(ctx); err != nil {
 			return err

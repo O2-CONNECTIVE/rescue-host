@@ -10,7 +10,10 @@ import (
 )
 
 // Native source only: no Factory/profile binding to Batch is supplied here.
-type nativeEndpointPipe struct{ nativeListener }
+type nativeEndpointPipe struct {
+	nativeListener
+	inspection *inspectionNativeHandle // retain out parameters before DuplicateHandle dispatch
+}
 
 func (nativeKernel) createEndpoint(name, descriptor string) (endpointDuplex, error) {
 	sd, err := windows.SecurityDescriptorFromString(descriptor)
@@ -30,7 +33,7 @@ func (nativeKernel) createEndpoint(name, descriptor string) (endpointDuplex, err
 	if h == 0 || h == windows.InvalidHandle {
 		return nil, ErrDenied
 	}
-	return &nativeEndpointPipe{nativeListener{handle: h, thread: windows.GetCurrentThreadId()}}, err
+	return &nativeEndpointPipe{nativeListener: nativeListener{handle: h, thread: windows.GetCurrentThreadId()}}, err
 }
 
 func (p *nativeEndpointPipe) connect() (operation, error) {
@@ -73,6 +76,16 @@ func (p *nativeEndpointPipe) close() error {
 func (p *nativeEndpointPipe) duplicate(access uint32) (endpointHandle, error) {
 	if windows.GetCurrentThreadId() != p.thread {
 		return nil, ErrFatal
+	}
+	if access == endpointInspectionAccess {
+		h := &inspectionNativeHandle{pending: true}
+		p.inspection = h
+		err := windows.DuplicateHandle(windows.CurrentProcess(), p.handle, windows.CurrentProcess(), &h.handle, access, false, 0)
+		h.pending = false
+		if h.handle == 0 || h.handle == windows.InvalidHandle {
+			return h, ErrDenied
+		}
+		return h, err
 	}
 	if access != endpointReadAccess && access != endpointWriteAccess {
 		return nil, ErrDenied

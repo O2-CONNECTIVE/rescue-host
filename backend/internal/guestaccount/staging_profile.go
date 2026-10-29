@@ -79,7 +79,8 @@ func stagingFiles(c stagingProfile) bool {
 			}
 		}
 	}
-	if counts[roleJournal] != 1 || counts[roleConfiguration] < 1 || counts[roleHostKey] < 1 || counts[roleArtifact] != 3 {
+	// 固定PowerShell3fileを必須とし、保護recordが指定するService/Go imageも保持する。
+	if counts[roleJournal] != 1 || counts[roleConfiguration] < 1 || counts[roleHostKey] < 1 || counts[roleArtifact] < 3 {
 		return false
 	}
 	for _, path := range required {

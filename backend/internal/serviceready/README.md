@@ -2,6 +2,7 @@
 
 `serviceready`は、固定serviceの自主体・配置・OS objectの保護と、service所有listenerのkernel準備を保持する。
 operator命令、operatorに対するserver認証、承認codec、session、grant、SSH接続を提供しない。
+要求単位の読取不能な`InspectionLease`は[固定sourceと借用](../../../docs/guest-fixed-source.md)を参照する。
 既存のPlaneはlistenerが接続済みでもpayloadを一切読み書きせず、命令受理や認可の成功と呼ばない。
 
 `NewNative(Config)`は静的検証とdeep copyだけを行う。
