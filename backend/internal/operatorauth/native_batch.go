@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"sync"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
 // inputは保護serviceから所有移譲する唯一のread handle。元のduplex等の
@@ -15,6 +17,7 @@ type nativeBatchSpec struct {
 	producer profilePipeProducer
 }
 type batchOwner struct {
+	issuer  *ephemeral.Issuer
 	revoke  func() error // 同Serviceの発行拒否/失効だけ。native I/Oを入れない。
 	reclaim func(context.Context) error
 }
@@ -50,6 +53,7 @@ type nativeBatchOps struct {
 type nativeBatch struct {
 	uncertain                  bool
 	self                       *nativeBatch
+	issuer                     *ephemeral.Issuer
 	mu                         sync.Mutex
 	spec                       nativeBatchSpec
 	request                    context.Context
@@ -80,10 +84,10 @@ func (s nativeBatchSpec) valid() bool {
 
 // prepareBatch only validates and constructs the retained owner. It performs no native I/O.
 func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nativeBatch, error) {
-	if !s.valid() || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
+	if !s.valid() || owner.issuer == nil || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
 		return nil, ErrUnconfigured
 	}
-	b := &nativeBatch{ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), revokeOwner: owner.revoke}
+	b := &nativeBatch{issuer: owner.issuer, ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), revokeOwner: owner.revoke}
 	b.self = b
 	b.collector = &Collector{cleanup: s.launch.cleanup, ops: collectorOps{
 		check: b.recheck, drain: b.drain, terminate: b.terminate, wait: b.wait,

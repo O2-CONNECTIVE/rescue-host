@@ -2,8 +2,11 @@ package operatorauth
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 )
 
@@ -151,7 +154,15 @@ func (c *Collector) Close(ctx context.Context) (result error) {
 		if recover() != nil {
 			result = ErrUnconfirmed
 		}
+		if result != nil {
+			result = collectorCleanupFailure(result, c.revokeErr, c.reclaimErr)
+		}
 	}()
+	// 初回のfatal通知後には独立helper回収も一度だけ試みた。
+	// 未確認handleを保持したまま、同じownerでnative操作を再開しない。
+	if collectorCleanupFatal(c.reclaimErr) {
+		return c.reclaimErr
+	}
 	c.mu.Lock()
 	activeCancel := c.activeCancel
 	c.mu.Unlock()
@@ -168,8 +179,20 @@ func (c *Collector) Close(ctx context.Context) (result error) {
 	if !finite(ctx) {
 		return ErrUnconfirmed
 	}
-	if !c.reclaimed {
-		c.reclaimed = c.ops.reclaim(ctx) == nil
+	if !c.reclaimed && !collectorCleanupFatal(c.reclaimErr) {
+		// workloadのmemory待機に全予算を使わせず、同じ元deadline内で
+		// 独立helperのwait/I/O回収を試す時間を残す。
+		deadline, _ := ctx.Deadline()
+		reclaim, endReclaim := context.WithTimeout(ctx, time.Until(deadline)/2)
+		defer endReclaim()
+		err := c.ops.reclaim(reclaim)
+		endReclaim()
+		c.reclaimed = err == nil
+		if err != nil {
+			c.reclaimErr = collectorCleanupFailure(err)
+		} else {
+			c.reclaimErr = nil
+		}
 	}
 	c.mu.Lock()
 	busy, waited, processClosed := c.busy, c.waited, c.processClosed
@@ -194,4 +217,22 @@ func (c *Collector) Close(ctx context.Context) (result error) {
 		return ErrUnconfirmed
 	}
 	return nil
+}
+
+func collectorCleanupFatal(err error) bool {
+	return errors.Is(err, ErrFatal) || errors.Is(err, bootstrapauth.ErrFatal) || errors.Is(err, protectedkey.ErrFatal)
+}
+
+// Callbackの内部診断を返さず、既知の終端分類だけを保持する。
+func collectorCleanupFailure(causes ...error) error {
+	result := ErrUnconfirmed
+	for _, fatal := range []error{ErrFatal, bootstrapauth.ErrFatal, protectedkey.ErrFatal} {
+		for _, cause := range causes {
+			if errors.Is(cause, fatal) {
+				result = errors.Join(result, fatal)
+				break
+			}
+		}
+	}
+	return result
 }

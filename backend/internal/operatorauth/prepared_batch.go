@@ -3,12 +3,21 @@ package operatorauth
 import (
 	"context"
 	"errors"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
 // Batch is a concrete retained native owner. A future protected provider must
 // prepare it privately and register it with Service before Start. There is no
 // public factory; the zero value is unconfigured and cannot acquire resources.
 type Batch = nativeBatch
+
+// MatchesIssuer compares the immutable issuer retained during preparation.
+// It does not prove that the still-unconfigured producer bound owner callbacks
+// to that issuer; the protected factory must establish that separately.
+func (b *nativeBatch) MatchesIssuer(issuer *ephemeral.Issuer) bool {
+	return b != nil && b.self == b && issuer != nil && b.issuer == issuer
+}
 
 // Collector returns the exact collector created during preparation. It does not
 // authenticate a Read or replace the collector's issuer checks.

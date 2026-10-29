@@ -60,7 +60,7 @@ func TestServiceAuthStopWaitsForLateStartOwnerAcknowledgement(t *testing.T) {
 	defer cancel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var collects, closed atomic.Int32
-	batch := serviceAuthBatchOps{collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
 		start: func(context.Context) error { close(entered); <-release; return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			collects.Add(1)
@@ -98,7 +98,7 @@ func TestServiceAuthConnectsSameOwnerProofToFiniteDispatch(t *testing.T) {
 	var order []string
 	proof := &operatorauth.Read{}
 	collector := &operatorauth.Collector{}
-	batch := serviceAuthBatchOps{collector: collector,
+	batch := serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: collector,
 		start:   func(context.Context) error { order = append(order, "start"); return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) { order = append(order, "collect"); return proof, nil },
 		consume: func(_ context.Context, got *operatorauth.Read) ([]byte, error) {
@@ -129,9 +129,15 @@ func TestServiceAuthConnectsSameOwnerProofToFiniteDispatch(t *testing.T) {
 	}
 }
 
-func fixtureAuthBatch(frame string) serviceAuthBatchOps {
+func fixtureAuthIssuer(a *serviceAuthAdapter) *ephemeral.Issuer {
+	a.service.mu.Lock()
+	defer a.service.mu.Unlock()
+	return a.service.issuer
+}
+
+func fixtureAuthBatch(a *serviceAuthAdapter, frame string) serviceAuthBatchOps {
 	proof := &operatorauth.Read{}
-	return serviceAuthBatchOps{collector: &operatorauth.Collector{},
+	return serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
 		start:   func(context.Context) error { return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) { return proof, nil },
 		consume: func(context.Context, *operatorauth.Read) ([]byte, error) { return []byte(frame), nil },
@@ -139,11 +145,72 @@ func fixtureAuthBatch(frame string) serviceAuthBatchOps {
 	}
 }
 
+func TestServiceAuthForeignOrMissingIssuerLeavesPreparedOwnerWithCaller(t *testing.T) {
+	for _, kind := range []string{"foreign", "missing"} {
+		t.Run(kind, func(t *testing.T) {
+			_, a := authUnstartedMemoryOwner(t)
+			previous := &serviceAuthRequest{finished: true, ownerDone: make(chan struct{})}
+			close(previous.ownerDone)
+			a.active = previous
+			batch := fixtureAuthBatch(a, dispatchHello)
+			batch.issuer = &ephemeral.Issuer{}
+			if kind == "missing" {
+				batch.issuer = nil
+			}
+			var starts, closes, writes int
+			batch.start = func(context.Context) error { starts++; return nil }
+			batch.close = func(context.Context) error { closes++; return nil }
+			collector := batch.collector
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := a.exchangeOps(ctx, batch, func(context.Context, []byte) error { writes++; return nil }); !errors.Is(err, ErrProvisioningRejected) {
+				t.Fatal("issuer mismatch admitted", err)
+			}
+			if starts != 0 || closes != 0 || writes != 0 || batch.collector != collector {
+				t.Fatal("rejection changed caller owner", starts, closes, writes)
+			}
+			if a.attempts != 0 || len(a.seen) != 0 || a.active != previous {
+				t.Fatal("rejection changed admission state")
+			}
+			// Rejection leaves the original budget and collector available to the
+			// caller, which can submit the correctly owned memory fixture once.
+			batch.issuer = fixtureAuthIssuer(a)
+			if err := a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }); err != nil {
+				t.Fatal("correct issuer failed after rejection", err)
+			}
+			if starts != 1 || closes != 0 || a.attempts != 1 || len(a.seen) != 1 || a.active.issuer != batch.issuer {
+				t.Fatal("correct owner was not admitted once")
+			}
+		})
+	}
+}
+
+func TestServiceAuthRegistrationRechecksIssuerAfterConversion(t *testing.T) {
+	s, a := authUnstartedMemoryOwner(t)
+	// This private test seam models operations carrying the issuer snapshot
+	// from conversion. It cannot construct a production native Batch.
+	batch := fixtureAuthBatch(a, dispatchHello)
+	var starts, closes int
+	batch.start = func(context.Context) error { starts++; return nil }
+	batch.close = func(context.Context) error { closes++; return nil }
+	s.mu.Lock()
+	s.issuer = &ephemeral.Issuer{}
+	s.mu.Unlock()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }); !errors.Is(err, ErrProvisioningRejected) {
+		t.Fatal("stale conversion admitted", err)
+	}
+	if starts != 0 || closes != 0 || a.attempts != 0 || len(a.seen) != 0 || a.active != nil {
+		t.Fatal("stale conversion changed ownership or admission")
+	}
+}
+
 func TestServiceAuthCopiedAdapterCannotCreateIndependentAdmission(t *testing.T) {
 	_, a, _ := authTestService(t, 1)
 	copyAdapter := *a
 	var starts atomic.Int32
-	batch := fixtureAuthBatch(dispatchHello)
+	batch := fixtureAuthBatch(a, dispatchHello)
 	batch.start = func(context.Context) error { starts.Add(1); return nil }
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
@@ -165,7 +232,7 @@ func (c authDelayedDeadline) Deadline() (time.Time, bool) { return c.deadline, t
 func TestServiceAuthElapsedDeadlineCannotWaitForTimerBeforeRejection(t *testing.T) {
 	_, a, _ := authTestService(t, 1)
 	var starts atomic.Int32
-	batch := fixtureAuthBatch(dispatchHello)
+	batch := fixtureAuthBatch(a, dispatchHello)
 	batch.start = func(context.Context) error { starts.Add(1); return nil }
 	ctx := authDelayedDeadline{Context: context.Background(), deadline: time.Now().Add(-time.Second)}
 	if err := a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }); err == nil {
@@ -176,15 +243,26 @@ func TestServiceAuthElapsedDeadlineCannotWaitForTimerBeforeRejection(t *testing.
 	}
 }
 
+// A concurrent SCM owner may briefly hold the lock. Observe bounded progress
+// through the public snapshot seam instead of treating TryLock contention as
+// proof that this callback's caller owns the lock.
+func authCallbackCanInspect(ctx context.Context, s *Service) bool {
+	observed := make(chan struct{})
+	go func() { s.Snapshot(); close(observed) }()
+	select {
+	case <-observed:
+		return authBudget(ctx)
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func TestServiceAuthConsumeDoesNotRunUnderServiceLock(t *testing.T) {
 	s, a, _ := authTestService(t, 1)
-	batch := fixtureAuthBatch(dispatchHello)
+	batch := fixtureAuthBatch(a, dispatchHello)
 	unlocked := false
-	batch.consume = func(context.Context, *operatorauth.Read) ([]byte, error) {
-		unlocked = s.mu.TryLock()
-		if unlocked {
-			s.mu.Unlock()
-		}
+	batch.consume = func(ctx context.Context, _ *operatorauth.Read) ([]byte, error) {
+		unlocked = authCallbackCanInspect(ctx, s)
 		return nil, errors.New("fixture consume rejected")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -198,11 +276,13 @@ func TestServiceAuthConsumeDoesNotRunUnderServiceLock(t *testing.T) {
 }
 
 func TestServiceAuthNativeProviderAndZeroBudgetStayUnconfigured(t *testing.T) {
-	if _, err := nativeServiceAuthBatch(nil); err == nil {
-		t.Fatal("nil batch accepted")
-	}
-	if _, err := nativeServiceAuthBatch(&operatorauth.Batch{}); err == nil {
-		t.Fatal("unprepared batch accepted")
+	for _, issuer := range []*ephemeral.Issuer{nil, {}} {
+		if _, err := nativeServiceAuthBatch(nil, issuer); err == nil {
+			t.Fatal("nil batch accepted")
+		}
+		if _, err := nativeServiceAuthBatch(&operatorauth.Batch{}, issuer); err == nil {
+			t.Fatal("unprepared batch accepted")
+		}
 	}
 	if _, err := newServiceAuthAdapter(&Service{}, serviceDispatchProfile{}, 0); err == nil {
 		t.Fatal("default launch budget enabled")
@@ -215,12 +295,12 @@ func TestServiceAuthCumulativeLaunchBudgetAndCollectorAreNotReusable(t *testing.
 			_, a, _ := authTestService(t, limit)
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			first := fixtureAuthBatch(dispatchHello)
+			first := fixtureAuthBatch(a, dispatchHello)
 			if err := a.exchangeOps(ctx, first, func(context.Context, []byte) error { return nil }); err != nil {
 				t.Fatal(err)
 			}
 			var starts atomic.Int32
-			next := fixtureAuthBatch(dispatchHello)
+			next := fixtureAuthBatch(a, dispatchHello)
 			if limit == 2 {
 				next.collector = first.collector
 			}
@@ -248,16 +328,14 @@ func TestServiceAuthFailureRevokesSameIssuerAndClosesOutsideLock(t *testing.T) {
 			s.mu.Lock()
 			issuer := s.issuer
 			s.mu.Unlock()
-			batch := fixtureAuthBatch(dispatchHello)
+			batch := fixtureAuthBatch(a, dispatchHello)
 			var closes atomic.Int32
-			batch.close = func(context.Context) error {
+			batch.close = func(ctx context.Context) error {
 				if !issuer.Snapshot().Closed {
 					t.Error("owner cleanup preceded same issuer revoke")
 				}
-				if !s.mu.TryLock() {
+				if !authCallbackCanInspect(ctx, s) {
 					t.Error("close callback under service lock")
-				} else {
-					s.mu.Unlock()
 				}
 				closes.Add(1)
 				return nil
@@ -293,7 +371,7 @@ func TestServiceAuthFailureRevokesSameIssuerAndClosesOutsideLock(t *testing.T) {
 
 func TestServiceAuthUnconfirmedCleanupRetainsOwnerUntilAcknowledged(t *testing.T) {
 	s, a, serveDone := authTestService(t, 1)
-	batch := fixtureAuthBatch(dispatchHello)
+	batch := fixtureAuthBatch(a, dispatchHello)
 	var owner uint64
 	batch.start = func(context.Context) error { owner = authFixtureGoroutine(); return errors.New("start rejected") }
 	var ack atomic.Bool
@@ -366,7 +444,7 @@ func TestServiceAuthResponseWriteRemainsAnOwnedOperation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	go func() {
-		result <- a.exchangeOps(ctx, fixtureAuthBatch(dispatchHello), func(context.Context, []byte) error { close(entered); <-release; return errors.New("cancelled write") })
+		result <- a.exchangeOps(ctx, fixtureAuthBatch(a, dispatchHello), func(context.Context, []byte) error { close(entered); <-release; return errors.New("cancelled write") })
 	}()
 	<-entered
 	defer func() { close(release); <-result }()
@@ -386,7 +464,7 @@ func TestServiceAuthElapsedWriterDeadlineDoesNotConfirmCompletion(t *testing.T) 
 	s, a, _ := authTestService(t, 1)
 	deadline := time.Now().Add(25 * time.Millisecond)
 	ctx := authDelayedDeadline{Context: context.Background(), deadline: deadline}
-	err := a.exchangeOps(ctx, fixtureAuthBatch(dispatchHello), func(context.Context, []byte) error { <-time.After(time.Until(deadline) + time.Millisecond); return nil })
+	err := a.exchangeOps(ctx, fixtureAuthBatch(a, dispatchHello), func(context.Context, []byte) error { <-time.After(time.Until(deadline) + time.Millisecond); return nil })
 	if err == nil {
 		t.Fatal("writer completion after actual deadline accepted")
 	}
@@ -402,7 +480,7 @@ func TestServiceAuthFrameAloneCannotMintAuthenticatedProof(t *testing.T) {
 	if _, err := a.verify(ctx, []byte(dispatchHello)); err == nil {
 		t.Fatal("unowned frame authenticated")
 	}
-	if err := a.exchangeOps(ctx, fixtureAuthBatch(dispatchHello), func(context.Context, []byte) error { return nil }); err != nil {
+	if err := a.exchangeOps(ctx, fixtureAuthBatch(a, dispatchHello), func(context.Context, []byte) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.verify(ctx, []byte(dispatchHello)); err == nil {
@@ -415,7 +493,7 @@ func TestServiceAuthQuiesceWritesReceiptBeforeOperationAcknowledgement(t *testin
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	var hello servicecontrol.UntrustedResponse
-	if err := a.exchangeOps(ctx, fixtureAuthBatch(dispatchHello), func(_ context.Context, frame []byte) error {
+	if err := a.exchangeOps(ctx, fixtureAuthBatch(a, dispatchHello), func(_ context.Context, frame []byte) error {
 		var err error
 		hello, err = servicecontrol.DecodeUntrustedResponseFrame(frame)
 		return err
@@ -423,7 +501,7 @@ func TestServiceAuthQuiesceWritesReceiptBeforeOperationAcknowledgement(t *testin
 		t.Fatal(err)
 	}
 	frame := dispatchRequest(hello, 1, strings.Repeat("2", 32), servicecontrol.RevokeAllAndQuiesce)
-	err := a.exchangeOps(ctx, fixtureAuthBatch(frame), func(writeCtx context.Context, frame []byte) error {
+	err := a.exchangeOps(ctx, fixtureAuthBatch(a, frame), func(writeCtx context.Context, frame []byte) error {
 		if writeCtx.Err() != nil {
 			t.Fatal("quiesce cancelled its own finite response operation")
 		}
@@ -479,7 +557,7 @@ func TestServiceAuthFatalSentinelsRemainStickyWithoutClaimingCleanup(t *testing.
 		for _, stage := range []string{"start", "collect", "close"} {
 			t.Run(sentinel.Error()+"/"+stage, func(t *testing.T) {
 				s, a := authUnstartedMemoryOwner(t)
-				batch := fixtureAuthBatch(dispatchHello)
+				batch := fixtureAuthBatch(a, dispatchHello)
 				nativeErr := errors.Join(sentinel, errors.New("private-native-error-text"))
 				var closes int
 				batch.close = func(context.Context) error {
@@ -564,7 +642,7 @@ func TestServiceAuthNewAdmissionWaitsForBothCleanupAndWorkerAcknowledgement(t *t
 	a.limit = 2
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	r, err := a.register(ctx, fixtureAuthBatch(dispatchHello))
+	r, err := a.register(ctx, fixtureAuthBatch(a, dispatchHello))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,11 +651,11 @@ func TestServiceAuthNewAdmissionWaitsForBothCleanupAndWorkerAcknowledgement(t *t
 	r.cleaned = true
 	close(r.done)
 	s.mu.Unlock()
-	if _, err := a.register(ctx, fixtureAuthBatch(dispatchHello)); err == nil {
+	if _, err := a.register(ctx, fixtureAuthBatch(a, dispatchHello)); err == nil {
 		t.Fatal("new admission displaced owner before worker acknowledgement")
 	}
 	close(r.ownerDone)
-	if _, err := a.register(ctx, fixtureAuthBatch(dispatchHello)); err != nil {
+	if _, err := a.register(ctx, fixtureAuthBatch(a, dispatchHello)); err != nil {
 		t.Fatal("acknowledged owner kept channel blocked")
 	}
 }
@@ -594,7 +672,7 @@ func TestServiceAuthWriterFatalSurvivesSimultaneousBudgetFailure(t *testing.T) {
 				if budget == "deadline" {
 					request = authDelayedDeadline{Context: context.Background(), deadline: deadline}
 				}
-				batch := fixtureAuthBatch(dispatchHello)
+				batch := fixtureAuthBatch(a, dispatchHello)
 				var closes atomic.Int32
 				batch.close = func(context.Context) error { closes.Add(1); return nil }
 				result := make(chan error, 1)
