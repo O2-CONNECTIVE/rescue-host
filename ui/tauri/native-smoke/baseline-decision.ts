@@ -10,6 +10,13 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     || !object(wry.startup) || !Array.isArray(wry.startup.events) || !object(session) || session.schema !== 1
     || session.kind !== 'direct-wry-controller-contrast' || session.productNativePass !== false
     || collection.sessionSucceeded !== session.sessionCreated) return incomplete;
+  if (typeof session.sessionCreated !== 'boolean' || typeof session.documentChecked !== 'boolean'
+    || typeof session.sessionOutcome !== 'string' || !['not-started', 'ok', 'timeout', 'request-failed'].includes(session.sessionOutcome)
+    || typeof session.failurePhase !== 'string' || !['session-create', 'document', 'complete'].includes(session.failurePhase)) return incomplete;
+  if (session.sessionCreated
+    ? session.sessionOutcome !== 'ok' || typeof session.browserVersion !== 'string'
+      || session.failurePhase !== (session.documentChecked ? 'complete' : 'document')
+    : session.documentChecked || session.sessionOutcome === 'ok' || session.browserVersion !== null || session.failurePhase !== 'session-create') return incomplete;
   const cleanupVerified = collection.cleanupFailures === 0 && collection.ownerSetRecorded === true
     && Number.isSafeInteger(collection.observedChildren) && Number(collection.observedChildren) > 0
     && collection.observedChildrenExited === true && collection.appExited === true

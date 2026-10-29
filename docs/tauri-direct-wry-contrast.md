@@ -66,7 +66,9 @@ Windowsでの対照成功そのものを終了条件にせず、失敗もその�
 ## 検証の種類
 
 対照kindの回収CLI、独立判定、driver異常終了、document後段失敗、POST別エラーの分類はRED→GREENで固定した。
-来歴CLIは初期1縦断のRED→GREEN、残る拒否例は後付け回帰として区別する。
+来歴CLIは未実装CLIに対する初期1縦断のRED(exit2で期待不一致)→GREENで、残る拒否16例は後付け回帰。
+この初期記録のsourceCommitはbase表示で、未commit試験・初期実装の固定hashが対応元。コミット単独でのRED再現とはしない。
+対照CLIのsource/EXE改変拒否・秘密非出力も後付け回帰で、実EXEを起動する試験ではない。
 これらのfixtureは実COM原障害の再現ではなく、実stage・EXE起動・終了は固定head Windows CIで別判定する。
 stage writer/2KiB/既存回収budgetは維持し、secret、path、PID、URL、script内容、HRESULT、原例外を診断artifactへ出さない。
 新しい診断用trust root、署名契約、credential、OS security変更、実SSHは含まない。

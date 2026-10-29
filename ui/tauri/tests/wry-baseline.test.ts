@@ -32,12 +32,12 @@ void test('強制cleanup・欠測・設定不一致・不確定な子終了を�
 void test('callback未観測と退出後timeoutを分離し、原因確定としない（後付け回帰）', () => {
   const failed = { ...collection, sessionSucceeded: false, sessionTimedOut: true, normalCloseVerified: false };
   const pending = decideBaseline(failed, { diagnostic: 'complete', startup: { phase: 'controller-callback-not-observed',
-    events: [{ stage: 'controller-api-return' }] } }, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout', failurePhase: 'session-create' });
+    events: [{ stage: 'controller-api-return' }] } }, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout', failurePhase: 'session-create', browserVersion: null });
   assert.equal(pending.outcome, 'controller-callback-unobserved');
   assert.equal(pending.rootCauseProven, false);
   assert.equal(pending.contrastPassed, false);
-  assert.equal(decideBaseline(failed, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout' }).outcome, 'session-after-wry-exit');
-  assert.equal(decideBaseline({ ...failed, ownerSetRecorded: false }, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout' }).nextAction, 'repair-ownership-observation');
+  assert.equal(decideBaseline(failed, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout', failurePhase: 'session-create', browserVersion: null }).outcome, 'session-after-wry-exit');
+  assert.equal(decideBaseline({ ...failed, ownerSetRecorded: false }, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout', failurePhase: 'session-create', browserVersion: null }).nextAction, 'repair-ownership-observation');
 });
 void test('POST成功後のdocument失敗をsession timeoutと混同しない', () => {
   assert.equal(decideBaseline({ ...collection, sessionSucceeded: true, normalCloseVerified: false }, wry,
@@ -46,7 +46,7 @@ void test('POST成功後のdocument失敗をsession timeoutと混同しない', 
 void test('controller未完了でもPOSTの別失敗をtimeoutへ読み替えない', () => {
   const r = decideBaseline({ ...collection, sessionSucceeded: false, sessionTimedOut: false },
     { diagnostic: 'complete', startup: { phase: 'controller-callback-not-observed', events: [{ stage: 'controller-api-return' }] } },
-    { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'request-failed', failurePhase: 'session-create' });
+    { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'request-failed', failurePhase: 'session-create', browserVersion: null });
   assert.equal(r.outcome, 'session-request-failed');
 });
 void test('成功風でもPOST結果の矛盾を不完全として拒否する', () => {
