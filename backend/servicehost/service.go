@@ -45,6 +45,7 @@ type Service struct {
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
 	dispatch                                  *serviceDispatcher
+	auth                                      *serviceAuthAdapter
 	ownerIntent                               *serviceOwnerIntent
 	reservation                               *serviceReservation
 	host                                      *Host
@@ -154,6 +155,10 @@ func (s *Service) stopFor(cause error) bool {
 	if d := s.delivery; d != nil {
 		deliveryCancel = d.cancel
 	}
+	var authCancel context.CancelFunc
+	if s.auth != nil && s.auth.active != nil && !s.auth.active.finished {
+		authCancel = s.auth.active.cancel
+	}
 	i, cancel := s.issuer, s.cancel
 	s.mu.Unlock()
 	if unusedDone != nil {
@@ -168,6 +173,9 @@ func (s *Service) stopFor(cause error) bool {
 	}
 	if deliveryCancel != nil {
 		deliveryCancel()
+	}
+	if authCancel != nil {
+		authCancel()
 	}
 	if cancel != nil {
 		cancel()
@@ -213,6 +221,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	stopping := s.stopping
 	s.mu.Unlock()
 	defer func() {
+		s.awaitAuthRequestBeforeReturn()
 		s.awaitOwnerReservationBeforeReturn()
 		s.awaitHostDeliveryBeforeReturn()
 		s.mu.Lock()
@@ -293,7 +302,10 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(cleanup, min(cfg.Budgets.Observe, cfg.Budgets.Cleanup/8))
 			_ = publish(report, StopPending)
 			finish()
-			closeErr := s.waitOwnerReservation(cleanup)
+			closeErr := s.waitAuthRequest(cleanup)
+			if closeErr == nil {
+				closeErr = s.waitOwnerReservation(cleanup)
+			}
 			if closeErr == nil {
 				closeErr = s.waitHostDelivery(cleanup)
 			}
