@@ -24,9 +24,12 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
     await writeFile(path.join(folder, 'collection.json'), JSON.stringify(native));
     const empty = { entered: false, phase: 'not-entered', iterations: 0, getCalls: 0, getReturns: 0,
       dispatchCalls: 0, dispatchReturns: 0, lastUs: 0, invalid: false };
-    const trace = { schema: 1, variant: 'wry-webview2-stage-2', purpose: 'diagnostic-hints-only',
+    const trace = { schema: 1, variant: 'wry-webview2-stage-3', purpose: 'diagnostic-hints-only',
       events: [{ seq: 1, stage: 'webview-enter', elapsedUs: 0 }], attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 100,
-      pumps: { environment: empty, controller: empty } };
+      pumps: { environment: empty, controller: empty, script: empty },
+      scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0,
+        startedUs: null, apiStartUs: null, apiReturnUs: null, callbackUs: null, sentUs: null,
+        returnUs: null, result: 'idle', callbackOk: null, invalid: false } };
     await writeFile(path.join(folder, 'wry-startup-stages.json'), JSON.stringify(trace));
     assert.equal((await inspectWryStartupFile(folder, {})).phase, 'diagnostic-incomplete');
     const invoke = () => spawnSync(process.execPath, ['native-smoke/inspect-wry-startup.ts', '--directory', folder,

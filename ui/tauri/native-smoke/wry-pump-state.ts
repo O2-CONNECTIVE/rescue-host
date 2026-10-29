@@ -1,6 +1,6 @@
 const phases = ['not-entered', 'receiver-check', 'get-message', 'translate', 'dispatch', 'receiver-ready', 'quit', 'os-error'] as const;
 type Phase = typeof phases[number];
-type Pump = { entered: boolean; phase: Phase; iterations: number; getCalls: number; getReturns: number;
+export type Pump = { entered: boolean; phase: Phase; iterations: number; getCalls: number; getReturns: number;
   dispatchCalls: number; dispatchReturns: number; lastUs: number; invalid: false };
 function object(x: unknown): x is Record<string, unknown> { return !!x && typeof x === 'object' && !Array.isArray(x); }
 function read(input: unknown, end: number): Pump | null {
@@ -27,9 +27,10 @@ function read(input: unknown, end: number): Pump | null {
     dispatchCalls, dispatchReturns, lastUs: input.lastUs, invalid: false };
 }
 export function readPumps(input: unknown, end: number) {
-  if (!object(input) || Object.keys(input).length !== 2 || !Object.hasOwn(input, 'environment') || !Object.hasOwn(input, 'controller')) return null;
+  if (!object(input) || Object.keys(input).length !== 3 || !['environment', 'controller', 'script'].every(k => Object.hasOwn(input, k))) return null;
   const environment = read(input.environment, end); const controller = read(input.controller, end);
-  return environment && controller ? { environment, controller } : null;
+  const script = read(input.script, end);
+  return environment && controller && script ? { environment, controller, script } : null;
 }
 export function controllerPumpHint(pump: Pump): string {
   if (!pump.entered) return 'controller-pump-entry-not-observed';

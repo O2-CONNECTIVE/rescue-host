@@ -9,7 +9,7 @@ void test('同じscriptの送信成功後もwaitが戻らない状態を識別�
   const report = classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-3', windowEndUs: 2000,
     scripts: { calls: 1, apiReturns: 1, callbacks: 1, sends: 1, returns: 0,
       startedUs: 920, apiStartUs: 930, apiReturnUs: 1000, callbackUs: 1100, sentUs: 1110,
-      returnUs: null, result: 'pending', invalid: false },
+      returnUs: null, result: 'pending', callbackOk: true, invalid: false },
     pumps: { ...trace.pumps, script: { entered: true, phase: 'get-message', iterations: 1,
       getCalls: 1, getReturns: 0, dispatchCalls: 0, dispatchReturns: 0, lastUs: 1010, invalid: false } }
   });
@@ -31,7 +31,7 @@ void test('callback済みでもGetMessage戻り未観測なら待機境界を失
 void test('callback未観測でもdispatch入口後のreturn未観測を区別する', () => {
   const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
     'environment-callback', 'environment-wait-return', 'controller-api-start', 'controller-api-return']);
-  const report = classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-2', pumps: {
+  const report = classifyWryStartup({ ...trace, pumps: { ...trace.pumps,
     environment: { entered: true, phase: 'receiver-ready', iterations: 1, getCalls: 0, getReturns: 0,
       dispatchCalls: 0, dispatchReturns: 0, lastUs: 350, invalid: false },
     controller: { entered: true, phase: 'dispatch', iterations: 1, getCalls: 1, getReturns: 1,
@@ -46,10 +46,13 @@ function fixture(stages: string[]) {
     dispatchCalls: 0, dispatchReturns: 0, lastUs: 0, invalid: false };
   const pump = (scope: string) => stages.includes(`${scope}-wait-return`)
     ? { ...empty, entered: true, phase: 'receiver-ready', iterations: 1, lastUs: stages.indexOf(`${scope}-wait-return`) * 100 - 1 } : { ...empty };
-  return { schema: 1, variant: 'wry-webview2-stage-2', purpose: 'diagnostic-hints-only',
+  return { schema: 1, variant: 'wry-webview2-stage-3', purpose: 'diagnostic-hints-only',
     events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
     attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000,
-    pumps: { environment: pump('environment'), controller: pump('controller') } };
+    pumps: { environment: pump('environment'), controller: pump('controller'), script: { ...empty } },
+    scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0,
+      startedUs: null, apiStartUs: null, apiReturnUs: null, callbackUs: null, sentUs: null,
+      returnUs: null, result: 'idle', callbackOk: null, invalid: false } };
 }
 void test('環境callback済みの後でcontroller callbackを観測しない窓を区別する', () => {
   const report = classifyWryStartup(fixture(['webview-enter', 'environment-api-start',
