@@ -6,6 +6,25 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+void test('同一応答の要素不在と文字列不一致と読込状態を匿名分類する', () => {
+  const base = { href: 'about:blank', uri: 'about:blank', origin: 'null', tauri: 'undefined' };
+  const missing = inspectBaselineDocument({ ...base, marker: null, readyState: 'loading' });
+  assert.equal(missing.markerDetail, 'absent');
+  assert.equal(missing.readyState, 'loading');
+  assert.equal(missing.accepted, false);
+  const wrong = inspectBaselineDocument({ ...base, marker: 'PRIVATE_FIXTURE', readyState: 'interactive' });
+  assert.equal(wrong.markerDetail, 'text-mismatch');
+  assert.equal(wrong.readyState, 'interactive');
+  assert.equal(JSON.stringify(wrong).includes('PRIVATE_FIXTURE'), false);
+  const match = inspectBaselineDocument({ ...base, marker: 'Wry creation contrast', readyState: 'complete' });
+  assert.equal(match.markerDetail, 'match');
+  assert.equal(match.readyState, 'complete');
+  assert.equal(match.accepted, true);
+  const unknown = inspectBaselineDocument({ ...base, marker: 4, readyState: 'PRIVATE_FIXTURE' });
+  assert.equal(unknown.markerDetail, 'unknown');
+  assert.equal(unknown.readyState, 'unknown');
+});
+
 void test('同じ応答の各項目を固定値との一致だけに変換する', () => {
   assert.deepEqual(inspectBaselineDocument({ href: 'about:blank', uri: 'about:blank', origin: 'null',
     marker: 'Wry creation contrast', tauri: 'undefined' }),
