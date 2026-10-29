@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideBaseline } from '../native-smoke/baseline-decision.ts';
 const collection = { schema: 1, kind: 'direct-wry-controller-contrast', productNativePass: false, fixedInputsVerified: true,
-  wryStartupFileClosed: true, sessionSucceeded: true, normalCloseVerified: true, forcedApp: false, forcedChildren: 0,
+  wryStartupFileClosed: true, sessionSucceeded: true, normalCloseVerified: true, driverStableThroughClose: true, forcedApp: false, forcedChildren: 0,
   ownerSetRecorded: true, observedChildren: 6, observedChildrenExited: true, appExited: true,
   driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
 const wry = { diagnostic: 'complete', startup: { phase: 'webview-exit-guard-ok-observed',
@@ -14,6 +14,9 @@ void test('直接Wryのsession・退出・通常closeは対照成功だけを返
   assert.equal(r.contrastPassed, true);
   assert.equal(r.productNativePass, false);
   assert.equal(r.outcome, 'contrast-pass');
+});
+void test('通常close中にdriverが異常終了した対照を成功にしない', () => {
+  assert.equal(decideBaseline({ ...collection, driverStableThroughClose: false }, wry, session).contrastPassed, false);
 });
 void test('強制cleanup・欠測・設定不一致・不確定な子終了を対照成功にしない（後付け回帰）', () => {
   for (const delta of [{ normalCloseVerified: false }, { forcedApp: true }, { forcedChildren: 1 },
