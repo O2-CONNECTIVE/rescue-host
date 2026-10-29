@@ -70,7 +70,7 @@ func helperEntryClose(ctx context.Context, closeFn func() error) error {
 		defer func() {
 			if recover() != nil {
 				err = ErrUnconfirmed
-			} else {
+			} else if !errors.Is(err, ErrFatal) {
 				runtime.UnlockOSThread()
 			}
 			done <- err

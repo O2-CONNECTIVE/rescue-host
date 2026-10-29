@@ -186,3 +186,23 @@ func TestHelperEntryPreservesFatalFromLeaseCleanup(t *testing.T) {
 		t.Fatal("cleanup fatal was lost", err)
 	}
 }
+
+func TestHelperRetainsFatalFromEverySourceCheck(t *testing.T) {
+	for _, failure := range []int{1, 2, 3} {
+		h, _, events, published := helperFixture()
+		checks := 0
+		h.ops.check = func(context.Context) error {
+			checks++
+			if checks == failure {
+				return ErrFatal
+			}
+			return nil
+		}
+		if err := h.Run(requestContext(t)); !errors.Is(err, ErrFatal) {
+			t.Fatal("source fatal lost", failure, err)
+		}
+		if len(*published) != 0 || (*events)[len(*events)-1] != "abort" {
+			t.Fatal("fatal source was reused", failure, *events)
+		}
+	}
+}
