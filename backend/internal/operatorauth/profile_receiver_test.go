@@ -77,6 +77,18 @@ func receiverFrame() []byte {
 	return []byte(`{"version":"1","type":"helper-profile","launchId":"` + strings.Repeat("a", 64) + `","operator":{"user":"S-1-5-21-1","authentication":"7","session":"3","integrity":"8192","kind":"2","level":"1","restricted":false,"appContainer":false},"guestUser":"S-1-5-21-2"}` + "\n")
 }
 
+func TestProfileReceiverEntryDoesNotCleanFatalSourceThread(t *testing.T) {
+	ctx, r, f := receiverSetup(t)
+	f.checkFn = func(profileReceiverBinding) error { return ErrFatal }
+	h, _, _, _ := helperFixture()
+	if err := r.run(ctx, h.ops); !errors.Is(err, ErrFatal) {
+		t.Fatal(err)
+	}
+	if f.closed != 0 {
+		t.Fatal("fatal source triggered native cleanup")
+	}
+}
+
 func TestProfileReceiverUnknownPanicNeverClaimsRecovery(t *testing.T) {
 	for _, stage := range []string{"start", "close"} {
 		t.Run(stage, func(t *testing.T) {

@@ -50,8 +50,9 @@ type Helper struct {
 	ops     helperOps
 }
 
-// RunFixedは設定やhandleをUI/env/argvから補完しない。解除flagはない。
-func RunFixed(context.Context) error { return ErrUnconfigured }
+// RunFixedはargvをlocator照合にだけ用い、期待値と権限は固定保護sourceに要求する。
+// source未構成の既定状態には解除flagがない。
+func RunFixed(ctx context.Context, args ...string) error { return runNativeFixedHelper(ctx, args) }
 
 func finite(ctx context.Context) bool {
 	if ctx == nil || ctx.Err() != nil {
