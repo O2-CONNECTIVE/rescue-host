@@ -3,6 +3,7 @@ package servicehost
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -128,44 +129,82 @@ func TestInnerCleanupProofCannotReleaseOuterWhileApprovalBorrowerIsActive(t *tes
 
 func TestDispatcherStartFailureAndConcurrentCloseShareOneOuterAcknowledgement(t *testing.T) {
 	service, prepared := outerServiceFixture(t)
-	entered, release := make(chan struct{}), make(chan struct{})
-	var calls atomic.Int32
+	entered, expired, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var calls, acknowledgements atomic.Int32
+	var firstProof InnerCleanupProof
+	var cleaned atomic.Bool
 	if err := service.BindOuterFinalizer(testOuterFinalizer(func(ctx context.Context, p InnerCleanupProof) error {
 		if !p.Confirms(service) {
 			t.Error("start failure did not confirm empty inner ownership")
 		}
 		if calls.Add(1) == 1 {
+			firstProof = p
 			close(entered)
+			// The owner may finish after the caller's finite budget. Its actual
+			// acknowledgement is retained for an idempotent retry on this owner.
+			<-ctx.Done()
+			close(expired)
+			<-release
+		} else if p != firstProof {
+			t.Error("retry replaced the original inner cleanup proof")
 		}
-		select {
-		case <-release:
-			return nil
-		case <-ctx.Done():
-			return ctx.Err()
+		if cleaned.CompareAndSwap(false, true) {
+			acknowledgements.Add(1)
 		}
+		return nil
 	})); err != nil {
 		t.Fatal(err)
 	}
-	dispatched := make(chan error, 1)
+	var releaseOnce sync.Once
+	unblock := func() { releaseOnce.Do(func() { close(release) }) }
+	dispatched, dispatchDone := make(chan error, 1), make(chan struct{})
 	go func() {
+		defer close(dispatchDone)
 		dispatched <- runReadySCMDispatch(service, func() error { return errors.New("synthetic dispatcher failure") })
 	}()
+	t.Cleanup(func() {
+		unblock()
+		select {
+		case <-dispatchDone:
+		case <-time.After(time.Second):
+			t.Error("dispatcher worker did not join after releasing its owner")
+		}
+	})
 	select {
 	case <-entered:
 	case <-time.After(time.Second):
 		t.Fatal("dispatcher failure did not finalize")
 	}
 	closing := make(chan error, 1)
-	go func() { closing <- service.Close(outerTestContext(t)) }()
+	closeContext := outerTestContext(t)
+	go func() { closing <- service.Close(closeContext) }()
+	select {
+	case <-expired:
+	case <-time.After(time.Second):
+		t.Fatal("held finalizer did not exhaust its cleanup budget")
+	}
 	select {
 	case <-dispatched:
 		t.Fatal("dispatcher error escaped before outer ack")
-	case <-time.After(10 * time.Millisecond):
+	default:
 	}
-	close(release)
-	if err := <-closing; err != nil {
-		t.Fatal(err)
+	select {
+	case err := <-closing:
+		if !errors.Is(err, ErrRuntimeUnconfirmed) {
+			t.Fatalf("held outer owner must stay unknown: %v", err)
+		}
+	case <-closeContext.Done():
+		t.Fatal("concurrent Close did not return within its caller budget")
 	}
+	if acknowledgements.Load() != 0 || service.Snapshot().CleanupConfirmed || service.Snapshot().State != StopPending {
+		t.Fatal("expired caller claimed an outer acknowledgement")
+	}
+	select {
+	case <-dispatched:
+		t.Fatal("dispatcher escaped when concurrent Close remained unknown")
+	default:
+	}
+	unblock()
 	select {
 	case err := <-dispatched:
 		if !errors.Is(err, ErrSCMUnavailable) {
@@ -174,8 +213,12 @@ func TestDispatcherStartFailureAndConcurrentCloseShareOneOuterAcknowledgement(t 
 	case <-time.After(time.Second):
 		t.Fatal("start failure was not acknowledged")
 	}
-	if calls.Load() != 1 || prepared.Load() != 0 || !service.Snapshot().CleanupConfirmed {
-		t.Fatal("concurrent caller duplicated finalizer or created native inner owner")
+	before := calls.Load()
+	if err := service.Close(outerTestContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	if before < 2 || calls.Load() != before || acknowledgements.Load() != 1 || prepared.Load() != 0 || !service.Snapshot().CleanupConfirmed {
+		t.Fatal("same-owner retry duplicated an acknowledgement or created native inner ownership")
 	}
 }
 
