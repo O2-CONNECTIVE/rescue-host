@@ -23,14 +23,14 @@ GUIと起動ワーカーの両方で開始を拒否し、設定や環境変数�
 
 実SSHのチャネル制約、固定宛先の強制、ゲストから保護されたWindows監督、内側sshdとヘルパーの権限制御、実接続と故障注入の検証が必要です。
 モック試験の合格や利用者の承認だけで開始ゲートを解除しません。
-詳細な受け入れ条件は既存の[バックエンド契約](../SECURITY_BACKEND_CONTRACT.md)に集約しています。
+詳細な受け入れ条件は既存の[バックエンド契約](SECURITY_BACKEND_CONTRACT.md)に集約しています。
 
 | 資料 | 参照する内容 |
 |---|---|
-| [バックエンド契約](../SECURITY_BACKEND_CONTRACT.md) | SSH権限、TCP宛先、失効と同一性、有効化判定 |
-| [オフラインモデル](../OFFLINE_BACKEND_MODEL.md) | 操作モード、ライフサイクル、期限と実装限界 |
-| [v0.2.1の公開レビュー](../SECURITY_REVIEW_V021.md) | 修正確認と残存リスク。実リモート利用の承認ではない |
-| [v0.2の公開レビュー](../SECURITY_REVIEW_V02.md) | 過去版の問題と上流ソースへの参照。現仕様はv0.2.1を優先 |
+| [バックエンド契約](SECURITY_BACKEND_CONTRACT.md) | SSH権限、TCP宛先、失効と同一性、有効化判定 |
+| [オフラインモデル](OFFLINE_BACKEND_MODEL.md) | 操作モード、ライフサイクル、期限と実装限界 |
+| [v0.2.1の公開レビュー](history/SECURITY_REVIEW_V021.md) | 修正確認と残存リスク。実リモート利用の承認ではない |
+| [v0.2の公開レビュー](history/SECURITY_REVIEW_V02.md) | 過去版の問題と上流ソースへの参照。現仕様はv0.2.1を優先 |
 | [対応環境と検証状況](status.md) | 公開済み証拠の範囲と未検証事項 |
 | [GUIとバックエンドの通信契約](communication-contract.md) | 公開CLI、限定評価stdio、未実装Tauri adapter案の区別 |
 | [脅威モデル](threat-model.md) | 保護資産、信頼境界、既存受入IDとの対応と残余リスク |

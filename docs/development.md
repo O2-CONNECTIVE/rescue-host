@@ -69,7 +69,7 @@ py -3 -m unittest discover -s tests -v
 模擬Uptermとモックによる試験で、公開中継、実PC、TCPポート22には接続しません。
 模擬ライフサイクルだけは開始ゲートをテスト内で置き換えます。
 この成功は実接続の安全性を証明しません。
-モデルだけの試験は[既存の実行手順](../OFFLINE_BACKEND_MODEL.md#実行)を参照してください。
+モデルだけの試験は[既存の実行手順](OFFLINE_BACKEND_MODEL.md#実行)を参照してください。
 
 既存テストの3 OS自動実行、skipの読み方、未検証範囲は[PythonオフラインCI](ci.md)を参照してください。
 
@@ -106,9 +106,9 @@ Python/Tk等を含む環境全体の固定と再現ビルドは未実装です�
 
 - [構成と実装境界](architecture.md)
 - [リポジトリの配置方針](repository-layout.md)
-- [接続再開のバックエンド契約](../SECURITY_BACKEND_CONTRACT.md)
-- [v0.2.1の引き継ぎ](../HANDOFF_V021.md)
-- [前段候補の引き継ぎ](../HANDOFF_V02.md)（履歴。現仕様はv0.2.1を優先）
+- [接続再開のバックエンド契約](SECURITY_BACKEND_CONTRACT.md)
+- [v0.2.1の引き継ぎ](history/HANDOFF_V021.md)
+- [前段候補の引き継ぎ](history/HANDOFF_V02.md)（履歴。現仕様はv0.2.1を優先）
 - [変更履歴](../CHANGELOG.md)
 
 既存の引き継ぎにある元HANDOFFと元レビューの未提供事項は、この文書整理では解消していません。

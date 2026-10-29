@@ -78,7 +78,7 @@ buildとhash照合の成功を配布検証全体の成功へ読み替えず、�
 
 未接続評価物の生成と照合は[評価版の説明](tauri-evaluation.md)、nativeの観測境界は[native smoke](tauri-native-smoke.md)を参照してください。
 ブラウザー画像はRust IPCがない表示例であり、native起動や遠隔接続の証拠ではありません。
-旧Python版の公開証跡は[検証集計](../verification/result.json)、[原ログ](../verification/unittest.txt)、[v0.2.1レビュー](../SECURITY_REVIEW_V021.md)に残しています。
+旧Python版の公開証跡は[検証集計](history/verification/result.json)、[原ログ](history/verification/unittest.txt)、[v0.2.1レビュー](history/SECURITY_REVIEW_V021.md)に残しています。
 過去の記録や候補ごとの成功を、現在のmain全体の成功へ流用しません。
 
 ## 初期検証の安全境界と残る条件
@@ -93,6 +93,6 @@ host操作ユーザーまたは管理者が既に侵害された環境と、管�
 二重停止故障時の物理遮断はNOT_MET、Windows背圧の製品受入はUNVERIFIEDのままで、P2専用runtimeは未実証です。
 実relayと内側操作、実service / ACL / Job / 認証付きIPC / 実SSHの統合検証は残ります。
 
-[受入Issue #1](https://github.com/O2-CONNECTIVE/rescue-host/issues/1)、[安全要件](security.md)、[脅威モデル](threat-model.md)、[バックエンド契約](../SECURITY_BACKEND_CONTRACT.md)を参照してください。
+[受入Issue #1](https://github.com/O2-CONNECTIVE/rescue-host/issues/1)、[安全要件](security.md)、[脅威モデル](threat-model.md)、[バックエンド契約](SECURITY_BACKEND_CONTRACT.md)を参照してください。
 既存受入44条件の定義や合否をこの文書更新で変更しません。
 接続を閉じても、既実行の変更や所有外のプロセスを取り消す保証はありません。
