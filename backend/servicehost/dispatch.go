@@ -54,7 +54,7 @@ func newServiceDispatcher(s *Service, p serviceDispatchProfile, v serviceReadVer
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.used || s.started || s.stopping || s.dispatch != nil || s.prepare == nil || s.done == nil {
+	if s.used || s.started || s.stopping || s.dispatch != nil || (s.prepare == nil && s.control == nil) || s.done == nil {
 		return nil, ErrProvisioningRejected
 	}
 	d := &serviceDispatcher{service: s, profile: p, verifier: v, ids: make(map[string]struct{}), reads: make(map[*authenticatedReadTicket]struct{})}
