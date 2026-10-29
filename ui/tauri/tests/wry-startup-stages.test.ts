@@ -2,6 +2,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('直近の登録returnを全登録領域の終了へ読み替えない', () => {
+  assert.equal(classifyWryStartup(returnedScriptFixture()).phase,
+    'script-latest-returned-next-boundary-unobserved');
+});
+
 void test('登録のエラー帰還とpumpの終端が矛盾する証跡を拒否する', () => {
   const trace = returnedScriptFixture();
   assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts, result: 'error' } }).phase,
