@@ -148,3 +148,47 @@ func TestReportSetupDoesNotCreateAfterIdentityCheckExpires(t *testing.T) {
 		t.Fatal("expired setup created a report pipe")
 	}
 }
+
+type cleanupPanicOperation struct{ panicOnce bool }
+
+func (o *cleanupPanicOperation) poll() (bool, uint32, error) { return true, 0, nil }
+func (o *cleanupPanicOperation) cancel() error {
+	if o.panicOnce {
+		o.panicOnce = false
+		panic("synthetic cancellation fault")
+	}
+	return nil
+}
+func (*cleanupPanicOperation) release() error { return nil }
+
+type cleanupPanicKernel struct {
+	reportFake
+	op *cleanupPanicOperation
+}
+
+func (k *cleanupPanicKernel) open(string) (uintptr, error) { return 0, ErrDenied }
+func (k *cleanupPanicKernel) start(reportKind, uintptr, []byte) (reportOperation, error) {
+	return k.op, nil
+}
+func TestReportCleanupPanicRetainsPartialOwner(t *testing.T) {
+	k := &cleanupPanicKernel{op: &cleanupPanicOperation{panicOnce: true}}
+	var p *reportPair
+	var err error
+	func() {
+		defer func() {
+			if recover() != nil {
+				err = ErrUnconfirmed
+			}
+		}()
+		p, err = newReportPair(reportContext(t), reportSetup(), k)
+	}()
+	if p == nil || err == nil {
+		t.Fatal("cleanup panic lost the partial owner")
+	}
+	if err = p.close(reportContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	if len(k.closed) != 1 || k.closed[0] != 11 {
+		t.Fatal("reader was not reclaimed", k.closed)
+	}
+}

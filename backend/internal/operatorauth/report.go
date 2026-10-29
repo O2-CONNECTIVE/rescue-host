@@ -99,6 +99,12 @@ func newReportPair(ctx context.Context, s reportConfig, k reportKernel) (p *repo
 			return
 		}
 		if err != nil {
+			// cleanup自身のpanicでも同じpartial ownerを返す。
+			defer func() {
+				if recover() != nil {
+					err = errors.Join(err, ErrUnconfirmed)
+				}
+			}()
 			if e := p.close(ctx); e != nil {
 				err = errors.Join(err, e)
 			} else {
