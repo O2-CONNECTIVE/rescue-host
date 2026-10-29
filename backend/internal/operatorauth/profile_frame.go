@@ -11,6 +11,10 @@ import (
 
 // encodeHelperProfileFrameは値の形式だけを確認し、正規producerの証拠を生成しない。
 func encodeHelperProfileFrame(launchID string, p helperProfile) ([]byte, error) {
+	// 最大15 subauthority、48-bit authorityを含むcanonical SIDの長さを制限。
+	if !profileLaunchID(launchID) || len(p.operator.user) > 184 || len(p.guest.user) > 184 || !reportSIDValid(p.operator.user) || !reportSIDValid(p.guest.user) {
+		return nil, ErrDenied
+	}
 	type operatorWire struct {
 		User           string `json:"user"`
 		Authentication string `json:"authentication"`
