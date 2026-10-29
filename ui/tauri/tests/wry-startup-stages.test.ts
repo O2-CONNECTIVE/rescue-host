@@ -2,6 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('同じscriptの送信成功後もwaitが戻らない状態を識別する', () => {
+  const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
+    'environment-callback', 'environment-wait-return', 'controller-api-start',
+    'controller-api-return', 'controller-callback', 'controller-wait-return', 'init-enter']);
+  const report = classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-3', windowEndUs: 2000,
+    scripts: { calls: 1, apiReturns: 1, callbacks: 1, sends: 1, returns: 0,
+      startedUs: 920, apiStartUs: 930, apiReturnUs: 1000, callbackUs: 1100, sentUs: 1110,
+      returnUs: null, result: 'pending', invalid: false },
+    pumps: { ...trace.pumps, script: { entered: true, phase: 'get-message', iterations: 1,
+      getCalls: 1, getReturns: 0, dispatchCalls: 0, dispatchReturns: 0, lastUs: 1010, invalid: false } }
+  });
+  assert.equal(report.phase, 'script-send-observed-wait-return-not-observed');
+  assert.equal(report.pumpHint, 'script-get-message-return-not-observed');
+});
+
 void test('callback済みでもGetMessage戻り未観測なら待機境界を失わない', () => {
   const trace = fixture(['webview-enter', 'environment-reused', 'controller-api-start',
     'controller-api-return', 'controller-callback']);
