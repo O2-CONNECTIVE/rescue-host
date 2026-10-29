@@ -7,30 +7,47 @@ import (
 )
 
 // nativeExecutionStageは全て元owner threadからだけ呼び出す。
-// 子へ渡す強handleとquery-only設定rootは別所有物で、inner終端後まで双方を保持する。
+// legacyの強handleとquery-only設定rootは別所有物。previewはquery-onlyだけを
+// inner終端後まで保持する。元scopeをSCM threadへ移送しない。
+// private seamsはsource/fakeの経路選択検査用。本番は未設定で下記の実関数を使う。
+type nativeExecutionCalls struct {
+	prepare func(context.Context, Anchor) (*Prepared, error)
+	launch  func(context.Context, *Prepared) (*LaunchToken, error)
+}
 type nativeExecutionStage struct {
+	preview  *PreviewLimits
+	calls    nativeExecutionCalls
 	cfg      ExecutionConfig
 	prepared *Prepared
 	token    *LaunchToken
 }
 
 func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *servicehost.Service, err error) {
-	s.prepared, err = PrepareFixed(ctx, s.cfg.Anchor)
+	prepare := s.calls.prepare
+	if prepare == nil {
+		prepare = PrepareFixed
+	}
+	s.prepared, err = prepare(ctx, s.cfg.Anchor)
 	if err != nil {
 		return nil, err
 	}
-	query, err := s.prepared.loaded.QueryToken()
+	if s.prepared == nil {
+		return nil, ErrRootDenied
+	}
+	if s.preview != nil {
+		// query-only rootを借用する。強token/Approval/Launcherは取得しない。
+		return s.prepared.ComposePreviewService(ctx, *s.preview)
+	}
+	launch := s.calls.launch
+	if launch == nil {
+		launch = prepareExecutionToken
+	}
+	s.token, err = launch(ctx, s.prepared)
 	if err != nil {
 		return nil, err
 	}
-	r := s.prepared.record
-	factory, err := NewNativeLaunchFactory(serviceready.Config{Profile: r.Profile, PrimaryToken: query, Endpoint: r.Endpoint, ServiceCommandLine: r.ServiceCommandLine, ServiceSecurity: r.ServiceSecurity, ProcessSecurity: r.ProcessSecurity, CleanupTimeout: r.ReadyCleanupTimeout})
-	if err != nil {
-		return nil, err
-	}
-	s.token, err = factory.Prepare(ctx)
-	if err != nil {
-		return nil, err
+	if s.token == nil {
+		return nil, ErrRootDenied
 	}
 	strong, err := s.token.Borrow(ctx)
 	if err != nil {
@@ -38,6 +55,20 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 	}
 	return s.prepared.ComposeService(ctx, strong, s.cfg.Approval)
 }
+
+func prepareExecutionToken(ctx context.Context, prepared *Prepared) (*LaunchToken, error) {
+	query, err := prepared.loaded.QueryToken()
+	if err != nil {
+		return nil, err
+	}
+	r := prepared.record
+	factory, err := NewNativeLaunchFactory(serviceready.Config{Profile: r.Profile, PrimaryToken: query, Endpoint: r.Endpoint, ServiceCommandLine: r.ServiceCommandLine, ServiceSecurity: r.ServiceSecurity, ProcessSecurity: r.ProcessSecurity, CleanupTimeout: r.ReadyCleanupTimeout})
+	if err != nil {
+		return nil, err
+	}
+	return factory.Prepare(ctx)
+}
+
 func (s *nativeExecutionStage) Close(ctx context.Context) error {
 	if s.token != nil {
 		if err := s.token.Close(ctx); err != nil {

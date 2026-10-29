@@ -50,7 +50,7 @@ func (s *Service) BindOuterFinalizer(finalizer OuterFinalizer) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.done == nil || s.prepare == nil || s.cfg.Budgets.Startup <= 0 || s.cfg.Budgets.Cleanup <= 0 || s.cfg.Budgets.Observe <= 0 {
+	if s.done == nil || s.prepare == nil && s.control == nil || s.cfg.Budgets.Startup <= 0 || s.cfg.Budgets.Cleanup <= 0 || s.cfg.Budgets.Observe <= 0 {
 		return ErrProvisioningUnconfigured
 	}
 	if s.used || s.started || s.stopping || s.outer != nil {
