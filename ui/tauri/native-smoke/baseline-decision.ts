@@ -28,9 +28,13 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
   if (object(session) && session.sessionCreated === true && session.documentChecked !== true) {
     return { ...result, outcome: 'document-not-verified', nextAction: 'inspect-document-boundary' };
   }
+  if (object(session) && session.sessionCreated === false && session.sessionOutcome === 'request-failed') {
+    return { ...result, outcome: 'session-request-failed', nextAction: 'inspect-driver-request' };
+  }
   const nextAction = cleanupVerified ? 'compare-controller-context' : 'repair-ownership-observation';
   if (wry.startup.phase === 'controller-callback-not-observed' && stages.includes('controller-api-return')
-    && !stages.includes('controller-callback') && collection.sessionSucceeded === false) {
+    && !stages.includes('controller-callback') && collection.sessionSucceeded === false
+    && collection.sessionTimedOut === true && object(session) && session.sessionCreated === false && session.sessionOutcome === 'timeout') {
     return { ...result, outcome: 'controller-callback-unobserved', nextAction };
   }
   return { ...result, outcome: exited && collection.sessionSucceeded === false ? 'session-after-wry-exit' : 'other-boundary',
