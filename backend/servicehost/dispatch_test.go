@@ -39,7 +39,7 @@ func (v *dispatchTestVerifier) verify(_ context.Context, frame []byte) (authenti
 	}
 	return authenticatedServiceRead{owner: v.owner, frame: sha256.Sum256(frame), ticket: ticket}, nil
 }
-func dispatchTestOwner(t *testing.T, limit uint64) (*Service, *serviceDispatcher, *dispatchTestVerifier, <-chan error, *atomic.Int32) {
+func dispatchTestOwner(t *testing.T, limit uint64, expectedCleanup ...error) (*Service, *serviceDispatcher, *dispatchTestVerifier, <-chan error, *atomic.Int32) {
 	t.Helper()
 	var legacy atomic.Int32
 	source := lifetimePolicySource(func(ctx context.Context) (ephemeral.ApprovedPolicy, error) {
@@ -82,8 +82,13 @@ func dispatchTestOwner(t *testing.T, limit uint64) (*Service, *serviceDispatcher
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		if err := s.Close(ctx); err != nil {
-			t.Error(err)
+		err := s.Close(ctx)
+		if len(expectedCleanup) == 0 {
+			if err != nil {
+				t.Error(err)
+			}
+		} else if !errors.Is(err, expectedCleanup[0]) {
+			t.Errorf("cleanup lost expected classification: %v", err)
 		}
 	})
 	return s, d, verifier, done, &legacy
@@ -344,7 +349,7 @@ func TestServiceDispatchRegistrationAndProfileAreSingleOwnerAndFinite(t *testing
 }
 
 func TestServiceDispatchUnconfirmedRevocationReceiptPoisonsChannel(t *testing.T) {
-	s, d, _, _, _ := dispatchTestOwner(t, 4)
+	s, d, _, _, _ := dispatchTestOwner(t, 4, bootstrapauth.ErrFatal)
 	hello := dispatchTestFrame(t, d, dispatchHello)
 	// 固定分類のmemory注入だけで、native impersonationやOS APIを実行しない。
 	s.mu.Lock()

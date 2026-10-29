@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"runtime"
 	"sync"
@@ -45,6 +46,7 @@ type Service struct {
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
 	dispatch                                  *serviceDispatcher
+	auth                                      *serviceAuthAdapter
 	ownerIntent                               *serviceOwnerIntent
 	reservation                               *serviceReservation
 	host                                      *Host
@@ -115,8 +117,20 @@ func (s *Service) Snapshot() ServiceSnapshot {
 	return out
 }
 
+// Service authentication has its own fixed fatal sentinel. Preserve the
+// classification without forwarding the native error's private text.
+func serviceFailure(causes ...error) error {
+	result := runtimeFailure(causes...)
+	for _, cause := range causes {
+		if errors.Is(cause, operatorauth.ErrFatal) {
+			return errors.Join(result, operatorauth.ErrFatal)
+		}
+	}
+	return result
+}
+
 func fatalServiceThread(err error) bool {
-	return errors.Is(err, bootstrapauth.ErrFatal) || errors.Is(err, protectedkey.ErrFatal)
+	return errors.Is(err, bootstrapauth.ErrFatal) || errors.Is(err, protectedkey.ErrFatal) || errors.Is(err, operatorauth.ErrFatal)
 }
 
 // requestStopは新規発行拒否を先に公開し、pure issuerの全失効後にworkerを取り消す。
@@ -128,9 +142,9 @@ func (s *Service) stopFor(cause error) bool {
 	s.mu.Lock()
 	already := s.stopping
 	if fatalServiceThread(cause) {
-		s.stopCause = runtimeFailure(s.stopCause, cause)
+		s.stopCause = serviceFailure(s.stopCause, cause)
 	} else if !already && cause != nil && !errors.Is(cause, context.Canceled) {
-		s.stopCause = runtimeFailure(cause)
+		s.stopCause = serviceFailure(cause)
 	}
 	s.stopping = true
 	var unusedDone chan struct{}
@@ -154,6 +168,10 @@ func (s *Service) stopFor(cause error) bool {
 	if d := s.delivery; d != nil {
 		deliveryCancel = d.cancel
 	}
+	var authCancel context.CancelFunc
+	if s.auth != nil && s.auth.active != nil && !s.auth.active.finished {
+		authCancel = s.auth.active.cancel
+	}
 	i, cancel := s.issuer, s.cancel
 	s.mu.Unlock()
 	if unusedDone != nil {
@@ -168,6 +186,9 @@ func (s *Service) stopFor(cause error) bool {
 	}
 	if deliveryCancel != nil {
 		deliveryCancel()
+	}
+	if authCancel != nil {
+		authCancel()
 	}
 	if cancel != nil {
 		cancel()
@@ -213,6 +234,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	stopping := s.stopping
 	s.mu.Unlock()
 	defer func() {
+		s.awaitAuthRequestBeforeReturn()
 		s.awaitOwnerReservationBeforeReturn()
 		s.awaitHostDeliveryBeforeReturn()
 		s.mu.Lock()
@@ -293,7 +315,10 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(cleanup, min(cfg.Budgets.Observe, cfg.Budgets.Cleanup/8))
 			_ = publish(report, StopPending)
 			finish()
-			closeErr := s.waitOwnerReservation(cleanup)
+			closeErr := s.waitAuthRequest(cleanup)
+			if closeErr == nil {
+				closeErr = s.waitOwnerReservation(cleanup)
+			}
 			if closeErr == nil {
 				closeErr = s.waitHostDelivery(cleanup)
 			}
@@ -340,7 +365,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 				}
 				closeErr = attempt(retry.ctx)
 				if closeErr != nil {
-					retry.reply <- runtimeFailure(closeErr)
+					retry.reply <- serviceFailure(closeErr)
 				} else {
 					retry.reply <- nil
 				}
@@ -353,7 +378,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			}
 		}
 		if closeErr != nil {
-			result = runtimeFailure(result, closeErr)
+			result = serviceFailure(result, closeErr)
 		} else {
 			s.mu.Lock()
 			cause := s.stopCause
@@ -377,7 +402,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	s.mu.Unlock()
 	if err != nil || plane == nil || startup.Err() != nil {
 		end()
-		return runtimeFailure(err)
+		return serviceFailure(err)
 	}
 	if err = publish(startup, Running); err == nil {
 		err = plane.ConfirmRunning(startup)
@@ -388,7 +413,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	startupErr := startup.Err()
 	end()
 	if err != nil || startupErr != nil {
-		return runtimeFailure(err)
+		return serviceFailure(err)
 	}
 	s.mu.Lock()
 	if s.stopping {
@@ -444,12 +469,12 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			err := plane.Recheck(check)
 			finish()
 			if err != nil {
-				return runtimeFailure(err)
+				return serviceFailure(err)
 			}
 		case approval := <-approvals:
 			approvals = nil
 			if approval.err != nil {
-				return runtimeFailure(approval.err)
+				return serviceFailure(approval.err)
 			}
 			delivery, err := s.prepareLegacyHostDelivery(root, approval.policy)
 			if err != nil {
@@ -460,7 +485,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 
 		case err := <-hostDone:
 			// 成否にかかわらず既存one-shot runnerの終了でservice起動を終える。自動再承認なし。
-			return runtimeFailure(err)
+			return serviceFailure(err)
 		}
 	}
 }
@@ -495,7 +520,7 @@ func readServiceApproval(ctx context.Context, source ProtectedProvisioning) (p e
 	p, err = source.ReadApproved(ctx)
 	if canceled := ctx.Err(); canceled != nil {
 		if fatalServiceThread(err) {
-			return ephemeral.ApprovedPolicy{}, errors.Join(canceled, runtimeFailure(err))
+			return ephemeral.ApprovedPolicy{}, errors.Join(canceled, serviceFailure(err))
 		}
 		return ephemeral.ApprovedPolicy{}, canceled
 	}
@@ -503,7 +528,18 @@ func readServiceApproval(ctx context.Context, source ProtectedProvisioning) (p e
 }
 
 // Closeの予算がなくても、発行拒否と全失効を先に行う。回収不明の成功扱いはしない。
-func (s *Service) Close(ctx context.Context) error {
+func (s *Service) Close(ctx context.Context) (result error) {
+	defer func() {
+		if s == nil {
+			return
+		}
+		s.mu.Lock()
+		cause := s.stopCause
+		s.mu.Unlock()
+		if fatalServiceThread(cause) {
+			result = serviceFailure(result, cause)
+		}
+	}()
 	if s == nil {
 		return ErrRuntimeUnconfirmed
 	}
@@ -542,7 +578,7 @@ func (s *Service) Close(ctx context.Context) error {
 	err := s.cleanupErr
 	s.mu.Unlock()
 	if err != nil {
-		return runtimeFailure(err)
+		return serviceFailure(err)
 	}
 	return s.finalizeOuter(ctx)
 }

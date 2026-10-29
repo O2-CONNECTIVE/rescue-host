@@ -19,7 +19,7 @@ type serviceDispatchProfile struct {
 type authenticatedReadTicket struct{ marker byte }
 
 // exact readの単回capability。nonce/digest一致自体を認証の根拠にはしない。
-// 生成は将来の同owner native adapterの責務で、現在の生成口は_test.goだけ。
+// 生成は同owner adapterの責務。concrete Batchの供給元は未接続のまま。
 type authenticatedServiceRead struct {
 	owner  *serviceDispatcher
 	frame  [32]byte

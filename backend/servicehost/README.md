@@ -136,6 +136,12 @@ childjobのnativeが使うparameterとOS seamの順序/失敗保持は純粋試�
 request/responseは既存rescue-host-service/1 codecを使い、同じboot/channel、hello後の連続sequence、有限request ID集合と単回read capabilityを照合する。
 nonceやframe hashの一致自体は認証ではない。native read capabilityの生成とprotected profileの供給は未接続で、製品入口は変えない。
 
+`auth_dispatch.go`のprivate adapterは、同じService/issuerへ取得前のBatchとCollectorを登録してから単回Startし、同Collectorのproof消費後だけ既存dispatcherへ渡す。
+累積起動枠は失敗でも戻さず、実write完了を応答の受付と分ける。
+停止は失効を先行し、回収未確認なら元の専用worker/threadを保持する。Service側は有限な回収要求とackだけを待ち、別threadへnative回収を移さない。
+次要求は回収とworker終了の両ack後だけ受け付ける。fatalは固定分類を保持し、未確認回収を成功へ変換しない。
+正規producer、同issuerの失効callbackを束縛するfactory、scope取得前からのcaller固定thread、sole-reader/channel寿命と実Windows成立は未接続・未実証である。
+
 statusは同じownerの許可0観測だけを返し、bindingやapprovalを捏造しない。
 prepare-intent/confirm-approvalは固定UNCONFIGUREDで拒否し、issuer.Prepareやlaunchへ到達しない。
 quiesceは発行拒否・同じissuerの実Close成功からprivate receiptを作り、quiesce-acceptedだけを返す。
