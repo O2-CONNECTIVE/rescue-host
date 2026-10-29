@@ -1,7 +1,7 @@
 import { ArrowRightLeft, CircleAlert, CircleCheck, CircleDashed, Clock3, LoaderCircle, Square } from 'lucide-react';
 import type { OperatorState, Phase } from './model.ts';
 
-const status = {
+export const status = {
   entry: { title: 'サンプルで接続の流れを試す', text: 'サンプルを入力して、接続の準備を試せます。', role: '', icon: CircleDashed, step: 0 },
   review: { title: '接続前の確認', text: '接続先・許可範囲・期限を確認してください。', role: '', icon: CircleDashed, step: 0 },
   waiting: { title: '承認を待っています（モック）', text: '接続先の操作ユーザーの承認を待っています。', role: 'connected', icon: LoaderCircle, step: 1 },
