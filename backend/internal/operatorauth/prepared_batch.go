@@ -196,16 +196,17 @@ func (b *nativeBatch) Close(ctx context.Context) (result error) {
 	return err
 }
 
-// EndpointFactory is an immutable, pure holder for a protected native policy.
-// There is intentionally no public constructor or policy setter: the canonical
-// expected AuthenticationID producer remains unconfigured. A zero/copy cannot
-// prepare a Batch. Preparation itself is not authentication.
+// EndpointFactory は不変なpure policy保持者。方式Bの公開constructorは
+// SID policyだけを保持し、正規helper token/runtime sourceを供給しない。
+// 従来のAuthId exact policyはprivate経路のまま。zero/copyはBatchを準備できない。
+// 準備とpolicyの値一致は実messageの認証を証明しない。
 type EndpointFactory struct {
 	self         *EndpointFactory
 	service      *bootstrapauth.Factory
 	serviceToken uintptr
 	spec         nativeBatchSpec
 	policy       profileProviderPolicy
+	sidPolicy    SIDPolicy
 }
 
 func newEndpointFactory(s nativeBatchSpec, f *bootstrapauth.Factory, token uintptr, p profileProviderPolicy) (*EndpointFactory, error) {
@@ -221,6 +222,11 @@ func (f *EndpointFactory) MatchesServiceFactory(service *bootstrapauth.Factory) 
 }
 func (f *EndpointFactory) Prepare(input *serviceready.SoleInput, owner *serviceauthowner.Owner, issuer *ephemeral.Issuer) (*Batch, error) {
 	if f == nil || f.self != f || input == nil || !owner.MatchesIssuer(issuer) {
+		return nil, ErrUnconfigured
+	}
+	// SID policy構成とhelper資源の供給は別契約。正規runtime未構成なら
+	// SoleInput.Moveやnative取得より前に閉じる。
+	if f.sidPolicy != (SIDPolicy{}) {
 		return nil, ErrUnconfigured
 	}
 	return prepareNativeSoleInputProfileBatch(f.spec, input, f.service, f.serviceToken, batchOwner{issuer: issuer, owner: owner}, f.policy)

@@ -14,6 +14,7 @@ import (
 // raw input は従来の所有移譲済み read。新 typed 経路は具体 SoleInput だけを
 // pure 保持し、Start 後の Move 実 return を b.input に保持する。両入力は排他。
 type nativeBatchSpec struct {
+	sidPolicy  SIDPolicy
 	input      uintptr
 	launch     nativeLaunchSpec
 	report     reportConfig
@@ -83,6 +84,14 @@ type nativeBatch struct {
 }
 
 func (s nativeBatchSpec) valid() bool {
+	if s.sidPolicy != (SIDPolicy{}) {
+		p, ok := s.producer.(*sidProfileProvider)
+		if !ok || p == nil || !s.sidPolicy.valid() || p.material.profile.sid != s.sidPolicy || p.material.launchID != s.launch.launchID || p.material.cleanup != s.launch.cleanup || s.report.guestSID != s.sidPolicy.GuestSID {
+			return false
+		}
+	} else if _, ok := s.producer.(*sidProfileProvider); ok {
+		return false
+	}
 	l := s.launch
 	inputValid := helperHandle(s.input) && s.input != l.primaryToken && s.soleInput == nil && s.inputLease == nil
 	if s.soleInput != nil {
@@ -100,7 +109,7 @@ func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nat
 	}
 	b := &nativeBatch{issuer: owner.issuer, ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), owner: owner.owner}
 	b.self = b
-	b.collector = &Collector{cleanup: s.launch.cleanup, ops: collectorOps{
+	b.collector = &Collector{sidPolicy: s.sidPolicy, launchID: s.launch.launchID, authOwner: owner.owner, authIssuer: owner.issuer, cleanup: s.launch.cleanup, ops: collectorOps{
 		check: b.recheck, drain: b.drain, terminate: b.terminate, wait: b.wait,
 		closeIO: b.closeOwned, closeProcess: b.confirmClosed,
 		revoke: b.revoke, reclaim: func(c context.Context) error {
@@ -178,7 +187,7 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 			err = errors.Join(err, b.Close(cleanup))
 		}
 	}()
-	if p, ok := s.producer.(*protectedProfileProvider); ok {
+	if p, ok := s.producer.(profileLifetimeProducer); ok {
 		if e := p.bindRequest(b.request); e != nil {
 			return e
 		}
@@ -316,7 +325,7 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 		}
 		return e
 	}
-	if p, ok := b.spec.producer.(*protectedProfileProvider); ok {
+	if p, ok := b.spec.producer.(profileLifetimeProducer); ok {
 		if e := p.recheck(ctx); e != nil {
 			return b.retainScopeFailure(e)
 		}
@@ -440,7 +449,7 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 			return e
 		}
 	}
-	if p, ok := b.spec.producer.(*protectedProfileProvider); ok {
+	if p, ok := b.spec.producer.(profileLifetimeProducer); ok {
 		if e := p.close(ctx); e != nil {
 			return b.retainScopeFailure(e)
 		}

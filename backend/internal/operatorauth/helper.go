@@ -67,7 +67,7 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 	if errors.Is(err, ErrFatal) {
 		return fatal()
 	}
-	if err != nil || peer != h.profile.operator || !finite(ctx) {
+	if err != nil || !h.matches(peer) || !finite(ctx) {
 		return ErrDenied
 	}
 	if _, err = servicecontrol.DecodeUntrustedFrame(frame); err != nil {
@@ -78,6 +78,12 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 			return fatal()
 		}
 		return ErrDenied
+	}
+	if h.profile.sid != (SIDPolicy{}) {
+		frame, err = encodeAuthenticatedReport(frame, h.profile.launchID, h.profile.sid, peer)
+		if err != nil {
+			return ErrDenied
+		}
 	}
 	if h.ops.publish(ctx, frame) != nil || !finite(ctx) {
 		return ErrDenied
@@ -113,8 +119,18 @@ func restoreHelper(api threadKernel) (err error) {
 	return nil
 }
 
+func (h *Helper) matches(actual tokenProjection) bool {
+	if h.profile.sid != (SIDPolicy{}) {
+		return h.profile.sid.accepts(actual)
+	}
+	return actual == h.profile.operator
+}
+
 func (h *Helper) valid() bool {
+	if h.profile.sid != (SIDPolicy{}) {
+		return h.profile.sid.valid() && profileLaunchID(h.profile.launchID) && h.profile.operator == (tokenProjection{}) && h.profile.guest == (tokenProjection{}) && h.ops.thread != nil && reportHandle(h.ops.pipe) && h.ops.check != nil && h.ops.read != nil && h.ops.publish != nil
+	}
 	p := h.profile.operator
-	return h.ops.thread != nil && h.ops.pipe != 0 && h.ops.pipe < ^uintptr(0)-15 && h.ops.check != nil && h.ops.read != nil && h.ops.publish != nil &&
+	return h.profile.launchID == "" && h.ops.thread != nil && h.ops.pipe != 0 && h.ops.pipe < ^uintptr(0)-15 && h.ops.check != nil && h.ops.read != nil && h.ops.publish != nil &&
 		p.user != "" && h.profile.guest.user != "" && p.user != h.profile.guest.user && p.authentication != 0 && p.kind == 2 && (p.level == 1 || p.level == 2) && p.integrity != 0 && !p.restricted && !p.appContainer
 }
