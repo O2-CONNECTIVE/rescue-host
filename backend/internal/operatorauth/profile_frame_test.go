@@ -12,6 +12,13 @@ func TestProfileFrameRequiresMatchingLaunchAndStrictFields(t *testing.T) {
 	if err != nil || p.operator.authentication != 7 || p.guest.user != "S-1-5-21-2" {
 		t.Fatalf("profile=%+v err=%v", p, err)
 	}
+	exact := strings.TrimSuffix(frame, "\n") + strings.Repeat(" ", 16384-len(frame)) + "\n"
+	if len(exact) != 16384 {
+		t.Fatal("bad test boundary")
+	}
+	if _, err := decodeHelperProfileFrame([]byte(exact), id); err != nil {
+		t.Fatal("exact limit rejected", err)
+	}
 	for _, invalid := range []string{
 		strings.Replace(frame, `"version":"1"`, `"version":"1","version":"1"`, 1),
 		strings.Replace(frame, `"user":"S-1-5-21-1"`, `"user":"S-1-5-21-1","user":"S-1-5-21-1"`, 1),
@@ -19,13 +26,16 @@ func TestProfileFrameRequiresMatchingLaunchAndStrictFields(t *testing.T) {
 		strings.Replace(frame, `"session":"3"`, `"session":"03"`, 1),
 		strings.Replace(frame, `"session":"3"`, `"session":3`, 1),
 		strings.Replace(frame, `"session":"3"`, `"session":null`, 1),
+		strings.Replace(frame, `"session":"3"`, `"session":[]`, 1),
 		strings.Replace(frame, `"session":"3"`, `"session":"+3"`, 1),
+		strings.Replace(frame, `"session":"3"`, `"session":"7e0"`, 1),
 		strings.Replace(frame, `"authentication":"7"`, `"authentication":"18446744073709551616"`, 1),
 		strings.Replace(frame, `"restricted":false`, `"restricted":true`, 1),
 		strings.Replace(frame, `"appContainer":false`, `"appContainer":true`, 1),
 		strings.Replace(frame, `"kind":"2"`, `"kind":"1"`, 1),
 		strings.Replace(frame, `"level":"1"`, `"level":"3"`, 1),
 		strings.Replace(frame, `S-1-5-21-2`, `S-1-05-21-2`, 1),
+		strings.Replace(frame, `S-1-5-21-2`, `S-1-5-21-4294967296`, 1),
 		strings.Replace(frame, `"guestUser":"S-1-5-21-2"`, `"guestUser":"S-1-5-21-1"`, 1),
 		strings.Replace(frame, `"guestUser":`, `"unknown":1,"guestUser":`, 1),
 		strings.TrimSuffix(frame, "\n"),
