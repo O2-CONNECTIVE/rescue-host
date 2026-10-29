@@ -38,7 +38,7 @@ type Endpoint struct {
 	written          atomic.Pointer[WriteReceipt]
 	failed, closing  atomic.Bool
 	closed           atomic.Pointer[EndpointClosed]
-	inspection       *InspectionLease // q.gate owns issuance; the lease owns its duplicate.
+	inspection       *InspectionLease // 発行はq.gate、同じ複製の回収はleaseが所有する。
 	inspectionActive atomic.Int32
 }
 

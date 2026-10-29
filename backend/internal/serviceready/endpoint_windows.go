@@ -12,7 +12,7 @@ import (
 // Native source only: no Factory/profile binding to Batch is supplied here.
 type nativeEndpointPipe struct {
 	nativeListener
-	inspection *inspectionNativeHandle // retain out parameters before DuplicateHandle dispatch
+	inspection *inspectionNativeHandle // DuplicateHandle開始前に出力slotを保持する。
 }
 
 func (nativeKernel) createEndpoint(name, descriptor string) (endpointDuplex, error) {
