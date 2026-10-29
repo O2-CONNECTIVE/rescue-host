@@ -11,21 +11,21 @@ import (
 )
 
 func (windowsKernel) verifyArtifact(ctx context.Context, artifact Artifact) (uintptr, error) {
-	if !localImagePath(artifact.Path) {
+	if !localFilePath(artifact.Path) {
 		return 0, ErrConfig
 	}
 	path, err := windows.UTF16PtrFromString(artifact.Path)
 	if err != nil {
 		return 0, ErrConfig
 	}
-	// nil SAで非継承。write/delete sharingを許さず、hashからresumeまで同じhandleを保持。
+	// nil SAで非継承。write/delete sharingを許さず、呼出側が同じhandleを保持。
 	h, err := windows.CreateFile(path, windows.GENERIC_READ, windows.FILE_SHARE_READ, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
 		return 0, ErrStart
 	}
 	info := windows.ByHandleFileInformation{}
 	kind, typeErr := windows.GetFileType(h)
-	if err := windows.GetFileInformationByHandle(h, &info); err != nil || typeErr != nil || kind != windows.FILE_TYPE_DISK || info.FileAttributes&(windows.FILE_ATTRIBUTE_DIRECTORY|windows.FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
+	if err := windows.GetFileInformationByHandle(h, &info); err != nil || typeErr != nil || kind != windows.FILE_TYPE_DISK || info.NumberOfLinks != 1 || info.FileAttributes&(windows.FILE_ATTRIBUTE_DIRECTORY|windows.FILE_ATTRIBUTE_REPARSE_POINT) != 0 {
 		return uintptr(h), ErrStart
 	}
 	hash := sha256.New()
