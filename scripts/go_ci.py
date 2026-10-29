@@ -16,7 +16,10 @@ MODULE = ROOT / 'backend'
 GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/guestaccount': {
-        'close.go', 'lifecycle.go', 'model.go', 'plan.go', 'prepare.go', 'recovery.go', 'source.go', 'validation.go'},
+        'close.go', 'lifecycle.go', 'model.go', 'plan.go', 'prepare.go', 'recovery.go', 'source.go', 'validation.go',
+        'account_query.go', 'account_query_buffer.go', 'account_query_read.go',
+        'journal.go', 'journal_codec.go', 'journal_security.go', 'sid_codec.go',
+        'sid_run.go', 'sid_run_io.go', 'sid_script.go', 'sid_source.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
@@ -31,10 +34,10 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go'},
+        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
-    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go', 'fixed_command.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey': {
         'acl.go', 'format.go', 'loader.go', 'profile.go', 'scope.go', 'source.go', 'validation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrap': {
@@ -47,7 +50,7 @@ PRODUCT_FILES = {
         'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go', 'service_witness.go', 'endpoint.go', 'endpoint_input.go', 'endpoint_operation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
-        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
+        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go', 'preview.go',
         'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner': {'owner.go'},
@@ -56,6 +59,14 @@ PRODUCT_FILES = {
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
         'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go',
         'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go', 'endpoint_candidate.go', 'sole_input_batch.go'},
+}
+
+
+GUEST_ACCOUNT_FILES = {
+    'linux': {'account_query_other.go', 'journal_other.go'},
+    'darwin': {'account_query_other.go', 'journal_other.go'},
+    'windows': {'account_query_windows.go', 'account_query_windows_machine.go',
+                'journal_windows.go', 'journal_windows_pin.go'},
 }
 
 
@@ -149,9 +160,11 @@ def product_files_for(goos):
     if (goos not in SCM_FILES or goos not in LOCALCONTROL_FILES
             or goos not in CHILDJOB_FILES or goos not in PROTECTEDKEY_FILES
             or goos not in NATIVE_BOOTSTRAP_FILES or goos not in SCM_READY_FILES
-            or goos not in SERVICE_PROVISION_FILES or goos not in OPERATOR_AUTH_FILES):
+            or goos not in SERVICE_PROVISION_FILES or goos not in OPERATOR_AUTH_FILES
+            or goos not in GUEST_ACCOUNT_FILES):
         raise ValueError('Unsupported Go target for production inventory')
     expected = {package: set(files) for package, files in PRODUCT_FILES.items()}
+    expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/guestaccount'].update(GUEST_ACCOUNT_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth'].update(OPERATOR_AUTH_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/servicehost'].add(SCM_FILES[goos])
     expected['github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol'].update(LOCALCONTROL_FILES[goos])

@@ -38,15 +38,15 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは156実装、Windowsでは173実装ファイルを照合します。
-guestaccountは共通8実装を限定登録し、memoryでの準備・失効・清掃順序だけを検査します。実account・保護journal・動的GuestSID・有効化は未接続です。
+通常buildに選択される26package、Linux/macOSでは173実装、Windowsでは192実装ファイルを照合します。
+guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
 serviceauthownerは共通owner.goだけを許可し、実issuerと共通gateの状態を扱います。正規profile sourceや実OSの認証は提供しません。
-servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
+servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.go/preview.go/preview_dispatch.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
 SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
@@ -55,7 +55,7 @@ localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応す�
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
-runbackendはruntime.goだけ、childjobは共通child.go/plan.goと、非Windowsのnative_other.go、
+runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/artifact_windows.goだけを許可します。
 protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/validation.goと、
 非Windowsのnative_other.goまたはWindowsのnative_windows.goの1件だけを許可します。
@@ -67,7 +67,7 @@ childstdioはoperation.go/pipes.go/streams.goと、非Windowsのnative_other.go�
 servicereadyはconfig.go/operation.go/plane.go/security.go/preflight.go/service_witness.go/endpoint.go/endpoint_input.go/endpoint_operation.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/connect_windows.go/listener_windows.go/endpoint_windows.go/endpoint_io_windows.goを厳密選択します。
 cmd/rescue-backendはmain.go/native.goの2件です。通常buildに試験用adapterを混ぜません。
-serviceprovisionはcompose.go/errors.go/record.go/record_decode.go/record_strict.go/record_validate.go/root.go/root_doc.go/root_io.go/root_validate.go/service.goと、
+serviceprovisionはcompose.go/errors.go/record.go/record_decode.go/record_strict.go/record_validate.go/root.go/root_doc.go/root_io.go/root_validate.go/service.go/preview.goと、
 共通のexecution.go/execution_native.go/execution_owner.go/launch.go/launch_security.go、
 Linux/macOSのroot_other.go/launch_other.go、Windowsのroot_windows.go/root_windows_io.go/launch_windows.go/launch_windows_security.go/launch_windows_threads.goだけを厳密選択します。
 cmd/rescue-service-hostはmain.goの1件だけを許可し、未知package・未知file・対象OSと異なる実装を拒否します。
@@ -119,3 +119,9 @@ operatorauthの共通・OS別実装は[検証入口](../scripts/go_ci.py)のPROD
 operatorauthのprofile照会は共通batch_scope.go/profile_provider.go/profile_query.goと、対象OSのprofile_query_other.goまたはprofile_query_windows.goの1件だけを追加します。正規policy/query leaseの供給や実Windows保護の検証を意味しません。
 
 候補取得は共通endpoint_candidate.goと、非Windowsのendpoint_profile_other.go、Windowsのendpoint_candidate_windows.go/endpoint_profile_windows.goだけを追加します。正規AuthenticationId供給やSoleInputとの結合を実装済みと扱いません。
+
+
+guestaccountは既存のcore 8件とaccount_query.go/account_query_buffer.go/account_query_read.go、
+journal.go/journal_codec.go/journal_security.go、sid_codec.go/sid_run.go/sid_run_io.go/sid_script.go/sid_source.goを共通で選択します。
+Linux/macOSではaccount_query_other.go/journal_other.go、Windowsではaccount_query_windows.go/account_query_windows_machine.go/journal_windows.go/journal_windows_pin.goだけを追加します。
+childjobの固定commandは固定argvと依存file保持の構成を扱います。登録成功はguest作成・無効化・削除や実Windows保護の成立を証明せず、公開NewNativeの未設定拒否は維持します。
