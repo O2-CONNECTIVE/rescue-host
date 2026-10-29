@@ -1,0 +1,163 @@
+name: Fixed main session timeout reproduction
+on:
+  pull_request:
+    branches: [main]
+    paths: ['.github/workflows/main-timeout-repro.yml', 'scripts/tests/test_main_timeout_repro.py']
+permissions:
+  contents: read
+jobs:
+  fixed-main-reproduction:
+    runs-on: windows-2022
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: source
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13.17'
+          architecture: x64
+      - name: Test reproduction contract
+        working-directory: control
+        run: python -I -m unittest discover -s scripts/tests -p test_main_timeout_repro.py -v
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: 1eda7a4e964d34a751dcc89509ee07b3482917a7
+          path: source
+          persist-credentials: false
+      - name: Create owned temporary root
+        run: |
+          $id = [Guid]::NewGuid().ToString('D').ToLowerInvariant()
+          $root = Join-Path $env:RUNNER_TEMP ("main-repro-" + $id)
+          New-Item -ItemType Directory -Path $root -ErrorAction Stop | Out-Null
+          [IO.File]::WriteAllText((Join-Path $root 'owner.json'), ([ordered]@{schema=1; purpose='main-repro'; runId=$id} | ConvertTo-Json -Compress))
+          "REPRO_ROOT=$root" >> $env:GITHUB_ENV
+          "REPRO_RUN_ID=$id" >> $env:GITHUB_ENV
+      - name: Record fixed source and test archive boundary
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -cne '1eda7a4e964d34a751dcc89509ee07b3482917a7') { throw 'SOURCE_SHA_MISMATCH' }
+          if ($sha -notmatch '^[0-9a-f]{40}$') { throw 'SOURCE_SHA_INVALID' }
+          "EVALUATION_SOURCE_SHA=$sha" >> $env:GITHUB_ENV
+          "CARGO_TARGET_DIR=$env:REPRO_ROOT/tauri-evaluation-target" >> $env:GITHUB_ENV
+          python -B -m unittest discover -s scripts/tests -p 'test_tauri_evaluation_*.py' -v
+          exit $LASTEXITCODE
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24.22.1'
+      - name: Build locked frontend with runtime notices
+        working-directory: source/ui/tauri
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/notices.mjs --check
+          exit $LASTEXITCODE
+      - name: Select fixed official Rust in disposable CI
+        run: rustup toolchain install 1.99.1 --profile minimal --no-self-update
+      - name: Read locked Cargo metadata before compiling
+        working-directory: source/ui/tauri
+        run: |
+          cargo +1.99.1 metadata --locked --format-version 1 --features custom-protocol --filter-platform x86_64-pc-windows-msvc --manifest-path src-tauri/Cargo.toml > "$env:REPRO_ROOT/cargo-metadata.json"
+          exit $LASTEXITCODE
+      - name: Collect complete dependency license texts before compiling
+        run: |
+          $sysroot = (rustc +1.99.1 --print sysroot).Trim()
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem -LiteralPath "$sysroot/share/doc/rust" -File | Select-Object -ExpandProperty Name
+          python -B scripts/collect_tauri_licenses.py --metadata "$env:REPRO_ROOT/cargo-metadata.json" --frontend-notice ui/tauri/dist/THIRD_PARTY_NOTICES.txt --rust-docs "$sysroot/share/doc/rust" --output "$env:REPRO_ROOT/evaluation-licenses"
+          exit $LASTEXITCODE
+      - name: Build locked release executable
+        working-directory: source/ui/tauri
+        run: cargo +1.99.1 build --release --locked --manifest-path src-tauri/Cargo.toml --features custom-protocol
+      - name: Create source-bound evaluation archive
+        run: |
+          $exe = "$env:CARGO_TARGET_DIR/release/rescue-host-shell.exe"
+          if ((Get-AuthenticodeSignature $exe).Status -ne 'NotSigned') { throw 'UNEXPECTED_SIGNATURE_STATE' }
+          python -B scripts/package_tauri_evaluation.py --exe $exe --licenses "$env:REPRO_ROOT/evaluation-licenses" --source-sha $env:EVALUATION_SOURCE_SHA --output "$env:REPRO_ROOT/evaluation-package"
+          exit $LASTEXITCODE
+      - name: Extract the exact distribution ZIP and check every file hash
+        run: |
+          $zip = "$env:REPRO_ROOT/evaluation-package/RescueHostTauriUnwiredEvaluation-x64.zip"
+          $zipHash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exeHash = (Get-FileHash "$env:CARGO_TARGET_DIR/release/rescue-host-shell.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          python -B scripts/verify_tauri_evaluation.py --archive $zip --source $env:EVALUATION_SOURCE_SHA --archive-sha256 $zipHash --exe-sha256 $exeHash > "$env:REPRO_ROOT/evaluation-package/verification.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Expand-Archive $zip -DestinationPath "$env:REPRO_ROOT/evaluation-unpacked"
+          $root = "$env:REPRO_ROOT/evaluation-unpacked/RescueHostTauriUnwiredEvaluation"
+          $manifest = Get-Content "$root/MANIFEST.json" -Raw | ConvertFrom-Json
+          if ($manifest.sourceCommit -ne $env:EVALUATION_SOURCE_SHA -or $manifest.integration -ne 'not_connected' -or $manifest.canStart -or $manifest.canStop -or -not $manifest.productionGateClosed) { throw 'PACKAGE_BOUNDARY_MISMATCH' }
+          foreach ($file in $manifest.files.PSObject.Properties) {
+            if ((Get-FileHash (Join-Path $root $file.Name) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $file.Value) { throw 'PACKAGE_FILE_HASH_MISMATCH' }
+          }
+      - name: Read existing CI WebView2 without updating it
+        run: ./ui/tauri/native-smoke/inventory.ps1 -OutputPath "$env:REPRO_ROOT/evaluation-inventory.json"
+      - name: Prepare existing pinned native test tools in runner temp
+        timeout-minutes: 6
+        run: ./ui/tauri/native-smoke/setup.ps1 -ToolsDirectory "$env:REPRO_ROOT/evaluation-tools" -InventoryPath "$env:REPRO_ROOT/evaluation-inventory.json"
+      - name: Launch extracted release EXE and observe UI, IPC and normal close
+        timeout-minutes: 3
+        run: ./ui/tauri/native-smoke/supervise.ps1 -ToolsDirectory "$env:REPRO_ROOT/evaluation-tools" -OutputDirectory "$env:REPRO_ROOT/evaluation-evidence" -ApplicationPath "$env:REPRO_ROOT/evaluation-unpacked/RescueHostTauriUnwiredEvaluation/rescue-host-shell.exe"
+      - name: Validate anonymous driver stages and provenance
+        if: always()
+        timeout-minutes: 1
+        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:REPRO_ROOT/evaluation-tools" -OutputDirectory "$env:REPRO_ROOT/evaluation-evidence"
+      - name: Save anonymous failure or success evidence
+        id: save_evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fixed-main-reproduction-evidence
+          path: |
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/native-observation.json
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/native-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/session-startup-timing.json
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/driver-provenance.json
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/driver-stage-report.json
+            ${{ env.REPRO_ROOT }}/evaluation-evidence/webview-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-inventory.json
+            ${{ env.REPRO_ROOT }}/evaluation-package/verification.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Remove only proven owned root
+        if: ${{ always() && steps.save_evidence.outcome == 'success' }}
+        run: |
+          $out = Join-Path $env:RUNNER_TEMP ("main-repro-cleanup-" + $env:REPRO_RUN_ID + ".json")
+          $state = 'unconfirmed'
+          try {
+            $id = $env:REPRO_RUN_ID
+            if ($id -cnotmatch '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$') { throw 'OWNER_INVALID' }
+            $expected = Join-Path $env:RUNNER_TEMP ("main-repro-" + $id)
+            if ($env:REPRO_ROOT -cne $expected) { throw 'OWNER_INVALID' }
+            $item = Get-Item -LiteralPath $expected -Force -ErrorAction Stop
+            if (-not $item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'OWNER_INVALID' }
+            $owner = Get-Content -LiteralPath (Join-Path $expected 'owner.json') -Raw | ConvertFrom-Json
+            if ($owner.schema -ne 1 -or $owner.purpose -cne 'main-repro' -or $owner.runId -cne $id) { throw 'OWNER_INVALID' }
+            $report = Get-Content -LiteralPath (Join-Path $expected 'evaluation-evidence/native-result.json') -Raw | ConvertFrom-Json
+            if ($report.nativeTestsRun -ne 1 -or $report.nativeTestsPassed -ne 1 -or $report.normalCloseVerified -ne $true -or $report.cleanupFailures -ne 0 -or $report.driverExitObservedAfterCleanup -ne $true) { throw 'OWNER_CLEANUP_UNCONFIRMED' }
+            $listeners = @(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445))
+            if ($listeners.Count -ne 0) { throw 'OWNER_CLEANUP_UNCONFIRMED' }
+            $driverPaths = @((Join-Path $expected 'evaluation-tools/tauri/bin/tauri-driver.exe'), (Join-Path $expected 'evaluation-tools/edge/msedgedriver.exe'))
+            $candidates = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgedriver.exe' OR Name = 'tauri-driver.exe'" -ErrorAction Stop)
+            foreach ($candidate in $candidates) {
+              if (-not $candidate.ExecutablePath -or $candidate.ExecutablePath -in $driverPaths) { throw 'OWNER_CLEANUP_UNCONFIRMED' }
+            }
+            Remove-Item -LiteralPath $expected -Recurse -Force -ErrorAction Stop
+            if (Test-Path -LiteralPath $expected) { throw 'OWNER_CLEANUP_UNCONFIRMED' }
+            $state = 'removed'
+          } catch { Write-Output 'OWNER_CLEANUP_UNCONFIRMED' }
+          [IO.File]::WriteAllText($out, ([ordered]@{schema=1; cleanup=$state} | ConvertTo-Json -Compress))
+          if ($state -ne 'removed') { exit 1 }
+      - name: Save owned cleanup result
+        if: ${{ always() && steps.save_evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: fixed-main-reproduction-cleanup
+          path: ${{ runner.temp }}/main-repro-cleanup-${{ env.REPRO_RUN_ID }}.json
+          if-no-files-found: error
+          retention-days: 7
