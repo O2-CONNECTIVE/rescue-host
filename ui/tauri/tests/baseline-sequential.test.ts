@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mayStartSecond, runSequential } from '../native-smoke/baseline-sequential.ts';
+import { mayStartSecond, ownedCleanupConfirmed, runSequential } from '../native-smoke/baseline-sequential.ts';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -13,6 +13,8 @@ void test('先行armの合否と独立して所有資源の終了確認が揃う
     ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true,
     driversExited: true, listenersAbsent: true, cleanupFailures: 0, normalCloseVerified: false, forcedApp: true };
   assert.equal(mayStartSecond(clean, expected), true);
+  assert.equal(ownedCleanupConfirmed({ ...clean, mode: 'load-html' }, expected, 'load-html'), true);
+  assert.equal(ownedCleanupConfirmed({ ...clean, mode: 'load-html' }, expected, 'with-html'), false);
   for (const change of [{ ownerSetRecorded: false }, { observedChildren: 0 }, { appExited: false },
     { observedChildrenExited: false }, { driversExited: false }, { listenersAbsent: false }, { cleanupFailures: 1 },
     { fixedInputsVerified: false }, { kind: 'other' }, { mode: 'load-html' }, { sourceCommit: 'bad' },
@@ -29,14 +31,16 @@ void test('失敗した先行armでもcleanup確認後だけ一度後続を実�
     ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
   let calls = 0;
   const a = async () => ({ outcome: 'failed' as const, report });
-  const b = async () => { calls++; return { outcome: 'passed' as const }; };
-  assert.deepEqual(await runSequential(a, b, expected), { first: 'failed', second: 'passed', cleanup: 'confirmed' });
+  const b = async () => { calls++; return { outcome: 'passed' as const, report: { ...report, mode: 'load-html' } }; };
+  assert.deepEqual(await runSequential(a, b, expected), { first: 'failed', second: 'passed', cleanup: 'confirmed', secondCleanup: 'confirmed' });
   assert.equal(calls, 1);
   assert.deepEqual(await runSequential(async () => ({ outcome: 'timeout' as const, report }), b, expected),
-    { first: 'timeout', second: 'not-started', cleanup: 'unconfirmed' });
+    { first: 'timeout', second: 'not-started', cleanup: 'unconfirmed', secondCleanup: 'not-started' });
   assert.deepEqual(await runSequential(async () => ({ outcome: 'failed' as const, report: null }), b, expected),
-    { first: 'failed', second: 'not-started', cleanup: 'unconfirmed' });
+    { first: 'failed', second: 'not-started', cleanup: 'unconfirmed', secondCleanup: 'not-started' });
   assert.equal(calls, 1);
+  assert.deepEqual(await runSequential(a, async () => ({ outcome: 'failed' as const, report: null }), expected),
+    { first: 'failed', second: 'failed', cleanup: 'confirmed', secondCleanup: 'unconfirmed' });
 });
 
 void test('開始gate CLIは欠落や秘密を含む入力を露出せず拒否する', () => {
