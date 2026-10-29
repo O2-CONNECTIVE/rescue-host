@@ -19,6 +19,8 @@ Service adapterや公開入口へのfactory登録は行わない。
 
 入力は非継承・exact read権 `0x120089` のmessage server端で、kernel server PIDが現在processに一致することを既存のread validatorで検査する。
 GetNamedPipeClientProcessIdで取得前後のclient PIDを照合し、そのPIDで開いたprocessの生存・creation・imageとprimary tokenを保持する。
+pipe APIが返すのはPIDだけであり、process取得前のPID再利用を排除する世代結合は証明しない。
+この候補を正規operator processや同endpointの来歴証明へ昇格させない。
 processはQUERY_LIMITED_INFORMATIONとSYNCHRONIZE、tokenはTOKEN_QUERYだけを要求する。
 元read端はBatch所有であり、このleaseはclose・read・impersonate・duplicateしない。
 取得完了後は保持process/tokenだけを再照会し、Batchが閉じたreadの番号を再利用してqueryしない。

@@ -8,9 +8,6 @@ import (
 
 type nativeEndpointCandidateKernel struct{ query nativeProfileQueryKernel }
 
-func newNativeEndpointCandidateLease(input uintptr) (*endpointCandidateLease, error) {
-	return newEndpointCandidateLease(input, &nativeEndpointCandidateKernel{})
-}
 func (k *nativeEndpointCandidateKernel) subject() error { return k.query.subject() }
 func (*nativeEndpointCandidateKernel) endpoint(input uintptr) (uint32, error) {
 	if e := validateNativeOperatorRead(input); e != nil {
