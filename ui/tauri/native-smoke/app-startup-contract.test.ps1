@@ -14,6 +14,10 @@ try {
     if (Wait-WryStartupTrace $directory $budget) { throw 'MISSING_WRY_TRACE_ACCEPTED' }
     [IO.File]::WriteAllText((Join-Path $directory 'wry-startup-stages.json'), '{}')
     if (-not (Wait-WryStartupTrace $directory $budget)) { throw 'CLOSED_WRY_FILE_NOT_OBSERVED' }
+    if (Wait-DriverStageTrace $directory $budget) { throw 'MISSING_DRIVER_TRACE_ACCEPTED' }
+    if (-not (Test-Path (Join-Path $directory 'driver-stage.finish'))) { throw 'DRIVER_CUTOFF_MISSING' }
+    [IO.File]::WriteAllText((Join-Path $directory 'driver-stage.jsonl'), '{}')
+    if (-not (Wait-DriverStageTrace $directory $budget)) { throw 'CLOSED_DRIVER_FILE_NOT_OBSERVED' }
     $budget.Stop()
     # 前のwaitがbudgetを使い切っても、追加待機せず一度だけ完成fileを確認する。
     if ($budget.ElapsedMilliseconds -gt 3000) { throw 'SHARED_WAIT_BUDGET_OVERRUN' }
