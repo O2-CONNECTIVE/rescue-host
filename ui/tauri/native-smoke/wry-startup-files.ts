@@ -5,8 +5,11 @@ export async function inspectWryStartupFile(directory: string, collection: unkno
   let file: Awaited<ReturnType<typeof open>> | undefined;
   try {
     if (!collection || typeof collection !== 'object' || !('kind' in collection)
-      || collection.kind !== 'windows-webview2-native-smoke' || !('wryStartupFileClosed' in collection)
-      || collection.wryStartupFileClosed !== true) return classifyWryStartup(null);
+      || !('wryStartupFileClosed' in collection) || collection.wryStartupFileClosed !== true) return classifyWryStartup(null);
+    const native = collection.kind === 'windows-webview2-native-smoke';
+    const contrast = collection.kind === 'direct-wry-controller-contrast' && 'schema' in collection && collection.schema === 1
+      && 'productNativePass' in collection && collection.productNativePass === false;
+    if (!native && !contrast) return classifyWryStartup(null);
     const name = path.join(directory, 'wry-startup-stages.json'); const stat = await lstat(name);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2048) return classifyWryStartup(null);
     file = await open(name, 'r'); const buffer = Buffer.alloc(2049);
