@@ -20,6 +20,12 @@ private OS/owner memory seamによる各層の正例と、製品の同一caller�
 実runtime証跡からのgrant/起動、内側sshdの実token/shellと停止owner、実Windows配置と保護は未接続・未実装・未検証です。
 以下の#72当時の配布/native証跡は履歴であり、この新sourceの実機検証結果へ合成しません。
 
+## 方式Bの採用とcore実装
+
+[ADR-0002](adr/0002-operator-sid-policy.md)は、固定OperatorSIDの新規承認資格と認証後AuthId bindingを分けます。
+profile/reportの明示v2と単回消費を追加しましたが、Root供給とlogical channel登録は後続です。
+helper tokenと保護sourceは未構成で、policy構成だけでは取得を開始しません。実機機能や実SSHの成功は増えていません。
+
 ## 提供段階と証拠の読み方
 
 | 提供段階 | 定義 |

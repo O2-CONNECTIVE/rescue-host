@@ -11,6 +11,12 @@ import (
 
 // encodeHelperProfileFrameは値の形式だけを確認し、正規producerの証拠を生成しない。
 func encodeHelperProfileFrame(launchID string, p helperProfile) ([]byte, error) {
+	if p.sid != (SIDPolicy{}) {
+		return encodeSIDProfileFrame(launchID, p)
+	}
+	if p.launchID != "" {
+		return nil, ErrDenied
+	}
 	// 最大15 subauthority、48-bit authorityを含むcanonical SIDの長さを制限。
 	if !profileLaunchID(launchID) || len(p.operator.user) > 184 || len(p.guest.user) > 184 || !reportSIDValid(p.operator.user) || !reportSIDValid(p.guest.user) {
 		return nil, ErrDenied
@@ -58,6 +64,9 @@ func decodeHelperProfileFrame(frame []byte, expected string) (helperProfile, err
 	}
 	if _, err = d.Token(); err != io.EOF {
 		return out, ErrDenied
+	}
+	if root["version"] == "2" {
+		return decodeSIDProfileObject(root, expected)
 	}
 	if !profileKeys(root, "version", "type", "launchId", "operator", "guestUser") || root["version"] != "1" || root["type"] != "helper-profile" || root["launchId"] != expected {
 		return out, ErrDenied
@@ -128,7 +137,7 @@ func profileObject(d *json.Decoder, depth int) (map[string]any, error) {
 		if _, exists := m[name]; exists {
 			return nil, ErrDenied
 		}
-		if name == "operator" && depth == 0 {
+		if (name == "operator" || name == "actualSubject") && depth == 0 {
 			v, e := profileObject(d, depth+1)
 			if e != nil {
 				return nil, e

@@ -9,10 +9,11 @@ privateなWindows launcher/report I/Oのsource候補を含むが、最小token�
 
 `Helper.Run`は専用helper processの一度だけの要求scopeである。
 private kernel seamを通して、固定threadのNoThreadToken、保持endpoint/clientの照合、sole read、同じmessageへのimpersonation、query-only token照会とclose、RevertToSelf、復帰後NoThreadTokenの順を強制する。
-tokenのuser・authentication ID・session・integrity・type・level・restricted/AppContainerを保護profileの不変値と完全一致させる。
+互換profile/1はtokenのuser・authentication ID・session・integrity・type・level・restricted/AppContainerを事前profileと完全一致させる。
+採用した[方式B](../../../docs/adr/0002-operator-sid-policy.md)のprofile/2は固定OperatorSIDと実message tokenの制約を検査し、実AuthId/session/integrity等は認証後のbindingへ保持する。
 guestとoperatorのuserは別であり、service SIDを自動的にoperatorへ加えない。
 frameはread直後に複製し、復帰確認後に既存service/1の純粋codecで検査する。
-追加fieldや認証済みboolをwireへ加えず、成功時だけ同じframe bytesを単回publishする。
+公開service/1 frameへ追加fieldや認証済みboolは加えない。v1は元frame bytes、Bは復帰後の実主体と元frameを結合したreport/2を成功時だけ単回publishする。
 認証結果は今回の人の同意、grant、停止receiptではない。
 
 query/close失敗やpanicでも、impersonation成功後のrevertを省略しない。
@@ -29,7 +30,8 @@ TokenIsAppContainer=0をIdentification以下のcallerから認可根拠へ使え
 ## reportと健康なowner
 
 `Collector.Collect`のprivate seamは、launch前から保持した専用report reader・実helper process・同じ固定artifact/主体とのbindingを前提とする。
-reportのread/drainをwaitより先に行い、実EOF、最大16KiB、単一の既存service/1 frame、保持processのwaitと正常exit、同じbindingの再検査、report I/O回収、process handle closeを別々に確認する。
+reportのread/drainをwaitより先に行い、実EOF、保持processのwaitと正常exit、同じbindingの再検査、report I/O回収、process handle closeを別々に確認する。
+v1 raw reportは最大16KiBの公開frame。B report/2は内部32KiB以内で、内包する元の公開frameは16KiB以内を維持する。
 PID再openやreport内のSID/hash/nonce/成功boolからnative provenanceを作らない。
 結果の`Read`はprivate producerが生成する単回消費権で、zero値や外部constructorから生成できない。
 取消・期限・Close後の消費はburnしたまま拒否する。
@@ -45,7 +47,7 @@ privateなreport factoryは、暗号学的乱数名の専用message-mode OVERLAP
 匿名pipeはOVERLAPPED非対応なので転用しない。
 合成試験はReadFile/WriteFile/CancelIoEx/completion/CloseHandle境界を置換し、実Windowsの成功を証明しない。
 親側のwrite endと全複製のclose、helperへの限定継承、第三者への漏出/複製の不存在が満たされなければ実EOFと真正reportを主張できない。
-16KiBのbuffer指定をpipe容量の保証やblock回避策とは扱わない。
+内部report用32KiBのbuffer指定をpipe容量の保証やblock回避策とは扱わない。
 
 ## native launcherと単回batch
 
