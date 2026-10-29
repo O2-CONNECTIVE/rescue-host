@@ -141,7 +141,7 @@ func RunFixed(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrApprovalUnconfigured
 	}
-	execution, err := NewNativeExecution(ExecutionConfig{Anchor: fixedAnchor()})
+	execution, err := NewNativePreviewExecution(PreviewExecutionConfig{Anchor: fixedAnchor()})
 	if err != nil {
 		return err
 	}
