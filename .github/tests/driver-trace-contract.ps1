@@ -8,7 +8,9 @@ try {
     if (Wait-DriverStageTrace $directory $budget) { throw 'MISSING_DRIVER_TRACE_ACCEPTED' }
     if (-not (Test-Path (Join-Path $directory 'driver-stage.finish'))) { throw 'DRIVER_CUTOFF_MISSING' }
     [IO.File]::WriteAllText((Join-Path $directory 'driver-stage.jsonl'), '{}')
-    if (-not (Wait-DriverStageTrace $directory $budget)) { throw 'CLOSED_DRIVER_FILE_NOT_OBSERVED' }
+    if (Wait-DriverStageTrace $directory $budget) { throw 'LATE_DRIVER_FILE_ACCEPTED' }
+    $fresh = [Diagnostics.Stopwatch]::new()
+    if (-not (Wait-DriverStageTrace $directory $fresh)) { throw 'CLOSED_DRIVER_FILE_NOT_OBSERVED' }
     Remove-Item -LiteralPath (Join-Path $directory 'driver-stage.finish')
     New-Item -ItemType Directory (Join-Path $directory 'driver-stage.finish') -ErrorAction Stop | Out-Null
     if (Wait-DriverStageTrace $directory $budget) { throw 'MARKER_WRITE_FAILURE_ACCEPTED' }
