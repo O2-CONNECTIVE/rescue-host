@@ -17,7 +17,7 @@ if ($manifest.schema -ne 1 -or $manifest.kind -ne 'direct-wry-controller-contras
 $report = [ordered]@{ schema = 1; kind = 'direct-wry-controller-contrast'; productNativePass = $false
     sourceCommit = $manifest.sourceCommit; exeSha256 = $hash; fixedInputsVerified = $true
     sessionSucceeded = $false; normalCloseVerified = $false; ownerSetRecorded = $false; observedChildren = 0
-    forcedApp = $false; forcedChildren = 0; cleanupStarted = $false }
+    forcedApp = $false; forcedChildren = 0; cleanupStarted = $false; navigationWorkerMarkerObserved = $false }
 $driverProcess = $null; $nodeProcess = $null; $appProcess = $null; $app = $null
 $driver = @(); $edge = @(); $children = @(); $handles = @(); $budget = [Diagnostics.Stopwatch]::new()
 $previous = @{}; $envNames = @('RESCUE_DRIVER_TRACE', 'RESCUE_HOST_STARTUP_TRACE_DIR', 'RESCUE_BASELINE_PROFILE', 'NATIVE_OUTPUT_DIR', 'NATIVE_APP_EXE', 'NATIVE_PROFILE', 'NATIVE_TOOLS_DIR')
@@ -94,8 +94,17 @@ try {
         } catch { $report.ownerSetRecorded = $false }
     }
     try { if (-not $report.Contains('wryStartupFileClosed')) { $report.wryStartupFileClosed = Wait-WryStartupTrace $trace $budget } } catch { $report.wryStartupFileClosed = $false }
-    # verdict確定後、所有プロセスの停止前に匿名traceを同じ1秒予算で回収する。
+    # 既存traceを先に回収し、追加診断は残予算だけを使う。
     try { $report.driverStageFileClosed = Wait-DriverStageTrace $ToolsDirectory $budget } catch { $report.driverStageFileClosed = $false }
+    # markerの作成箇所への到達を確認する。threadのjoinとは区別する。
+    try {
+        if (-not $budget.IsRunning) { $budget.Start() }
+        while ($budget.ElapsedMilliseconds -lt 1000) {
+            if (Test-Path (Join-Path $trace 'navigation-worker.closed') -PathType Leaf) { $report.navigationWorkerMarkerObserved = $true; break }
+            Start-Sleep -Milliseconds 10
+        }
+    } catch { $report.navigationWorkerMarkerObserved = $false }
+    finally { $budget.Stop() }
     $report.cleanupStarted = $true; $forceErrors = @(); $forceWait = [Diagnostics.Stopwatch]::StartNew()
     try {
         if ($report.ownerSetRecorded) {

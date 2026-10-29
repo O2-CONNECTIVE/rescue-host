@@ -4,6 +4,7 @@ import { Driver } from './webdriver.ts';
 import { createNativeObservation } from './observation.ts';
 import { observeSessionStartup } from './session-observation.ts';
 import { inspectBaselineDocument } from './baseline-document.ts';
+import { captureNavigationSnapshot, classifyNavigationSnapshots } from './baseline-navigation.ts';
 
 // UI/製品IPC判定へ入らない独立対照。終了操作はsupervisorだけが行う。
 const output = process.env.NATIVE_OUTPUT_DIR;
@@ -32,6 +33,8 @@ try {
   session.failurePhase = 'document';
   observation.phase('origin-check');
   let document: unknown;
+  const navigationDir = path.join(logs, 'baseline-trace');
+  const navigationBefore = await captureNavigationSnapshot(navigationDir, 'before');
   try {
     document = await driver.execute("const marker = document.querySelector('#wry-creation-contrast'); return {href:location.href,uri:document.documentURI,origin:location.origin,marker:marker?.textContent??null,markerPresent:marker!==null,tauri:typeof window.__TAURI__,readyState:document.readyState};");
   } catch (error) {
@@ -39,6 +42,10 @@ try {
     try { await writeFile(path.join(output, 'baseline-document-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...inspectBaselineDocument(null) })); }
     catch { /* 診断欠測は元の失敗を置き換えない。 */ }
     throw error;
+  } finally {
+    const navigationAfter = await captureNavigationSnapshot(navigationDir, 'after');
+    try { await writeFile(path.join(output, 'baseline-navigation-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...classifyNavigationSnapshots(navigationBefore, navigationAfter) })); }
+    catch { /* 診断欠測は元の判定を置き換えない。 */ }
   }
   const documentReport = inspectBaselineDocument(document);
   await writeFile(path.join(output, 'baseline-document-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...documentReport }));

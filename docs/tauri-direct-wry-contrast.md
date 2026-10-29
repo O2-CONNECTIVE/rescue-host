@@ -50,6 +50,16 @@ feature一致は設定・実行環境全体の一致を意味しない。fixedIn
 新対照が成功しても元障害の根因修復としない。同じcallback未観測なら、event loop開始前だけで生じる説明を弱める。
 前回と別runner・別EXEである点、manifest/DPI・profile・設定の未照合部分は残る。欠測・所有不確定は判別不能のままにする。
 
+## navigation の匿名観測
+
+診断専用のイベントハンドラーは固定URIの許可・拒否とpage-load通知だけを、有界channelとworker経由で記録する。URI・本文・例外の生値は保存しない。
+同一document要求の前後にworkerのsnapshotを確認し、前のsnapshotに含まれたイベントだけを要求前の観測とする。
+後のsnapshotまでに記録されたイベントは要求との正確な前後を断定せず、未掲載も非発生を意味しない。
+channel滞留やcallbackの競合、worker停止未確認があるため、この記録は常に不完全な診断とする。
+page-loadのFinishedはnavigationの成功を証明せず、初期about:blankもreadyState completeになり得る。
+追加イベントハンドラーとsnapshot待機は対照のタイミングを変え得る。15秒の要求期限、単一document要求、既存の合格条件は変えない。
+worker markerは作成箇所への到達のみを示し、thread joinの証明ではない。既存Wry・driver traceは追加診断より優先する。
+
 ## 独立判定と終了
 
 対照kindはdirect-wry-controller-contrast、productNativePassは常にfalse。
