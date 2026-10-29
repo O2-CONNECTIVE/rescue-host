@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される25package、Linux/macOSでは139実装、Windowsでは155実装ファイルを照合します。
+通常buildに選択される25package、Linux/macOSでは141実装、Windowsでは158実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
@@ -114,3 +114,5 @@ operatorauthの共通・OS別実装は[検証入口](../scripts/go_ci.py)のPROD
 作者のローカル全module loopback bind試験はsandbox拒否のまま再実行せず、対象memory試験の保存結果と明示的に許可された既存CIの最終head結果を区別して確認します。
 
 operatorauthのprofile照会は共通batch_scope.go/profile_provider.go/profile_query.goと、対象OSのprofile_query_other.goまたはprofile_query_windows.goの1件だけを追加します。正規policy/query leaseの供給や実Windows保護の検証を意味しません。
+
+候補取得は共通endpoint_candidate.goと、非Windowsのendpoint_profile_other.go、Windowsのendpoint_candidate_windows.go/endpoint_profile_windows.goだけを追加します。正規AuthenticationId供給やSoleInputとの結合を実装済みと扱いません。
