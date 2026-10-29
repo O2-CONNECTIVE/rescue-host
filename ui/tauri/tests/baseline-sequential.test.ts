@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mayStartSecond } from '../native-smoke/baseline-sequential.ts';
+import { mayStartSecond, runSequential } from '../native-smoke/baseline-sequential.ts';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -21,6 +21,22 @@ void test('先行armの合否と独立して所有資源の終了確認が揃う
   assert.equal(mayStartSecond(null, expected), false);
   const missing = { ...clean } as Partial<typeof clean>; delete missing.cleanupFailures;
   assert.equal(mayStartSecond(missing, expected), false);
+});
+
+void test('失敗した先行armでもcleanup確認後だけ一度後続を実行し、欠測なら停止する', async () => {
+  const expected = { sourceCommit: 'a'.repeat(40), exeSha256: 'b'.repeat(64), runId: '12345678-1234-4234-8234-123456789abc' };
+  const report = { schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true, mode: 'with-html', ...expected,
+    ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
+  let calls = 0;
+  const a = async () => ({ outcome: 'failed' as const, report });
+  const b = async () => { calls++; return { outcome: 'passed' as const }; };
+  assert.deepEqual(await runSequential(a, b, expected), { first: 'failed', second: 'passed', cleanup: 'confirmed' });
+  assert.equal(calls, 1);
+  assert.deepEqual(await runSequential(async () => ({ outcome: 'timeout' as const, report }), b, expected),
+    { first: 'timeout', second: 'not-started', cleanup: 'unconfirmed' });
+  assert.deepEqual(await runSequential(async () => ({ outcome: 'failed' as const, report: null }), b, expected),
+    { first: 'failed', second: 'not-started', cleanup: 'unconfirmed' });
+  assert.equal(calls, 1);
 });
 
 void test('開始gate CLIは欠落や秘密を含む入力を露出せず拒否する', () => {
