@@ -243,15 +243,26 @@ func TestServiceAuthElapsedDeadlineCannotWaitForTimerBeforeRejection(t *testing.
 	}
 }
 
+// A concurrent SCM owner may briefly hold the lock. Observe bounded progress
+// through the public snapshot seam instead of treating TryLock contention as
+// proof that this callback's caller owns the lock.
+func authCallbackCanInspect(ctx context.Context, s *Service) bool {
+	observed := make(chan struct{})
+	go func() { s.Snapshot(); close(observed) }()
+	select {
+	case <-observed:
+		return authBudget(ctx)
+	case <-ctx.Done():
+		return false
+	}
+}
+
 func TestServiceAuthConsumeDoesNotRunUnderServiceLock(t *testing.T) {
 	s, a, _ := authTestService(t, 1)
 	batch := fixtureAuthBatch(a, dispatchHello)
 	unlocked := false
-	batch.consume = func(context.Context, *operatorauth.Read) ([]byte, error) {
-		unlocked = s.mu.TryLock()
-		if unlocked {
-			s.mu.Unlock()
-		}
+	batch.consume = func(ctx context.Context, _ *operatorauth.Read) ([]byte, error) {
+		unlocked = authCallbackCanInspect(ctx, s)
 		return nil, errors.New("fixture consume rejected")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -319,14 +330,12 @@ func TestServiceAuthFailureRevokesSameIssuerAndClosesOutsideLock(t *testing.T) {
 			s.mu.Unlock()
 			batch := fixtureAuthBatch(a, dispatchHello)
 			var closes atomic.Int32
-			batch.close = func(context.Context) error {
+			batch.close = func(ctx context.Context) error {
 				if !issuer.Snapshot().Closed {
 					t.Error("owner cleanup preceded same issuer revoke")
 				}
-				if !s.mu.TryLock() {
+				if !authCallbackCanInspect(ctx, s) {
 					t.Error("close callback under service lock")
-				} else {
-					s.mu.Unlock()
 				}
 				closes.Add(1)
 				return nil

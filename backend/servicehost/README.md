@@ -144,6 +144,13 @@ Batchは準備時のissuer参照を不変に保持し、adapterへの変換時�
 次要求は回収とworker終了の両ack後だけ受け付ける。fatalは固定分類を保持し、未確認回収を成功へ変換しない。
 正規producer、同issuerの失効callbackを束縛するfactory、scope取得前からのcaller固定thread、sole-reader/channel寿命と実Windows成立は未接続・未実証である。
 
+停止後の`workload_reclaim.go`は、同Service/issuerと予約・配送・Hostの実参照を固定する。
+SCM ownerは既存の予約join→配送joinとfatal検査→Host.Closeを先行し、その結果をprivate記録へ通知してから、workloadの失敗時にも認証ownerの回収を待つ。
+Host.Runのnative scopeをSCMへ移さず、元workerでscopeが終了した既存の引渡し条件を維持する。
+workload待機だけで認証helper回収を飢餓させないよう元の有限予算内で時間を分け、未確認なら同じ参照を保持する。
+記録の照会は同issuerへの有限memory待機だけで、Service.Close・auth自身のjoin・plane.Closeへ再入しない。workload記録だけではinner/outer proofやStoppedを生成しない。
+Collectorは既知のworkload fatal分類を保持し、独立helper回収を試みた初回の後はnative操作を再試行しない。fatalな認証workerの実終了後も回収ackの未確認と資源参照は残す。
+
 statusは同じownerの許可0観測だけを返し、bindingやapprovalを捏造しない。
 prepare-intent/confirm-approvalは固定UNCONFIGUREDで拒否し、issuer.Prepareやlaunchへ到達しない。
 quiesceは発行拒否・同じissuerの実Close成功からprivate receiptを作り、quiesce-acceptedだけを返す。

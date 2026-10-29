@@ -26,7 +26,7 @@ func TestServiceWorkloadReclaimPrecedesAuthOwnerJoin(t *testing.T) {
 	issuer := s.issuer
 	s.mu.Unlock()
 	entered := make(chan struct{})
-	batch := serviceAuthBatchOps{collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")
@@ -50,7 +50,11 @@ func TestServiceWorkloadReclaimPrecedesAuthOwnerJoin(t *testing.T) {
 	go func() {
 		exchanged <- a.exchangeOps(ctx, batch, func(context.Context, []byte) error { t.Error("canceled helper replied"); return nil })
 	}()
-	<-entered
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("authentication owner did not start within its request budget")
+	}
 	t.Cleanup(func() {
 		releaseAuth.Store(true)
 		cleanup, end := context.WithTimeout(context.Background(), 2*time.Second)
@@ -89,9 +93,13 @@ func TestServiceWorkloadTimeoutStillRequestsAuthCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	entered, retried := make(chan struct{}), make(chan struct{}, 1)
 	var calls atomic.Int32
-	batch := serviceAuthBatchOps{collector: &operatorauth.Collector{},
+	s.mu.Lock()
+	issuer := s.issuer
+	s.mu.Unlock()
+	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")
@@ -116,7 +124,11 @@ func TestServiceWorkloadTimeoutStillRequestsAuthCleanup(t *testing.T) {
 	go func() {
 		exchanged <- a.exchangeOps(ctx, batch, func(context.Context, []byte) error { t.Error("canceled helper replied"); return nil })
 	}()
-	<-entered
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("authentication owner did not start within its request budget")
+	}
 	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	s.requestStop()
 	select {
@@ -192,7 +204,7 @@ func TestServiceWorkloadFatalNotifiesAuthOwnerWithoutCleanupProof(t *testing.T) 
 	s.host, s.delivery = h, d
 	s.mu.Unlock()
 	entered := make(chan struct{})
-	batch := serviceAuthBatchOps{collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")
@@ -210,7 +222,11 @@ func TestServiceWorkloadFatalNotifiesAuthOwnerWithoutCleanupProof(t *testing.T) 
 	go func() {
 		exchanged <- a.exchangeOps(ctx, batch, func(context.Context, []byte) error { t.Error("canceled helper replied"); return nil })
 	}()
-	<-entered
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("authentication owner did not start within its request budget")
+	}
 	s.requestStop()
 	select {
 	case err := <-exchanged:
@@ -262,6 +278,7 @@ func TestServiceWorkloadReceiptRequiresWorkerAckAndExactIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	s.mu.Lock()
 	issuer := s.issuer
