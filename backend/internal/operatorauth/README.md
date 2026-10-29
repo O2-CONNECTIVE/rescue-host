@@ -64,7 +64,7 @@ reportを実EOFまでdrainし、保持helperの終了waitとbinding再照合の�
 取消や回収失敗は同じCollectorの失効/回収へ進み、未確認参照を保持する。
 context-freeな終端確認は、既に有限回収が完了した記録だけを読み、新しいOS callを開始しない。
 
-privateなprofile receiverのrunは、保持source確認・frame・実EOF・同source再確認後に既存Helper.Runへ接続する。CreatePipe/sender/receiver/batchのsourceと接続したメモリfixtureを含む。実helper executableの固定entryと保護source供給、最小token/実SID/保護SDDLのproducer、service-owned endpointのsole-read移譲adapter、起動の累積上限、controller server認証producer、同Service adapterは未接続である。
+privateなprofile receiverのrunは、保持source確認・frame・実EOF・同source再確認後に既存Helper.Runへ接続する。CreatePipe/sender/receiver/batchのsourceと接続したメモリfixtureを含む。実helper executable入口の保護source供給、最小token/実SID/保護SDDLのproducer、service-owned endpointのsole-read移譲adapter、起動の累積上限、controller server認証producer、同Service adapterは未接続である。
 `messageEndpoint`は継承handleの権限/種別確認と単回read/write/closeまでを扱い、handle番号だけからprovenanceを作らない。
 これらの未設定値をUI・argv・環境変数・自己申告SIDで埋めない。
 
@@ -106,3 +106,5 @@ Windows native sourceはcompile対象であり、実APIの成功・process終了
 今回のlauncher/report試験のRed→Greenには、部分取得・取消時の参照保持・期限切れ後のallocation拒否・cleanup期限・lock競合・handle alias拒否を含む。
 初期の未定義symbolによるcompile-red、実装後に追加したbatch順序の回帰試験、振る舞いを先に失敗させたTDDは区別して記録する。
 Windows compileはnative APIの型/リンク境界だけを確認し、13組のnative受入試験を実行済みにしない。
+
+`cmd/rescue-auth-helper` の専用入口は `RunFixed` へ接続済みだが、固定保護sourceは未登録で既定拒否する。入口と所有回収の規約は [helper-entry.md](helper-entry.md) を参照する。
