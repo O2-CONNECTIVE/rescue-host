@@ -2,6 +2,7 @@ package operatorauth
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -77,9 +78,8 @@ func TestCollectorDirectDrainReceivesStopAndOriginalCancellation(t *testing.T) {
 	}
 }
 
-func TestPreparedBatchIssuerPanicStillCancelsDirectCollectorDrain(t *testing.T) {
+func TestPreparedBatchConcreteRevokeCancelsDirectCollectorDrain(t *testing.T) {
 	s, owner, ops, _, _, _ := batchFixture(t)
-	owner.revoke = func() error { panic("synthetic issuer fault") }
 	b, err := startBatch(requestContext(t), s, owner, ops)
 	if err != nil {
 		t.Fatal(err)
@@ -95,8 +95,8 @@ func TestPreparedBatchIssuerPanicStillCancelsDirectCollectorDrain(t *testing.T) 
 	done := make(chan error, 1)
 	go func() { _, e := b.Collector().Collect(caller); done <- e }()
 	<-entered
-	if err = b.Close(requestContext(t)); err == nil {
-		t.Fatal("issuer fault accepted")
+	if err = b.Close(requestContext(t)); err != nil && !errors.Is(err, ErrUnconfirmed) {
+		t.Fatal(err)
 	}
 	select {
 	case err = <-done:
@@ -106,7 +106,10 @@ func TestPreparedBatchIssuerPanicStillCancelsDirectCollectorDrain(t *testing.T) 
 	case <-time.After(100 * time.Millisecond):
 		cancel()
 		<-done
-		t.Fatal("issuer panic lost direct cancellation")
+		t.Fatal("concrete owner revocation lost direct cancellation")
+	}
+	if err = b.Close(requestContext(t)); err != nil {
+		t.Fatal("joined collector cleanup remained unconfirmed", err)
 	}
 }
 

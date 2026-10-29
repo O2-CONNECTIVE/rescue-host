@@ -49,7 +49,7 @@ func TestPreparedBatchMissingIssuerCannotAcquireResources(t *testing.T) {
 	s, owner, ops, events, _, _ := batchFixture(t)
 	ops.parent = func(context.Context) error { *events = append(*events, "parent"); return nil }
 	ops.clean = func() error { *events = append(*events, "clean"); return nil }
-	missing := batchOwner{revoke: owner.revoke, reclaim: owner.reclaim}
+	missing := batchOwner{owner: owner.owner}
 	if b, err := prepareBatch(s, missing, ops); b != nil || !errors.Is(err, ErrUnconfigured) {
 		t.Fatal("missing issuer prepared", b != nil, err)
 	}
@@ -107,7 +107,7 @@ func TestPreparedBatchCloseDuringConstructorRetainsOwnerUntilStartAcknowledges(t
 		<-started
 		t.Fatal("close claimed completion before constructor returned", err)
 	}
-	if len(*events) == 0 || (*events)[len(*events)-1] != "revoke" {
+	if !owner.issuer.Snapshot().Closed {
 		close(release)
 		<-started
 		t.Fatal("cleanup ran before start completion or issuer was not revoked first", *events)
@@ -243,7 +243,7 @@ func TestPreparedBatchDirectCollectorCloseJoinsLateConstructor(t *testing.T) {
 		<-started
 		t.Fatal("collector completed before constructor ack", err)
 	}
-	if len(*events) != 1 || (*events)[0] != "revoke" {
+	if len(*events) != 0 || !owner.issuer.Snapshot().Closed {
 		close(release)
 		<-started
 		t.Fatal("collector cleanup preceded acquisition ack", *events)
@@ -278,9 +278,8 @@ func TestPreparedBatchDirectCollectorPreStartCollectBurnsAdmission(t *testing.T)
 
 func TestPreparedBatchDirectCollectDuringAcquisitionWaitsForConstructorAck(t *testing.T) {
 	s, owner, ops, _, _, _ := batchFixture(t)
-	entered, release, revoked := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	revoke := owner.revoke
-	owner.revoke = func() error { err := revoke(); close(revoked); return err }
+	entered, release := make(chan struct{}), make(chan struct{})
+	revoked := owner.owner.StopRequested()
 	original := ops.newProfile
 	ops.newProfile = func(ctx context.Context) (batchProfile, error) { close(entered); <-release; return original(ctx) }
 	b, err := prepareBatch(s, owner, ops)
@@ -327,48 +326,69 @@ func TestPreparedBatchZeroValueAndMissingSourceFailClosed(t *testing.T) {
 	}
 }
 
-func TestPreparedBatchIssuerRevokeFailureStaysSticky(t *testing.T) {
-	s, owner, ops, _, _, _ := batchFixture(t)
-	attempts := 0
-	owner.revoke = func() error { attempts++; return ErrDenied }
+func TestPreparedBatchConcreteOwnerRevokeRejectsNativeAdmission(t *testing.T) {
+	s, owner, ops, events, _, _ := batchFixture(t)
 	b, err := prepareBatch(s, owner, ops)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < 2; i++ {
-		if err = b.Close(requestContext(t)); !errors.Is(err, ErrUnconfirmed) {
-			t.Fatal("issuer failure reported complete", err)
+	if err := owner.owner.Revoke(); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Start(requestContext(t)); err == nil {
+		t.Fatal("revoked owner started")
+	}
+	for _, event := range *events {
+		if event == "profile" || event == "report" || event == "suspended" {
+			t.Fatal("revoked owner acquired native resources", *events)
 		}
 	}
-	if attempts != 1 {
-		t.Fatal("failed issuer revocation was retried as a fresh authority", attempts)
-	}
-	if err = b.Start(requestContext(t)); err == nil {
-		t.Fatal("revocation failure revived admission")
+	if !owner.issuer.Snapshot().Closed {
+		t.Fatal("batch retained a label instead of the actual issuer")
 	}
 }
 
-func TestPreparedBatchIssuerPanicCannotLeaveIssuedProofLive(t *testing.T) {
+func TestPreparedBatchConcreteOwnerRevokeRetainsLateConstructor(t *testing.T) {
 	s, owner, ops, _, _, _ := batchFixture(t)
-	owner.revoke = func() error { panic("issuer revocation outcome unknown") }
+	entered, release := make(chan struct{}), make(chan struct{})
+	original := ops.newProfile
+	returned := false
+	ops.newProfile = func(ctx context.Context) (batchProfile, error) {
+		close(entered)
+		<-release
+		p, err := original(ctx)
+		returned = true
+		return p, err
+	}
 	b, err := prepareBatch(s, owner, ops)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = b.Start(requestContext(t)); err != nil {
+	started := make(chan error, 1)
+	go func() { started <- b.Start(requestContext(t)) }()
+	<-entered
+	// Revocation must finish while a pre-admitted native call is still in flight.
+	if err := owner.owner.Revoke(); err != nil {
+		close(release)
+		<-started
 		t.Fatal(err)
 	}
-	proof, err := b.Collector().Collect(requestContext(t))
-	if err != nil {
+	short, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	err = b.Close(short)
+	cancel()
+	if !errors.Is(err, ErrUnconfirmed) {
+		close(release)
+		<-started
+		t.Fatal("late owner was acknowledged early", err)
+	}
+	close(release)
+	if err := <-started; err == nil {
+		t.Fatal("late constructor revived stopped batch")
+	}
+	if !returned || b.profile == nil {
+		t.Fatal("late acquired owner was discarded")
+	}
+	if err := b.Close(requestContext(t)); err != nil {
 		t.Fatal(err)
-	}
-	if err = b.Close(requestContext(t)); !errors.Is(err, ErrUnconfirmed) {
-		t.Fatal("issuer panic confirmed cleanup", err)
-	}
-	if _, err = b.Collector().Consume(requestContext(t), proof); err == nil {
-		t.Fatal("issuer panic left proof usable")
-	}
-	if err = b.Close(requestContext(t)); !errors.Is(err, ErrUnconfirmed) {
-		t.Fatal("issuer panic was not sticky", err)
 	}
 }

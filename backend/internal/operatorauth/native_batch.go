@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -17,9 +18,8 @@ type nativeBatchSpec struct {
 	producer profilePipeProducer
 }
 type batchOwner struct {
-	issuer  *ephemeral.Issuer
-	revoke  func() error // 同Serviceの発行拒否/失効だけ。native I/Oを入れない。
-	reclaim func(context.Context) error
+	issuer *ephemeral.Issuer
+	owner  *serviceauthowner.Owner
 }
 type batchReport interface {
 	childWriter() uintptr
@@ -62,7 +62,7 @@ type nativeBatch struct {
 	collectCancel              context.CancelFunc
 	operation                  chan struct{}
 	revokeOnce                 sync.Once
-	revokeOwner                func() error
+	owner                      *serviceauthowner.Owner
 	revokeErr                  error
 	startDone                  chan struct{}
 	ops                        nativeBatchOps
@@ -84,10 +84,10 @@ func (s nativeBatchSpec) valid() bool {
 
 // prepareBatch only validates and constructs the retained owner. It performs no native I/O.
 func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nativeBatch, error) {
-	if !s.valid() || owner.issuer == nil || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
+	if !s.valid() || owner.issuer == nil || !owner.owner.MatchesIssuer(owner.issuer) || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
 		return nil, ErrUnconfigured
 	}
-	b := &nativeBatch{issuer: owner.issuer, ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), revokeOwner: owner.revoke}
+	b := &nativeBatch{issuer: owner.issuer, ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), owner: owner.owner}
 	b.self = b
 	b.collector = &Collector{cleanup: s.launch.cleanup, ops: collectorOps{
 		check: b.recheck, drain: b.drain, terminate: b.terminate, wait: b.wait,
@@ -99,7 +99,7 @@ func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nat
 			if e := b.cleanupGuard(); e != nil {
 				return e
 			}
-			return owner.reclaim(c)
+			return b.owner.AwaitWorkload(c)
 		},
 	}}
 	return b, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -13,10 +14,15 @@ import (
 type Batch = nativeBatch
 
 // MatchesIssuer compares the immutable issuer retained during preparation.
-// It does not prove that the still-unconfigured producer bound owner callbacks
-// to that issuer; the protected factory must establish that separately.
+// Its concrete Owner always holds this same actual issuer.
 func (b *nativeBatch) MatchesIssuer(issuer *ephemeral.Issuer) bool {
 	return b != nil && b.self == b && issuer != nil && b.issuer == issuer
+}
+
+// MatchesOwner also requires the canonical owner retained by Service. Creating a
+// second pair with the same issuer cannot substitute for that provenance.
+func (b *nativeBatch) MatchesOwner(owner *serviceauthowner.Owner, issuer *ephemeral.Issuer) bool {
+	return b.MatchesIssuer(issuer) && owner != nil && b.owner == owner && owner.MatchesIssuer(issuer)
 }
 
 // Collector returns the exact collector created during preparation. It does not
@@ -54,7 +60,7 @@ func (b *nativeBatch) revoke() error {
 	}()
 	b.revokeOnce.Do(func() {
 		b.revokeErr = ErrUnconfirmed
-		b.revokeErr = b.revokeOwner()
+		b.revokeErr = b.owner.Revoke()
 	})
 	return b.revokeErr
 }
@@ -78,8 +84,9 @@ func (b *nativeBatch) awaitStart(ctx context.Context) error {
 
 func (b *nativeBatch) admitted(ctx context.Context) bool {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	return !b.closing && reportContextValid(ctx) && reportContextValid(b.request)
+	live := !b.closing && reportContextValid(ctx) && reportContextValid(b.request)
+	b.mu.Unlock()
+	return live && b.owner.Admit(ctx) == nil
 }
 
 func (b *nativeBatch) acquireOperation(ctx context.Context) bool {

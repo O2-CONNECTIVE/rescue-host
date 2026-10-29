@@ -3,7 +3,9 @@ package operatorauth
 import (
 	"context"
 	"errors"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
@@ -32,6 +34,8 @@ type memoryBatchChild struct {
 	events       *[]string
 	closeErr     error
 	resumeCalled bool
+	issuer       *ephemeral.Issuer
+	t            *testing.T
 }
 
 func (c *memoryBatchChild) resume(context.Context) error {
@@ -47,7 +51,13 @@ func (c *memoryBatchChild) waitExit(context.Context) (uint32, error) {
 	*c.events = append(*c.events, "wait")
 	return 0, nil
 }
-func (c *memoryBatchChild) terminate() error { *c.events = append(*c.events, "terminate"); return nil }
+func (c *memoryBatchChild) terminate() error {
+	if c.issuer != nil && !c.issuer.Snapshot().Closed {
+		c.t.Error("termination preceded actual issuer revocation")
+	}
+	*c.events = append(*c.events, "terminate")
+	return nil
+}
 func (c *memoryBatchChild) close(context.Context) error {
 	*c.events = append(*c.events, "close-child")
 	return c.closeErr
@@ -65,7 +75,26 @@ func batchFixture(t *testing.T) (nativeBatchSpec, batchOwner, nativeBatchOps, *[
 	events := []string{}
 	p := &memoryBatchReport{events: &events}
 	c := &memoryBatchChild{events: &events}
-	o := batchOwner{issuer: &ephemeral.Issuer{}, revoke: func() error { events = append(events, "revoke"); return nil }, reclaim: func(context.Context) error { events = append(events, "reclaim-workload"); return nil }}
+	issuer, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gate := new(sync.Mutex)
+	writer, owner, err := serviceauthowner.New(issuer, gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	acknowledged := make(chan struct{})
+	go func() {
+		defer close(acknowledged)
+		<-owner.StopRequested()
+		gate.Lock()
+		_ = writer.ConfirmWorkloadLocked()
+		gate.Unlock()
+	}()
+	t.Cleanup(func() { _ = owner.Revoke(); <-acknowledged })
+	o := batchOwner{issuer: issuer, owner: owner}
+	c.issuer, c.t = issuer, t
 	k := nativeBatchOps{
 		parent: func(context.Context) error { return nil }, clean: func() error { return nil },
 		newProfile: func(context.Context) (batchProfile, error) {
@@ -163,17 +192,8 @@ func TestNativeBatchReleaseFailureRevokesAndDoesNotResume(t *testing.T) {
 	if b == nil || err == nil || c.resumeCalled {
 		t.Fatal("release failure resumed helper")
 	}
-	var revoke, terminate int
-	for i, e := range *events {
-		if e == "revoke" {
-			revoke = i
-		}
-		if e == "terminate" {
-			terminate = i
-		}
-	}
-	if revoke == 0 || terminate <= revoke {
-		t.Fatal("termination preceded revocation", *events)
+	if !o.issuer.Snapshot().Closed {
+		t.Fatal("termination preceded actual issuer revocation", *events)
 	}
 	if _, e := b.Collect(requestContext(t)); !errors.Is(e, ErrDenied) {
 		t.Fatal("failed batch revived")
