@@ -36,17 +36,31 @@ void test('共有build一時物は両armの安全確認後だけ削除し、他�
 });
 
 void test('成果回収後のcleanup CLIは同じrunの確認済armを削除し未実施armを区別する', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'baseline-cleanup-cli-'));
+  const parent = await mkdtemp(path.join(tmpdir(), 'baseline-cleanup-cli-'));
   try {
-    await mkdir(path.join(root, 'baseline-tools')); await mkdir(path.join(root, 'baseline-a-evidence'));
     const sourceCommit = 'a'.repeat(40), exeSha256 = 'b'.repeat(64), runId = '12345678-1234-4234-8234-123456789abc';
+    const root = path.join(parent, `rescue-wry-${runId}`); await mkdir(root);
+    await writeFile(path.join(root, 'owner.json'), JSON.stringify({ schema: 1, purpose: 'wry-sequential-owned', runId }));
+    await mkdir(path.join(root, 'baseline-tools')); await mkdir(path.join(root, 'baseline-a-evidence'));
     await writeFile(path.join(root, 'baseline-build.json'), JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast', featureTreeMatched: true, distribution: false, sourceCommit, exeSha256 }));
     await writeFile(path.join(root, 'baseline-sequential.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', sourceCommit, exeSha256, runId, first: 'failed', second: 'not-started', cleanup: 'confirmed', secondCleanup: 'not-started' }));
     await writeFile(path.join(root, 'baseline-a-evidence/native-result.json'), JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true,
       mode: 'with-html', sourceCommit, exeSha256, runId, ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 }));
-    const run = spawnSync(process.execPath, ['native-smoke/cleanup-baseline-sequential.ts', root], { encoding: 'utf8' });
+    const run = spawnSync(process.execPath, ['native-smoke/cleanup-baseline-sequential.ts', root], { encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: parent } });
     assert.equal(run.status, 0);
-    assert.deepEqual(JSON.parse(await readFile(path.join(root, 'baseline-cleanup.json'), 'utf8')), { schema: 1, first: 'removed', second: 'not-started', shared: 'removed' });
-    await assert.rejects(access(path.join(root, 'baseline-tools')));
-  } finally { await rm(root, { recursive: true, force: true }); }
+    assert.deepEqual(JSON.parse(await readFile(path.join(parent, `baseline-cleanup-${runId}.json`), 'utf8')), { schema: 1, first: 'removed', second: 'not-started', shared: 'removed', root: 'removed' });
+    await assert.rejects(access(root));
+  } finally { await rm(parent, { recursive: true, force: true }); }
+});
+
+void test('所有markerが違う領域は固定名があっても削除しない', async () => {
+  const parent = await mkdtemp(path.join(tmpdir(), 'baseline-owner-'));
+  try {
+    const runId = '12345678-1234-4234-8234-123456789abc', root = path.join(parent, `rescue-wry-${runId}`);
+    await mkdir(root); await mkdir(path.join(root, 'baseline-tools'));
+    await writeFile(path.join(root, 'owner.json'), JSON.stringify({ schema: 1, purpose: 'wry-sequential-owned', runId: 'other' }));
+    const run = spawnSync(process.execPath, ['native-smoke/cleanup-baseline-sequential.ts', root], { encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: parent } });
+    assert.equal(run.status, 1);
+    await access(path.join(root, 'baseline-tools'));
+  } finally { await rm(parent, { recursive: true, force: true }); }
 });
