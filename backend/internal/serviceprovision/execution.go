@@ -40,9 +40,10 @@ type executionReady struct {
 	err     error
 }
 type executionRequest struct {
-	ctx   context.Context
-	proof servicehost.InnerCleanupProof
-	reply chan error
+	confirmation *servicehost.PreviewConfirmationTicket
+	ctx          context.Context
+	proof        servicehost.InnerCleanupProof
+	reply        chan error
 }
 
 // Executionは一つのservice起動の外側所有者であり、利用後にコピーしない。

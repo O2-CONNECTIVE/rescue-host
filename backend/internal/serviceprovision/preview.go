@@ -32,14 +32,24 @@ func (p *Prepared) PreviewDescriptor(ctx context.Context) (servicehost.PreviewDe
 // ComposePreviewServiceはquery-only tokenを借用し、承認/launcher無しの明示的な
 // preview経路へ接続する。既存legacy構成や実機mainの未設定拒否は変更しない。
 func (p *Prepared) ComposePreviewService(ctx context.Context, limits PreviewLimits) (*servicehost.Service, error) {
+	service, _, err := p.composePreviewSnapshot(ctx, limits)
+	return service, err
+}
+
+// ownerは構成に使ったexact snapshotを保持する。descriptor自体は承認ではない。
+func (p *Prepared) composePreviewSnapshot(ctx context.Context, limits PreviewLimits) (*servicehost.Service, servicehost.PreviewDescriptor, error) {
 	preview, r, token, err := p.previewRecord(ctx)
 	if err != nil {
-		return nil, err
+		return nil, servicehost.PreviewDescriptor{}, err
 	}
-	return servicehost.NewPreviewService(servicehost.PreviewServiceConfig{
+	service, err := servicehost.NewPreviewService(servicehost.PreviewServiceConfig{
 		Ready:   serviceready.Config{Profile: r.Profile, PrimaryToken: token, Endpoint: r.Endpoint, ServiceCommandLine: r.ServiceCommandLine, ServiceSecurity: r.ServiceSecurity, ProcessSecurity: r.ProcessSecurity, CleanupTimeout: r.ReadyCleanupTimeout},
 		Budgets: r.Budgets, RequestLimit: limits.RequestLimit, LaunchLimit: limits.LaunchLimit, IntentTTL: limits.IntentTTL, Preview: preview,
 	})
+	if err != nil {
+		return nil, servicehost.PreviewDescriptor{}, err
+	}
+	return service, preview, nil
 }
 
 func (p *Prepared) previewRecord(ctx context.Context) (servicehost.PreviewDescriptor, Record, uintptr, error) {

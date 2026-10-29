@@ -72,7 +72,7 @@ func (s *Service) preparePreviewIntentLocked(ctx context.Context, d *serviceDisp
 	if err != nil {
 		return nil, "SERVICE_INTERNAL_FAILURE"
 	}
-	p.intent = &previewIntent{owner: s, dispatcher: d, id: id, expires: expires}
+	p.intent = &previewIntent{owner: s, dispatcher: d, id: id, digest: digest, expires: expires}
 	p.seen[id] = struct{}{}
 	return &servicecontrol.UntrustedIntent{IntentID: id, PreviewDigest: digest, IntentExpiresUnixMs: expires.UnixMilli(), Preview: candidate}, ""
 }

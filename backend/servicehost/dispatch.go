@@ -147,6 +147,13 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 				response.Result = "intent-prepared"
 				response.Intent = intent
 			}
+		} else if request.Command == servicecontrol.ConfirmApproval {
+			code, err := s.confirmPreviewIntent(ctx, d, request)
+			if err != nil {
+				return nil, err
+			}
+			response.Result = "error"
+			response.Error = &servicecontrol.UntrustedServiceError{Code: code}
 		} else if request.Command == servicecontrol.RevokeAllAndQuiesce {
 			receipt, err := s.dispatchQuiesce(d)
 			if err != nil || !receipt.matches(d) {

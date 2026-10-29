@@ -134,4 +134,19 @@ source/fake試験は、実preview constructor・Execution RPCとSCM起動失敗�
 同じboot/channel/intent・発行したexact digest・有効期限を同じstop gateで検査し、確認試行を単回消費する必要がある。
 保持Recordの再解決は元Prepared ownerへの有限要求で行い、dispatch threadでscopeを直接使わない。
 解決後も同じgateでstopとintentを再照合し、guest bindingと実authority producerがない間は成功receipt・ApprovedPolicy・grantを発行しない。
-現コードはConfirmApprovalの未構成拒否を維持する。新しい汎用Approval interfaceや自己申告の認証値でこの欠落を埋めない。
+解決元を持たないNewPreviewServiceのconfirmは未構成拒否のまま。
+元Executionをouter ownerに結んだ構成だけが、opaque PreviewConfirmationTicketを既存owner loopへ有限RPCで渡す。
+構成時のsnapshotと保持Recordを再照合し、初回hard deadlineを再計算で延長しない。
+query token・scope・Recordの照合は元threadで行い、取消済みauth workerへの返答待ちでcleanupを塞がない。
+source panicや既知fatalは分類を保持し、元threadと所有参照を保持して退役する。別threadで健康な成功へ作り替えない。
+
+再検証が成功してもSERVICE_NOT_READYを返す。本人承認受付receipt、ApprovedPolicy、Challenge、grant、live Authorityは発行しない。
+source/fake証跡は、Service内の合法auth model→実confirm→memory resolverと、Execution/元stageのRecord再検査・不正ticket拒否を分ける。
+実native認証から元ownerまでを通した単一のWindows縦断試験ではない。
+新しい汎用Approval interfaceや自己申告の認証値でこの欠落を埋めない。
+
+guest準備のPlanが要求する正generationは、[既存journalの識別値](../../../docs/temporary-guest-native-boundary.md)であり、issuerのgenerationと同一にする要件ではない。
+guest作業のepoch/intent/counterを供給し、検査後の所有SID・policyと後発の同issuer grantを不変に関連付ける保護producerが必要である。
+未検証guestをSeparatedNonAdminGuestと仮定したApprovedPolicyやChallengeを先に作らない。
+この未接続を理由に、既存Issuer/Challengeの意味変更や新しいnamespace選択を必須の意思決定へ追加しない。
+独立AuthenticationId登録を新しい必須条件へ追加したり、既存の認証検査を緩めたりもしない。
