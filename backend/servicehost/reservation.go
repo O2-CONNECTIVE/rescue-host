@@ -31,16 +31,17 @@ func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIn
 	if s == nil || !controlBudget(ctx) {
 		return nil, ErrProvisioningRejected
 	}
-	requestDone := ctx.Done()
-	worker, cancel := context.WithCancel(context.Background())
-	keep := false
-	defer func() {
-		if !keep {
-			cancel()
-		}
-	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.reserveOwnerIntentLocked(ctx, intent)
+}
+
+// The caller holds the same stop gate; construction has no native callbacks.
+func (s *Service) reserveOwnerIntentLocked(ctx context.Context, intent *serviceOwnerIntent) (*serviceReservation, error) {
+	if !controlBudget(ctx) {
+		return nil, ErrProvisioningRejected
+	}
+	requestDone := ctx.Done()
 	if !s.authWriter.OpenLocked() || s.stopping || s.state != Running || s.dispatch == nil || s.issuer == nil || intent == nil || intent.owner != s || intent.issuer != s.issuer || s.ownerIntent != intent || intent.burned || s.reservation != nil {
 		return nil, ErrProvisioningRejected
 	}
@@ -54,8 +55,8 @@ func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIn
 		return nil, ErrProvisioningRejected
 	}
 	intent.burned = true
+	worker, cancel := context.WithCancel(context.Background())
 	r := &serviceReservation{owner: s, issuer: s.issuer, intent: intent, requestDone: requestDone, worker: worker, cancel: cancel, done: make(chan struct{})}
-	keep = true
 	s.reservation = r
 	return r, nil
 }
@@ -80,6 +81,9 @@ func (s *Service) consumeOwnerReservation(r *serviceReservation) (serviceReserva
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.consumeOwnerReservationLocked(r)
+}
+func (s *Service) consumeOwnerReservationLocked(r *serviceReservation) (serviceReservationWork, error) {
 	if r == nil || r.owner != s || s.reservation != r || r.issuer != s.issuer || !s.authWriter.OpenLocked() || s.stopping || r.canceled || r.claimed || r.finished {
 		return serviceReservationWork{}, ErrProvisioningRejected
 	}

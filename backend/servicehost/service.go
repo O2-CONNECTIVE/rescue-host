@@ -349,6 +349,9 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			endWorkload()
 			closeErr = errors.Join(closeErr, s.waitAuthRequest(cleanup))
 			if closeErr == nil {
+				closeErr = s.reclaimConfirmationRuntime(cleanup)
+			}
+			if closeErr == nil {
 				if approvalDone != nil {
 					select {
 					case <-approvalDone:

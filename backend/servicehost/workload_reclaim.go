@@ -16,6 +16,7 @@ type serviceWorkloadReclaim struct {
 	delivery    *serviceHostDelivery
 	host        *Host
 	captured    bool
+	hostJoined  bool // existing workload refs joined; excludes runtime guest resource owner
 }
 
 func (r *serviceWorkloadReclaim) sameOwnerLocked(s *Service, issuer *ephemeral.Issuer) bool {
@@ -77,7 +78,8 @@ func (s *Service) reclaimWorkload(ctx context.Context) error {
 		err = serviceFailure(err)
 	}
 	if err == nil {
-		if s.authWriter.ConfirmWorkloadLocked() != nil {
+		r.hostJoined = true
+		if !s.hasConfirmationRuntimeLocked() && s.authWriter.ConfirmWorkloadLocked() != nil {
 			err = ErrRuntimeUnconfirmed
 		}
 	} else {

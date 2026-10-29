@@ -21,14 +21,22 @@ type PreviewConfirmationResolver interface {
 type PreviewConfirmationTicket struct{ record *previewConfirmation }
 
 type previewConfirmation struct {
-	service    *Service
-	dispatcher *serviceDispatcher
-	issuer     *ephemeral.Issuer
-	owner      *serviceauthowner.Owner
-	intent     *previewIntent
-	request    *serviceAuthRequest
-	ctx        context.Context
-	finished   bool // Service.mu; set only after the resolver actually returns
+	service                 *Service
+	dispatcher              *serviceDispatcher
+	issuer                  *ephemeral.Issuer
+	owner                   *serviceauthowner.Owner
+	intent                  *previewIntent
+	request                 *serviceAuthRequest
+	ctx                     context.Context
+	runtimeSource           *confirmationRuntimeSource
+	runtimeOwner            *confirmationEvidenceOwner
+	partialOwner            *confirmationEvidenceOwner
+	runtimeProof            *confirmationRuntimeProof
+	runtimeCleanupConfirmed bool
+	runtimeCleanupFatal     error
+	work                    serviceReservationWork
+	grant                   *confirmedGrant
+	finished                bool // Service.mu; set only after the resolver actually returns
 }
 
 // PreviewFor returns a clone only while this exact request and consumed intent
@@ -58,8 +66,17 @@ func (r *previewConfirmation) liveLocked(now time.Time) bool {
 	if s.auth == nil || s.auth.active != r.request || r.request == nil || !r.request.liveLocked() {
 		return false
 	}
+	if r.runtimeSource != nil && (r.work.reservation == nil || s.reservation != r.work.reservation || s.ownerIntent != r.work.reservation.intent || !s.reservation.claimed || s.reservation.canceled || s.reservation.finished) {
+		return false
+	}
 	snapshot, observed := r.issuer.TrySnapshot()
-	return observed && !snapshot.Closed && snapshot.Generation == 0 && !snapshot.HasAuthority && hex.EncodeToString(snapshot.InstanceEpoch[:]) == r.dispatcher.boot && authBudget(r.ctx)
+	if !observed || snapshot.Closed || snapshot.HasAuthority || hex.EncodeToString(snapshot.InstanceEpoch[:]) != r.dispatcher.boot || !authBudget(r.ctx) {
+		return false
+	}
+	if r.grant == nil {
+		return snapshot.Generation == 0
+	}
+	return r.grant.confirmation == r && r.grant.challenge.Binding() == r.grant.binding && r.grant.binding.Generation == snapshot.Generation && !snapshot.Consumed
 }
 
 // Called only after authenticated read, boot/channel/sequence/replay validation.
@@ -101,21 +118,42 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		s.mu.Unlock()
 		return "SERVICE_STALE_CONTEXT", nil
 	}
+	r.runtimeSource = p.runtime
+	if r.runtimeSource != nil {
+		r.runtimeOwner = r.runtimeSource.owner
+		if s.ownerIntent != nil || s.reservation != nil {
+			r.finished = true
+			s.mu.Unlock()
+			return "SERVICE_NOT_READY", nil
+		}
+		s.ownerIntent = &serviceOwnerIntent{owner: s, issuer: s.issuer, expires: i.expires}
+		reservation, err := s.reserveOwnerIntentLocked(ctx, s.ownerIntent)
+		if err == nil {
+			r.work, err = s.consumeOwnerReservationLocked(reservation)
+		}
+		if err != nil {
+			r.finished = true
+			s.mu.Unlock()
+			s.stopFor(err)
+			return "", ErrRuntimeUnconfirmed
+		}
+	}
 	resolver := p.resolver
 	s.mu.Unlock()
+	defer r.finishConfirmation()
 	err := callPreviewConfirmation(ctx, resolver, PreviewConfirmationTicket{record: r})
 	s.mu.Lock()
 	live := r.liveLocked(time.Now())
-	r.finished = true
 	s.mu.Unlock()
 	if err != nil || !live {
 		err = authFailure(err, ErrRuntimeUnconfirmed)
 		s.stopFor(err)
 		return "", err
 	}
-	// Guest verification and authority production remain absent. Resolving the
-	// protected owner observation must never produce an approval wire response.
-	return "SERVICE_NOT_READY", nil
+	if r.runtimeSource == nil {
+		return "SERVICE_NOT_READY", nil
+	}
+	return r.prepareConfirmedGrant(request.RequestID)
 }
 
 func callPreviewConfirmation(ctx context.Context, resolver PreviewConfirmationResolver, ticket PreviewConfirmationTicket) (err error) {
@@ -125,4 +163,14 @@ func callPreviewConfirmation(ctx context.Context, resolver PreviewConfirmationRe
 		}
 	}()
 	return resolver.ResolvePreviewConfirmation(ctx, ticket)
+}
+
+func (r *previewConfirmation) finishConfirmation() {
+	s := r.service
+	s.mu.Lock()
+	r.finished = true
+	s.mu.Unlock()
+	if r.work.ticket != nil {
+		_ = s.finishOwnerReservation(r.work)
+	}
 }

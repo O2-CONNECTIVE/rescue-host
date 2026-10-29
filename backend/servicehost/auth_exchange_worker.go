@@ -107,6 +107,7 @@ func (r *serviceAuthRequest) closeOwned(ctx context.Context) error {
 	s := r.adapter.service
 	s.mu.Lock()
 	cleaned, batchClosed, batch, endpoint, fatal := r.cleaned, r.batchClosed, r.batch, r.endpoint, r.fatal
+	consumedGrant := s.consumedConfirmationHelperLocked(r)
 	s.mu.Unlock()
 	if fatal != nil {
 		return fatal
@@ -115,7 +116,14 @@ func (r *serviceAuthRequest) closeOwned(ctx context.Context) error {
 		return nil
 	}
 	var batchErr error
-	if batch.collector != nil && !batchClosed {
+	if batch.collector != nil && !batchClosed && consumedGrant {
+		// Only this grant's exact Collect/Consume already acknowledged helper
+		// wait, IO, process and scope closure. Re-running Batch.Close would wait
+		// for the later whole-workload ack and cycle with guest cleanup/auth join.
+		s.mu.Lock()
+		r.batchClosed = true
+		s.mu.Unlock()
+	} else if batch.collector != nil && !batchClosed {
 		batchCtx := ctx
 		end := func() {}
 		if endpoint != nil {
