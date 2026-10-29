@@ -188,6 +188,14 @@ mod tests {
     use super::begin_on_initial_event;
 
     #[test]
+    fn 対照modeは二つの固定値だけを受け付ける() {
+        assert!(matches!(super::parse_baseline_mode("with-html"), Some(super::BaselineMode::WithHtml)));
+        assert!(matches!(super::parse_baseline_mode("load-html"), Some(super::BaselineMode::LoadHtml)));
+        assert!(super::parse_baseline_mode("").is_none());
+        assert!(super::parse_baseline_mode("other").is_none());
+    }
+
+    #[test]
     fn 固定htmlだけに対応する非network_uriを厳密に識別する() {
         let encoded = super::FIXTURE_HTML.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
         let exact = format!("data:text/html;charset=UTF-8,{encoded}");
