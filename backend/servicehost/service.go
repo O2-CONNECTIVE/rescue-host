@@ -163,6 +163,7 @@ func (s *Service) stopFor(cause error) bool {
 		s.stopCause = serviceFailure(cause)
 	}
 	s.stopping = true
+	s.invalidatePreviewLocked()
 	var unusedDone chan struct{}
 	if !s.started && s.done != nil {
 		s.used = true

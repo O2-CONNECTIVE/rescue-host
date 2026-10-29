@@ -154,7 +154,7 @@ workload待機だけで認証helper回収を飢餓させないよう元の有限
 Collectorは既知のworkload fatal分類を保持し、独立helper回収を試みた初回の後はnative操作を再試行しない。fatalな認証workerの実終了後も回収ackの未確認と資源参照は残す。
 
 statusは同じownerの許可0観測だけを返し、bindingやapprovalを捏造しない。
-prepare-intent/confirm-approvalは固定UNCONFIGUREDで拒否し、issuer.Prepareやlaunchへ到達しない。
+preview構成のないprepare-intentと、すべてのconfirm-approvalは固定UNCONFIGUREDで拒否し、issuer.Prepareやlaunchへ到達しない。
 quiesceは発行拒否・同じissuerの実Close成功からprivate receiptを作り、quiesce-acceptedだけを返す。
 workloadCleanupConfirmedは常にfalseとし、workload-quiesced・SCM STOPPED・SSH停止成功を生成しない。
 失効後の既存Service ownerによる回収は独立に進む。handlerからService.Closeを待たないため、自身のplane終了との循環を作らない。
@@ -234,3 +234,20 @@ SCM所有threadが取得前・dispatch前にquery-only Witnessを照合し、同
 未構成のNative入力経路のStart・次要求受理は拒否したままです。
 正常縦断fixtureは既存memory auth/writeの準備→取得→再照合→応答→停止を検証し、実Endpoint receiptやWindows保護の成立は証明しません。
 別threadからの任意Scope/Factory、候補値を正本にするpolicy、UIによるgate解除は追加していません。
+
+
+## 表示候補だけを返すpreviewサービス
+
+`NewPreviewService`は実Factory pairとcontrolled認証adapterを構成し、legacyの承認sourceやLauncherを置かない。
+`PreviewDescriptor`はconfig/policy/keyset digest、canonicalな鍵fingerprint、固定hard deadlineと表示用lease capを保持するが、型や表示内容自体は保護された来歴・operator認証・承認・grantの証明ではない。
+正規入力の解決と供給はcompose側の責務であり、候補からAuthenticationId期待値を補完しない。
+
+認証済み・sequence確認済みのprepare-intentだけが、stopと同じmutexで同Serviceの表示記録を固定する。
+channel nonceは32byte、intent IDは16byteのcrypto乱数から内部生成する。
+intent期限は明示IntentTTLと構成時に固定したHardDeadlineの早い方とし、再prepareでHardDeadlineを延長しない。
+再prepareは旧表示候補を無効化し、stop・channel喪失・write失敗でも同じ表示記録を失効させる。
+表示用intentはworkload所有intent/予約と別物である。
+
+応答は既存service/1 schemaとcanonical preview digestを使い、confirm-approvalは常にSERVICE_UNCONFIGUREDを維持する。
+発行・子起動・保存承認の復元を行わず、既存製品gateも閉鎖したままである。
+private認証/SCM fixtureとmemory writerの成功はproducerとcodecの結合証拠に限り、実Windows認証・transport・SSH成功の証明ではない。
