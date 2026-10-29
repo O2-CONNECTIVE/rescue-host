@@ -5,6 +5,7 @@ import { createNativeObservation } from './observation.ts';
 import { observeSessionStartup } from './session-observation.ts';
 import { inspectBaselineDocument } from './baseline-document.ts';
 import { captureNavigationSnapshot, classifyNavigationSnapshots } from './baseline-navigation.ts';
+import { classifyNavigationPairs } from './baseline-navigation-pairs.ts';
 
 // UI/製品IPC判定へ入らない独立対照。終了操作はsupervisorだけが行う。
 const output = process.env.NATIVE_OUTPUT_DIR;
@@ -44,7 +45,7 @@ try {
     throw error;
   } finally {
     const navigationAfter = await captureNavigationSnapshot(navigationDir, 'after');
-    try { await writeFile(path.join(output, 'baseline-navigation-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...classifyNavigationSnapshots(navigationBefore, navigationAfter) })); }
+    try { await writeFile(path.join(output, 'baseline-navigation-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...classifyNavigationSnapshots(navigationBefore, navigationAfter), sameNavigation: classifyNavigationPairs(navigationBefore, navigationAfter) })); }
     catch { /* 診断欠測は元の判定を置き換えない。 */ }
   }
   const documentReport = inspectBaselineDocument(document);

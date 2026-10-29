@@ -187,6 +187,62 @@ struct Recorder {
     complete: AtomicBool,
 }
 static TRACE: OnceLock<Option<Arc<Recorder>>> = OnceLock::new();
+// 試験用patchだけに公開するhook。生URI/IDを保持・出力しない。
+pub struct NavigationHooks {
+    pub fixture_html: &'static str,
+    pub start: fn(Option<u8>, u8, bool, bool),
+    pub complete: fn(Option<u8>, Option<bool>),
+}
+static NAVIGATION_HOOKS: OnceLock<NavigationHooks> = OnceLock::new();
+static NAVIGATION_IDS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
+static NAVIGATION_FAULT: AtomicBool = AtomicBool::new(false);
+pub fn install_navigation_hooks(hooks: NavigationHooks) -> bool { NAVIGATION_HOOKS.set(hooks).is_ok() }
+pub fn navigation_fault() -> bool { NAVIGATION_FAULT.load(SeqCst) }
+fn navigation_slot(id: Option<u64>, create: bool) -> Option<u8> {
+    let result = id.and_then(|id| {
+        let mut ids = NAVIGATION_IDS.try_lock().ok()?;
+        if let Some(i) = ids.iter().position(|x| *x == id) { return Some((i + 1) as u8); }
+        if !create || ids.len() >= 16 { return None; }
+        ids.push(id); Some(ids.len() as u8)
+    });
+    if result.is_none() { NAVIGATION_FAULT.store(true, SeqCst); }
+    result
+}
+pub fn classify_navigation(uri: &str) -> u8 {
+    let Some(hooks) = NAVIGATION_HOOKS.get() else { return 0 };
+    if uri == "about:blank" { return 1; }
+    if uri.len() > 8192 { return 3; }
+    let Some(payload) = uri.strip_prefix("data:text/html;charset=UTF-8,")
+        .or_else(|| uri.strip_prefix("data:text/html;charset=utf-8,"))
+        .or_else(|| uri.strip_prefix("data:text/html,")) else { return 3 };
+    fn hex(b: u8) -> Option<u8> {
+        match b { b'0'..=b'9' => Some(b - b'0'), b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10), _ => None }
+    }
+    let mut bytes = payload.bytes(); let mut index = 0;
+    while let Some(byte) = bytes.next() {
+        let decoded = if byte == b'%' {
+            let Some(value) = bytes.next().and_then(hex).zip(bytes.next().and_then(hex)) else { return 3 };
+            value.0 * 16 + value.1
+        } else { byte };
+        if hooks.fixture_html.as_bytes().get(index) != Some(&decoded) { return 3; }
+        index += 1;
+    }
+    if index == hooks.fixture_html.len() { 2 } else { 3 }
+}
+pub fn record_navigation_start(id: Option<u64>, class: u8, allow: bool, applied: bool) {
+    if let Some(h) = NAVIGATION_HOOKS.get() {
+        let slot = navigation_slot(id, true);
+        if std::panic::catch_unwind(|| (h.start)(slot, class, allow, applied)).is_err() { NAVIGATION_FAULT.store(true, SeqCst); }
+    }
+}
+pub fn record_navigation_complete(id: Option<u64>, success: Option<bool>) {
+    if let Some(h) = NAVIGATION_HOOKS.get() {
+        let slot = navigation_slot(id, false);
+        if success.is_none() { NAVIGATION_FAULT.store(true, SeqCst); }
+        if std::panic::catch_unwind(|| (h.complete)(slot, success)).is_err() { NAVIGATION_FAULT.store(true, SeqCst); }
+    }
+}
 // stdlib fixtureだけでwriterの通常closeを確認する。依存buildには含まれない。
 #[cfg(test)]
 static WRITER_FINISHED: AtomicBool = AtomicBool::new(false);

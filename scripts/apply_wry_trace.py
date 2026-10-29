@@ -8,7 +8,7 @@ import re
 import sys
 import tarfile
 
-PINS_SHA256 = '250c3047dccf1b444cc6c727b6b47835b1cbef278d1fd09bd102ec260db772ec'
+PINS_SHA256 = 'ce3120bc3f555a2bf67352407e9a279f074d56e9302aef71f0857cfb5716d054'
 ALLOWED = {'src/lib.rs', 'src/webview2/mod.rs', 'src/startup_probe.rs', 'src/startup_pump.rs', 'src/startup_script.rs'}
 
 

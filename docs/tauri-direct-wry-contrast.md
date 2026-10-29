@@ -62,6 +62,10 @@ worker markerは作成箇所への到達のみを示し、thread joinの証明�
 拒否callbackは、限定したdata URI表現を復号したbytesが固定HTMLと完全一致する場合だけ、その拒否と一致を単一の匿名イベントにする。
 比較対象のURIやHTMLは保存せず、許可判定は従来のabout:blank完全一致のままとする。
 非対応形式や未観測は固定HTMLでなかった証明にならず、一致してもNavigateToStringからの発生や完了eventとの対応を証明しない。
+固定Wryの試験専用patchは開始・完了のNavigationIdをメモリ内だけで上限16の匿名slotに対応させ、開始判断・SetCancel呼出結果・完了のIsSuccessを固定分類で記録する。
+同じslotの対応は同一IDの開始・完了を示すが、NavigateToStringが発生元である証明ではない。call-okはSetCancelの呼出成功であり最終キャンセルの保証ではない。
+redirect等の複数開始を保持し、取得失敗・未対応・あふれ・順序不整合は不完全とする。生IDやURIは出力しない。
+診断hookの失敗はsticky faultとして扱う。snapshot読取後のfault競合、panic abort、COM getterやOS内部の動作は完全には観測できない。
 
 ## 独立判定と終了
 

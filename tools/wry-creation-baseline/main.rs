@@ -30,15 +30,37 @@ fn navigation_uri_matches_fixture(uri: &str) -> bool {
 // callbackは固定分類を有界channelへ非待機で送る。I/Oは所有workerだけが行う。
 #[cfg(windows)]
 mod navigation_trace {
-    use std::{fs::{self, OpenOptions}, io::Write, path::PathBuf, sync::{Arc, atomic::{AtomicUsize, Ordering}, mpsc::{self, SyncSender, TrySendError}}, thread, time::{Duration, Instant}};
+    use std::{fs::{self, OpenOptions}, io::Write, path::PathBuf, sync::{Arc, OnceLock, atomic::{AtomicUsize, Ordering}, mpsc::{self, SyncSender, TrySendError}}, thread, time::{Duration, Instant}};
     #[derive(Clone)]
-    pub struct Sender { tx: SyncSender<&'static str>, dropped: Arc<AtomicUsize> }
+    pub struct Sender { tx: SyncSender<String>, dropped: Arc<AtomicUsize> }
     impl Sender {
-        pub fn record(&self, event: &'static str) {
-            if let Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) = self.tx.try_send(event) {
+        pub fn record(&self, event: &str) {
+            if let Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) = self.tx.try_send(event.to_owned()) {
                 self.dropped.fetch_add(1, Ordering::SeqCst);
             }
         }
+    }
+    static SENDER: OnceLock<Sender> = OnceLock::new();
+    fn unknown() { if let Some(sender) = SENDER.get() { sender.record("PAIR:{\"slot\":0,\"kind\":\"unknown\"}"); } }
+    fn start_event(slot: Option<u8>, class: u8, allow: bool, applied: bool) {
+        let Some(sender) = SENDER.get() else { return };
+        sender.record(if allow { "navigation-allowed" } else if class == 2 { "navigation-denied-fixture" } else { "navigation-denied" });
+        let Some(slot) = slot else { unknown(); return };
+        let uri = match class { 1 => "blank", 2 => "fixture", 3 => "other", _ => { unknown(); return } };
+        let decision = if allow { "allowed" } else { "denied" }; let cancel = if applied { "call-ok" } else { "call-error" };
+        sender.record(&format!("PAIR:{{\"slot\":{slot},\"kind\":\"start\",\"decision\":\"{decision}\",\"cancel\":\"{cancel}\",\"uri\":\"{uri}\"}}"));
+    }
+    fn complete_event(slot: Option<u8>, success: Option<bool>) {
+        let Some(sender) = SENDER.get() else { return };
+        let (Some(slot), Some(success)) = (slot, success) else { unknown(); return };
+        let result = if success { "success" } else { "failure" };
+        sender.record(&format!("PAIR:{{\"slot\":{slot},\"kind\":\"complete\",\"success\":\"{result}\"}}"));
+    }
+    pub fn install(sender: Sender) -> bool {
+        if SENDER.set(sender).is_err() { return false; }
+        wry::startup_probe::install_navigation_hooks(wry::startup_probe::NavigationHooks {
+            fixture_html: super::FIXTURE_HTML, start: start_event, complete: complete_event,
+        })
     }
     pub fn start(path: PathBuf) -> Option<Sender> {
         let (tx, rx) = mpsc::sync_channel(32);
@@ -47,15 +69,19 @@ mod navigation_trace {
         thread::Builder::new().name("baseline-navigation-trace".into()).spawn(move || {
             let until = Instant::now() + Duration::from_secs(120);
             let mut events = Vec::with_capacity(32);
+            let mut pairs = Vec::with_capacity(32);
             let mut before = false; let mut after = false;
             loop {
                 while let Ok(event) = rx.try_recv() {
-                    if events.len() < 32 { events.push(event); } else { worker_dropped.fetch_add(1, Ordering::SeqCst); }
+                    if let Some(pair) = event.strip_prefix("PAIR:") {
+                        if pairs.len() < 32 { pairs.push(pair.to_owned()); } else { worker_dropped.fetch_add(1, Ordering::SeqCst); }
+                    } else if events.len() < 32 { events.push(event); } else { worker_dropped.fetch_add(1, Ordering::SeqCst); }
                 }
                 for (phase, done) in [("before", &mut before), ("after", &mut after)] {
                     if !*done && path.join(format!("navigation-{phase}.request")).is_file() {
                         let rows = events.iter().map(|e| format!("\"{e}\"")).collect::<Vec<_>>().join(",");
-                        let body = format!("{{\"schema\":1,\"phase\":\"{phase}\",\"dropped\":{},\"events\":[{rows}]}}", worker_dropped.load(Ordering::SeqCst));
+                        let dropped = worker_dropped.load(Ordering::SeqCst) + usize::from(wry::startup_probe::navigation_fault());
+                        let body = format!("{{\"schema\":1,\"phase\":\"{phase}\",\"dropped\":{dropped},\"events\":[{rows}],\"pairs\":[{}]}}", pairs.join(","));
                         let temp = path.join(format!("navigation-{phase}.tmp"));
                         let final_path = path.join(format!("navigation-{phase}.json"));
                         let ok = OpenOptions::new().write(true).create_new(true).open(&temp)
@@ -109,22 +135,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut webview = None;
     let mut attempted = false;
     let trace = std::env::var_os("RESCUE_HOST_STARTUP_TRACE_DIR").and_then(|p| navigation_trace::start(p.into()));
+    if let Some(sender) = &trace { if !navigation_trace::install(sender.clone()) { sender.record("PAIR:{\"slot\":0,\"kind\":\"unknown\"}"); } }
     // build()/CloseRequested/Dropは同じUI thread。別thread wakeは追加しない。
     event_loop.run(move |event, _, flow| {
         let _keep_window = &window;
         *flow = ControlFlow::Wait;
         if begin_on_initial_event(&mut attempted, matches!(&event, Event::NewEvents(StartCause::Init))) {
-            let nav_trace = trace.clone(); let load_trace = trace.clone();
+            let load_trace = trace.clone();
             let created = WebViewBuilder::new_with_web_context(context.as_mut().expect("context"))
                 .with_id("main")
                 .with_incognito(false)
                 .with_transparent(false)
-                .with_navigation_handler(move |url| {
-                    let allowed = url == "about:blank";
-                    if let Some(trace) = &nav_trace { trace.record(if allowed { "navigation-allowed" }
-                        else if navigation_uri_matches_fixture(&url) { "navigation-denied-fixture" } else { "navigation-denied" }); }
-                    allowed
-                })
+                .with_navigation_handler(|url| url == "about:blank")
                 .with_on_page_load_handler(move |stage, _| {
                     if let Some(trace) = &load_trace { trace.record(match stage { wry::PageLoadEvent::Started => "load-started", wry::PageLoadEvent::Finished => "load-finished" }); }
                 })

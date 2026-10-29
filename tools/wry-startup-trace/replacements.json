@@ -2,7 +2,7 @@
   {
     "file": "src/lib.rs",
     "old": "mod error;",
-    "new": "#[cfg(target_os = \"windows\")]\nmod startup_probe;\n#[cfg(target_os = \"windows\")]\nmod startup_pump;\nmod error;"
+    "new": "#[cfg(target_os = \"windows\")]\npub mod startup_probe;\n#[cfg(target_os = \"windows\")]\nmod startup_pump;\nmod error;"
   },
   {
     "file": "src/webview2/mod.rs",
@@ -63,5 +63,15 @@
     "file": "src/webview2/mod.rs",
     "old": "  fn add_script_to_execute_on_document_created(webview: &ICoreWebView2, js: String) -> Result<()> {\n    let webview = webview.clone();\n    AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(\n      Box::new(move |handler| unsafe {\n        let js = HSTRING::from(js);\n        webview\n          .AddScriptToExecuteOnDocumentCreated(&js, &handler)\n          .map_err(Into::into)\n      }),\n      Box::new(|e, _| e),\n    )\n    .map_err(Into::into)\n  }\n",
     "new": "  fn add_script_to_execute_on_document_created(webview: &ICoreWebView2, js: String) -> Result<()> {\n    use crate::startup_probe::{begin_script, observe_script, PumpScope, ScriptSignal};\n    let ordinal = begin_script();\n    let webview = webview.clone();\n    // 固定macroのAPI closureを同じBox/FnOnce所有権で消費し、COM cloneをwait前にdropする。\n    let start: Box<dyn FnOnce(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler) -> webview2_com::Result<()>> =\n      Box::new(move |handler| unsafe {\n        let js = HSTRING::from(js);\n        observe_script(ordinal, ScriptSignal::ApiStart);\n        webview.AddScriptToExecuteOnDocumentCreated(&js, &handler).map_err(Into::into)\n      });\n    let (tx, rx) = mpsc::channel();\n    let completed: Box<dyn FnOnce(windows::core::Result<()>, String) -> windows::core::Result<()>> = Box::new(|e, _| e);\n    // create/Invokeのonce-takeと引数変換は元macroを再利用。送信失敗のexpectも維持する。\n    let callback = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(move |e, value| {\n      observe_script(ordinal, ScriptSignal::Callback(e.is_ok()));\n      let result = completed(e, value).map_err(webview2_com::Error::WindowsError);\n      tx.send(result).expect(\"send over mpsc channel\");\n      observe_script(ordinal, ScriptSignal::Sent);\n      Ok(())\n    }));\n    let api = start(callback);\n    observe_script(ordinal, ScriptSignal::ApiReturn);\n    let result: webview2_com::Result<()> = api.and_then(|_| {\n      crate::startup_pump::wait_with_pump(rx, PumpScope::Script(ordinal))?\n    });\n    observe_script(ordinal, ScriptSignal::Return(result.is_ok()));\n    result.map_err(Into::into)\n  }\n"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "            let allow = nav_callback(uri);\n            args.SetCancel(!allow)?;",
+    "new": "            let class = crate::startup_probe::classify_navigation(&uri);\n            let allow = nav_callback(uri);\n            let cancel = args.SetCancel(!allow);\n            let id = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n              let mut id = 0u64;\n              if args.NavigationId(&mut id).is_ok() { Some(id) } else { None }\n            })).ok().flatten();\n            crate::startup_probe::record_navigation_start(id, class, allow, cancel.is_ok());\n            cancel?;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "        webview.add_NavigationCompleted(\n          &NavigationCompletedEventHandler::create(Box::new(move |webview, _| {\n            let Some(webview) = webview else {\n              return Ok(());\n            };\n\n            on_page_load_handler(PageLoadEvent::Finished, Self::url_from_webview(&webview)?);",
+    "new": "        webview.add_NavigationCompleted(\n          &NavigationCompletedEventHandler::create(Box::new(move |webview, args| {\n            let Some(webview) = webview else {\n              return Ok(());\n            };\n\n            on_page_load_handler(PageLoadEvent::Finished, Self::url_from_webview(&webview)?);\n            let (id, success) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {\n              if let Some(args) = args {\n                let mut id = 0u64;\n                let mut success = BOOL::default();\n                let id = if args.NavigationId(&mut id).is_ok() { Some(id) } else { None };\n                let success = if args.IsSuccess(&mut success).is_ok() { Some(success.as_bool()) } else { None };\n                (id, success)\n              } else { (None, None) }\n            })).unwrap_or((None, None));\n            crate::startup_probe::record_navigation_complete(id, success);"
   }
 ]

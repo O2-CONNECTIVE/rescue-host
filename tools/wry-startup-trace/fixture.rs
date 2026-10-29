@@ -10,21 +10,25 @@ use std::{
     time::{Duration, Instant},
 };
 static NAV_COUNT: AtomicUsize = AtomicUsize::new(0);
-fn classify_navigation(_: &str) -> u8 { 2 }
-fn record_navigation_start(id: Option<u64>, class: u8, allow: bool, applied: bool) {
-    assert_eq!((id, class, allow, applied), (Some(5), 2, false, true));
+fn record_navigation_start(slot: Option<u8>, class: u8, allow: bool, applied: bool) {
+    assert_eq!((slot, class, allow, applied), (Some(1), 2, false, true));
     NAV_COUNT.fetch_add(1, Ordering::SeqCst);
 }
-fn record_navigation_complete(id: Option<u64>, success: Option<bool>) {
-    assert_eq!((id, success), (Some(5), Some(false)));
+fn record_navigation_complete(slot: Option<u8>, success: Option<bool>) {
+    assert_eq!((slot, success), (Some(1), Some(false)));
     NAV_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 fn navigation_hook_contract() {
     assert!(startup_probe::install_navigation_hooks(startup_probe::NavigationHooks {
-        classify: classify_navigation, start: record_navigation_start, complete: record_navigation_complete,
+        fixture_html: "fixture", start: record_navigation_start, complete: record_navigation_complete,
     }));
-    let class = startup_probe::classify_navigation("fixture");
+    let class = startup_probe::classify_navigation("data:text/html,fixture");
     assert_eq!(class, 2);
+    assert_eq!(startup_probe::classify_navigation("data:text/html,%66ixture"), 2);
+    assert_eq!(startup_probe::classify_navigation("about:blank"), 1);
+    assert_eq!(startup_probe::classify_navigation("https://example.invalid/"), 3);
+    assert_eq!(startup_probe::classify_navigation("data:text/html,fixture%"), 3);
+    assert_eq!(startup_probe::classify_navigation("data:text/html,fixture%00"), 3);
     startup_probe::record_navigation_start(Some(5), class, false, true);
     startup_probe::record_navigation_complete(Some(5), Some(false));
     assert_eq!(NAV_COUNT.load(Ordering::SeqCst), 2);

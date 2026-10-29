@@ -1,4 +1,4 @@
-type Start = { slot: number; kind: 'start'; decision: 'allowed' | 'denied'; cancel: 'applied' | 'failed'; uri: 'fixture' | 'blank' | 'other' };
+type Start = { slot: number; kind: 'start'; decision: 'allowed' | 'denied'; cancel: 'call-ok' | 'call-error'; uri: 'fixture' | 'blank' | 'other' };
 type Finish = { slot: number; kind: 'complete'; success: 'success' | 'failure' };
 type PairEvent = Start | Finish;
 type Snapshot = { pairs: PairEvent[] };
@@ -11,7 +11,7 @@ function snapshot(value: unknown, phase: string): value is Snapshot {
     const p = item as Record<string, unknown>;
     if (!Number.isInteger(p.slot) || (p.slot as number) < 1 || (p.slot as number) > 16) return false;
     return p.kind === 'start' ? ['allowed', 'denied'].includes(p.decision as string)
-      && ['applied', 'failed'].includes(p.cancel as string) && ['fixture', 'blank', 'other'].includes(p.uri as string)
+      && ['call-ok', 'call-error'].includes(p.cancel as string) && ['fixture', 'blank', 'other'].includes(p.uri as string)
       : p.kind === 'complete' && ['success', 'failure'].includes(p.success as string);
   });
 }

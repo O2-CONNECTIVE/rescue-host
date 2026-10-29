@@ -10,7 +10,7 @@ def main():
     archive, pump_archive, macro_archive, bundle, source, lock = map(Path, sys.argv[1:7])
     commit = sys.argv[7]
     script = Path(__file__).resolve().parents[1] / 'apply_wry_trace.py'
-    for mode in ['valid', 'source', 'extra', 'lock', 'code', 'pump', 'pump-archive', 'macro-archive', 'script']:
+    for mode in ['valid', 'source', 'extra', 'lock', 'code', 'replacement', 'pump', 'pump-archive', 'macro-archive', 'script']:
         with tempfile.TemporaryDirectory(prefix='rescue-wry-provenance-') as directory:
             root = Path(directory)
             tree = root / 'source'
@@ -35,6 +35,9 @@ def main():
             elif mode == 'code':
                 with (patch / 'probe.rs').open('ab') as stream:
                     stream.write(b'PRIVATE_FIXTURE')
+            elif mode == 'replacement':
+                with (patch / 'replacements.json').open('ab') as stream:
+                    stream.write(b'PRIVATE_FIXTURE')
             elif mode == 'pump':
                 with (patch / 'pump.rs').open('ab') as stream:
                     stream.write(b'PRIVATE_FIXTURE')
@@ -52,7 +55,7 @@ def main():
                 capture_output=True, timeout=5)
             if (result.returncode == 0) != (mode == 'valid') or result.stderr or b'PRIVATE_FIXTURE' in result.stdout:
                 raise RuntimeError('WRY_PROVENANCE_FIXTURE_FAILED')
-    print('WRY_PROVENANCE_FIXTURE_9_PASSED')
+    print('WRY_PROVENANCE_FIXTURE_10_PASSED')
 
 
 if __name__ == '__main__':
