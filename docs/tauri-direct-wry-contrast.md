@@ -59,6 +59,9 @@ channel滞留やcallbackの競合、worker停止未確認があるため、こ�
 page-loadのFinishedはnavigationの成功を証明せず、初期about:blankもreadyState completeになり得る。
 追加イベントハンドラーとsnapshot待機は対照のタイミングを変え得る。15秒の要求期限、単一document要求、既存の合格条件は変えない。
 worker markerは作成箇所への到達のみを示し、thread joinの証明ではない。既存Wry・driver traceは追加診断より優先する。
+拒否callbackは、限定したdata URI表現を復号したbytesが固定HTMLと完全一致する場合だけ、その拒否と一致を単一の匿名イベントにする。
+比較対象のURIやHTMLは保存せず、許可判定は従来のabout:blank完全一致のままとする。
+非対応形式や未観測は固定HTMLでなかった証明にならず、一致してもNavigateToStringからの発生や完了eventとの対応を証明しない。
 
 ## 独立判定と終了
 

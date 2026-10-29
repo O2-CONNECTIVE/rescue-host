@@ -9,7 +9,7 @@ void test('前後snapshotにある匿名eventだけを因果関係に応じて�
   const before = { schema: 1, phase: 'before', dropped: 0, events: ['navigation-allowed'] };
   const after = { schema: 1, phase: 'after', dropped: 0, events: ['navigation-allowed', 'load-finished'] };
   assert.deepEqual(classifyNavigationSnapshots(before, after), {
-    diagnostic: 'incomplete', snapshotState: 'observed', navigationAllowed: 'before-request', navigationDenied: 'unobserved',
+    diagnostic: 'incomplete', snapshotState: 'observed', navigationAllowed: 'before-request', navigationDenied: 'unobserved', fixtureUriMatch: 'unobserved',
     loadStarted: 'unobserved', loadFinished: 'by-after-snapshot',
   });
   assert.equal(classifyNavigationSnapshots(before, { ...after, dropped: 1 }).diagnostic, 'incomplete');

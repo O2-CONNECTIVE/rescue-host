@@ -1,6 +1,32 @@
 // 診断専用。Tauriの組立て・IPC・初期化scriptを持たない単一WebView。
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+#[cfg(any(windows, test))]
+const FIXTURE_HTML: &str = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>";
+
+// 限定data URIの固定HTML完全一致だけを匿名観測する。許可判定には使用しない。
+#[cfg(any(windows, test))]
+fn navigation_uri_matches_fixture(uri: &str) -> bool {
+    if uri.len() > 8192 { return false; }
+    let Some(payload) = uri.strip_prefix("data:text/html;charset=UTF-8,")
+        .or_else(|| uri.strip_prefix("data:text/html;charset=utf-8,"))
+        .or_else(|| uri.strip_prefix("data:text/html,")) else { return false };
+    fn hex(b: u8) -> Option<u8> {
+        match b { b'0'..=b'9' => Some(b - b'0'), b'a'..=b'f' => Some(b - b'a' + 10),
+            b'A'..=b'F' => Some(b - b'A' + 10), _ => None }
+    }
+    let mut bytes = payload.bytes(); let mut index = 0;
+    while let Some(byte) = bytes.next() {
+        let decoded = if byte == b'%' {
+            let Some(value) = bytes.next().and_then(hex).zip(bytes.next().and_then(hex)) else { return false };
+            value.0 * 16 + value.1
+        } else { byte };
+        if FIXTURE_HTML.as_bytes().get(index) != Some(&decoded) { return false; }
+        index += 1;
+    }
+    index == FIXTURE_HTML.len()
+}
+
 // callbackは固定分類を有界channelへ非待機で送る。I/Oは所有workerだけが行う。
 #[cfg(windows)]
 mod navigation_trace {
@@ -95,14 +121,15 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .with_transparent(false)
                 .with_navigation_handler(move |url| {
                     let allowed = url == "about:blank";
-                    if let Some(trace) = &nav_trace { trace.record(if allowed { "navigation-allowed" } else { "navigation-denied" }); }
+                    if let Some(trace) = &nav_trace { trace.record(if allowed { "navigation-allowed" }
+                        else if navigation_uri_matches_fixture(&url) { "navigation-denied-fixture" } else { "navigation-denied" }); }
                     allowed
                 })
                 .with_on_page_load_handler(move |stage, _| {
                     if let Some(trace) = &load_trace { trace.record(match stage { wry::PageLoadEvent::Started => "load-started", wry::PageLoadEvent::Finished => "load-finished" }); }
                 })
                 .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
-                .with_html("<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>")
+                .with_html(FIXTURE_HTML)
                 .build(&window);
             match created {
                 Ok(value) => webview = Some(value),
@@ -140,14 +167,27 @@ mod tests {
 
     #[test]
     fn 固定htmlだけに対応する非network_uriを厳密に識別する() {
-        const HTML: &str = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>";
-        let encoded = HTML.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
+        let encoded = super::FIXTURE_HTML.bytes().map(|b| format!("%{b:02X}")).collect::<String>();
         let exact = format!("data:text/html;charset=UTF-8,{encoded}");
         assert!(super::navigation_uri_matches_fixture(&exact));
+        assert!(super::navigation_uri_matches_fixture(&exact.to_lowercase()));
+        assert!(super::navigation_uri_matches_fixture(&format!("data:text/html,{}", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}#", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}?", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}%", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}%2", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}%ZZ", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}%00", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html;charset=latin1,{}", super::FIXTURE_HTML)));
+        assert!(!super::navigation_uri_matches_fixture(&format!("data:text/html,{}", "a".repeat(8193))));
         assert!(!super::navigation_uri_matches_fixture(&(exact + "%20")));
         assert!(!super::navigation_uri_matches_fixture("data:text/html,other"));
         assert!(!super::navigation_uri_matches_fixture("https://example.invalid/"));
         assert!(!super::navigation_uri_matches_fixture("about:blank"));
+        assert!(!super::navigation_uri_matches_fixture("data:text/html,%"));
+        assert!(!super::navigation_uri_matches_fixture("data:text/html,%2"));
+        assert!(!super::navigation_uri_matches_fixture("data:text/html,%ZZ"));
+        assert!(!super::navigation_uri_matches_fixture("data:text/html;base64,AAAA"));
     }
 
     #[test]
