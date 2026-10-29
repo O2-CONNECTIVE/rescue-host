@@ -6,10 +6,26 @@ import (
 )
 
 func (q *accountQuery) query(ctx context.Context, b binding) (diagnostic accountDiagnostic, result error) {
+	return q.readChecked(ctx, b, false)
+}
+
+func (q *accountQuery) creationCheck(ctx context.Context) error {
+	if !q.valid() {
+		return ErrUnconfigured
+	}
+	_, e := q.readChecked(ctx, q.binding, true)
+	return e
+}
+
+func (q *accountQuery) readChecked(ctx context.Context, b binding, creation bool) (diagnostic accountDiagnostic, result error) {
 	if !q.valid() {
 		return diagnostic, ErrUnconfigured
 	}
-	if !finite(ctx) || b != q.binding || !q.plan.validBinding(b) {
+	bound := q.plan.validBinding(b)
+	if creation {
+		bound = q.plan.valid && b == q.plan.binding && b.sid == ""
+	}
+	if !finite(ctx) || b != q.binding || !bound {
 		return diagnostic, ErrDenied
 	}
 	if !q.mu.TryLock() {
@@ -92,9 +108,12 @@ func (q *accountQuery) query(ctx context.Context, b binding) (diagnostic account
 	if err != nil || domain.sid != b.machine {
 		return diagnostic, ErrDenied
 	}
-	user, err := q.read(ctx, accountQueryUser, guard)
-	if err != nil || user.name != b.name || user.sid != b.sid || !finite(ctx) || !guard() {
-		return diagnostic, ErrDenied
+	var user accountQueryObservation
+	if !creation {
+		user, err = q.read(ctx, accountQueryUser, guard)
+		if err != nil || user.name != b.name || user.sid != b.sid || !finite(ctx) || !guard() {
+			return diagnostic, ErrDenied
+		}
 	}
 	afterRole, err := q.read(ctx, accountQueryRole, guard)
 	if err != nil || afterRole.role != role.role {

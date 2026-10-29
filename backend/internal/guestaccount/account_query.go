@@ -75,6 +75,16 @@ func newAccountQuery(p Plan, b binding, s *seal, k accountQueryKernel) (*account
 	q.self = q
 	return q, nil
 }
+
+// 作成前は SID 未確定の同じ Plan だけを照合する。既存 account を採用しない。
+func newAccountCreationQuery(p Plan, s *seal, k accountQueryKernel) (*accountQuery, error) {
+	if !p.valid || p.binding.sid != "" || s == nil || k == nil {
+		return nil, ErrUnconfigured
+	}
+	q := &accountQuery{plan: p, binding: p.binding, seal: s, kernel: k}
+	q.self = q
+	return q, nil
+}
 func (q *accountQuery) valid() bool { return q != nil && q.self == q && q.kernel != nil }
 
 // inspectは完全な権限producer未設定を必ず返す。診断をcoreの完了へ昇格しない。
