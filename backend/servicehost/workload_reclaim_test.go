@@ -129,7 +129,6 @@ func TestServiceWorkloadTimeoutStillRequestsAuthCleanup(t *testing.T) {
 	case <-ctx.Done():
 		t.Fatal("authentication owner did not start within its request budget")
 	}
-	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	s.requestStop()
 	select {
 	case <-retried:
@@ -278,7 +277,6 @@ func TestServiceWorkloadReceiptRequiresWorkerAckAndExactIssuer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	t.Cleanup(func() { _ = s.finishOwnerReservation(work) })
 	s.mu.Lock()
 	issuer := s.issuer
