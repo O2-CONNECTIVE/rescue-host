@@ -11,20 +11,20 @@ function read(input: unknown, end: number): Pump | null {
   const counts = ['iterations', 'getCalls', 'getReturns', 'dispatchCalls', 'dispatchReturns'] as const;
   if (!counts.every(k => typeof input[k] === 'number' && Number.isSafeInteger(input[k]) && input[k] >= 0 && input[k] <= 1000000)
     || typeof input.lastUs !== 'number' || !Number.isSafeInteger(input.lastUs) || input.lastUs < 0 || input.lastUs > end) return null;
-  const [i, g, r, d, f] = counts.map(k => Number(input[k]));
+  const [iterations, getCalls, getReturns, dispatchCalls, dispatchReturns] = counts.map(k => Number(input[k]));
   if (!input.entered) {
-    if (phase !== 'not-entered' || [i, g, r, d, f, input.lastUs].some(x => x !== 0)) return null;
+    if (phase !== 'not-entered' || [iterations, getCalls, getReturns, dispatchCalls, dispatchReturns, input.lastUs].some(x => x !== 0)) return null;
   } else {
-    if (phase === 'not-entered' || !(f <= d && d <= r && r <= g && g <= i)) return null;
-    const balanced = g === r && r === d && d === f;
-    if ((phase === 'receiver-check' && !(balanced && (i === g || i === g + 1)))
-      || (phase === 'receiver-ready' && !(balanced && i === g + 1))
-      || (phase === 'get-message' && !(g === r + 1 && r === d && d === f && i === g))
-      || (['translate', 'quit', 'os-error'].includes(phase) && !(g === r && r === d + 1 && d === f && i === g))
-      || (phase === 'dispatch' && !(g === r && r === d && d === f + 1 && i === g))) return null;
+    if (phase === 'not-entered' || !(dispatchReturns <= dispatchCalls && dispatchCalls <= getReturns && getReturns <= getCalls && getCalls <= iterations)) return null;
+    const balanced = getCalls === getReturns && getReturns === dispatchCalls && dispatchCalls === dispatchReturns;
+    if ((phase === 'receiver-check' && !(balanced && (iterations === getCalls || iterations === getCalls + 1)))
+      || (phase === 'receiver-ready' && !(balanced && iterations === getCalls + 1))
+      || (phase === 'get-message' && !(getCalls === getReturns + 1 && getReturns === dispatchCalls && dispatchCalls === dispatchReturns && iterations === getCalls))
+      || (['translate', 'quit', 'os-error'].includes(phase) && !(getCalls === getReturns && getReturns === dispatchCalls + 1 && dispatchCalls === dispatchReturns && iterations === getCalls))
+      || (phase === 'dispatch' && !(getCalls === getReturns && getReturns === dispatchCalls && dispatchCalls === dispatchReturns + 1 && iterations === getCalls))) return null;
   }
-  return { entered: input.entered, phase, iterations: i, getCalls: g, getReturns: r,
-    dispatchCalls: d, dispatchReturns: f, lastUs: input.lastUs, invalid: false };
+  return { entered: input.entered, phase, iterations, getCalls, getReturns,
+    dispatchCalls, dispatchReturns, lastUs: input.lastUs, invalid: false };
 }
 export function readPumps(input: unknown, end: number) {
   if (!object(input) || Object.keys(input).length !== 2 || !Object.hasOwn(input, 'environment') || !Object.hasOwn(input, 'controller')) return null;
