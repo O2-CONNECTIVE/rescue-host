@@ -84,6 +84,7 @@ func TestPreparedBatchConcreteRevokeCancelsDirectCollectorDrain(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	collector := b.Collector()
 	entered := make(chan struct{})
 	b.collector.ops.drain = func(ctx context.Context) (reportResult, error) {
 		close(entered)
@@ -95,7 +96,7 @@ func TestPreparedBatchConcreteRevokeCancelsDirectCollectorDrain(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { _, e := b.Collector().Collect(caller); done <- e }()
 	<-entered
-	if err = b.Close(requestContext(t)); err != nil && !errors.Is(err, ErrUnconfirmed) {
+	if err = b.Close(requestContext(t)); err != nil && (!errors.Is(err, ErrUnconfirmed) || collectorCleanupFatal(err)) {
 		t.Fatal(err)
 	}
 	select {
@@ -107,6 +108,9 @@ func TestPreparedBatchConcreteRevokeCancelsDirectCollectorDrain(t *testing.T) {
 		cancel()
 		<-done
 		t.Fatal("concrete owner revocation lost direct cancellation")
+	}
+	if b.Collector() != collector || b.owner != owner.owner {
+		t.Fatal("canceled drain replaced retained owners")
 	}
 	if err = b.Close(requestContext(t)); err != nil {
 		t.Fatal("joined collector cleanup remained unconfirmed", err)
