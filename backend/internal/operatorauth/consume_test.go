@@ -57,3 +57,29 @@ func TestCollectorFailedConsumptionBurnsProof(t *testing.T) {
 		t.Fatal("fabricated proof accepted")
 	}
 }
+
+func TestCollectorKeepsBoundOriginalRequestLifetime(t *testing.T) {
+	c := (&collectorFixture{eof: true}).collector()
+	original, cancel := context.WithCancel(requestContext(t))
+	defer cancel()
+	c.request = original
+	r, err := c.Collect(requestContext(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cancel()
+	if _, err = c.Consume(requestContext(t), r); err == nil {
+		t.Fatal("original request cancellation was extended")
+	}
+}
+
+func TestCollectorOriginalCancellationDuringCompletionRejectsProof(t *testing.T) {
+	c := (&collectorFixture{eof: true}).collector()
+	original, cancel := context.WithCancel(requestContext(t))
+	defer cancel()
+	c.request = original
+	c.ops.closeProcess = func() error { cancel(); return nil }
+	if proof, err := c.Collect(requestContext(t)); proof != nil || err == nil {
+		t.Fatal("completion published cancelled proof")
+	}
+}

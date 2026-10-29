@@ -14,7 +14,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		return nil, ErrDenied
 	}
 	c.mu.Lock()
-	if c.used || c.failed || c.closed || !c.valid() {
+	if c.used || c.failed || c.closed || !c.valid() || (c.request != nil && !reportContextValid(c.request)) {
 		c.mu.Unlock()
 		return nil, ErrDenied
 	}
@@ -72,7 +72,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 	c.mu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.failed || c.closed || !finite(ctx) {
+	if c.failed || c.closed || !reportContextValid(ctx) || (c.request != nil && !reportContextValid(c.request)) {
 		return nil, ErrDenied
 	}
 	deadline, _ := ctx.Deadline()
@@ -84,7 +84,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 func (c *Collector) live(ctx context.Context) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return !c.failed && !c.closed && finite(ctx)
+	return !c.failed && !c.closed && reportContextValid(ctx) && (c.request == nil || reportContextValid(c.request))
 }
 func (c *Collector) valid() bool {
 	o := c.ops
@@ -112,7 +112,7 @@ func (c *Collector) Consume(ctx context.Context, r *Read) ([]byte, error) {
 		return nil, ErrDenied
 	}
 	r.used = true
-	if c.failed || c.closed || !reportContextValid(ctx) || !reportContextValid(r.request) || !time.Now().Before(r.deadline) {
+	if c.failed || c.closed || (c.request != nil && !reportContextValid(c.request)) || !reportContextValid(ctx) || !reportContextValid(r.request) || !time.Now().Before(r.deadline) {
 		return nil, ErrDenied
 	}
 	return append([]byte(nil), r.frame...), nil

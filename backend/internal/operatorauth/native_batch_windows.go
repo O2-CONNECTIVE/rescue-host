@@ -5,6 +5,7 @@ package operatorauth
 import (
 	"context"
 	"errors"
+	"sync"
 	"unsafe"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
@@ -16,12 +17,25 @@ import (
 // callerはBatch全回収までthreadとscopeを保持する。固定provisioning未接続の
 // RunFixedからは呼ばれず、UI/argv/SID文字列からscopeを生成しない。
 func startNativeBatch(ctx context.Context, s nativeBatchSpec, scope *bootstrapauth.ServiceScope, owner batchOwner) (*nativeBatch, error) {
+	b, err := prepareNativeBatch(s, scope, owner)
+	if err != nil {
+		return nil, err
+	}
+	return b, b.Start(ctx)
+}
+
+// prepareNativeBatch constructs only the same retained owner. No thread query,
+// token/pipe acquisition, or launch occurs before Service can register it.
+func prepareNativeBatch(s nativeBatchSpec, scope *bootstrapauth.ServiceScope, owner batchOwner) (*nativeBatch, error) {
 	if scope == nil || s.producer == nil {
 		return nil, ErrUnconfigured
 	}
-	thread := &nativeThread{owner: windows.GetCurrentThreadId()}
-	return startBatch(ctx, s, owner, nativeBatchOps{
+	thread := &nativeThread{}
+	var bind sync.Once
+	bindThread := func() { bind.Do(func() { thread.owner = windows.GetCurrentThreadId() }) }
+	return prepareBatch(s, owner, nativeBatchOps{
 		parent: func(c context.Context) error {
+			bindThread()
 			if e := scope.Recheck(c); e != nil {
 				if errors.Is(e, bootstrapauth.ErrFatal) {
 					return errors.Join(ErrFatal, e)
@@ -30,7 +44,7 @@ func startNativeBatch(ctx context.Context, s nativeBatchSpec, scope *bootstrapau
 			}
 			return nil
 		},
-		clean: thread.clean,
+		clean: func() error { bindThread(); return thread.clean() },
 		newProfile: func(c context.Context) (batchProfile, error) {
 			p, e := newNativeProfilePipe(c, s.producer)
 			if p == nil {

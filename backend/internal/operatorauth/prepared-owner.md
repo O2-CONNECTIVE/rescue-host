@@ -1,0 +1,11 @@
+# 同じCollectorを所有する起動前batch
+
+Serviceは認証要求用の所有記録に同じBatchとCollectorを登録してからStartを呼ぶ。prepareは入力の固定snapshotと状態だけを作り、pipe作成・複製・process起動をしない。privateな保護source以外からの公開factory、認証成功bool、UI指定profileを追加しない。ゼロ値や値コピーは受理しない。
+
+`Collector.Consume(ctx, proof)`は明示された同じCollectorに帰属するproof pointerと単回状態を同じlock内で確認する。別Collectorのproofを認証済みにせず、本人の取消・期限・失効による失敗も消費権を復活させない。既存`Read.Consume`は互換委譲であり、Service/issuerの所有照合はService側で別に必要となる。
+
+Startは一度だけ許可し、停止開始後に再起動しない。停止は同issuerへの失効と新規入場拒否を先行し、進行中の要求を取消する。constructorやwriteがまだ戻っていない間は、その結果が未知であり回収済みと報告しない。実際のStart終了ackと、部分取得の所有者・I/O completion・process wait・handle回収を同じBatchから確認する。未確認の参照を残したまま有限Closeを返し、同じownerで再確認する。
+
+公開Collectorを直接Close/Collectする経路も同じ入場・停止状態へ合流する必要がある。Service用の停止critical section、同Service/dispatcher/issuerの照合、ticketの生成は本packageから提供しない。承認後workload用のownerIntent/reservationを認証前の要求ownerへ流用しない。
+
+このsourceとmemory試験は、実Windowsのprotected producer、主体/ACL、sole-reader、実SSHや監督hangの成立を証明しない。正規sourceが未設定ならnative入口は拒否する。

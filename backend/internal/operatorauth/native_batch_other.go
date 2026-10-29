@@ -10,3 +10,8 @@ import (
 func startNativeBatch(context.Context, nativeBatchSpec, *bootstrapauth.ServiceScope, batchOwner) (*nativeBatch, error) {
 	return nil, ErrUnconfigured
 }
+
+// No protected native source is configured on this platform.
+func prepareNativeBatch(nativeBatchSpec, *bootstrapauth.ServiceScope, batchOwner) (*nativeBatch, error) {
+	return nil, ErrUnconfigured
+}

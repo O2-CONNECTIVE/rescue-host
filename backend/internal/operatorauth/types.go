@@ -89,6 +89,7 @@ type collectorOps struct {
 // Collectorはhelperと別processの健康なSupervisor側に置く。
 // opsは将来の保持launch/同Serviceからだけ構成し、一般callerの注入口を提供しない。
 type Collector struct {
+	request                                                         context.Context // prepared Batchの元要求。nilは既存standalone owner用。
 	mu                                                              sync.Mutex
 	cleaning                                                        sync.Mutex
 	used, failed, closed, busy                                      bool
