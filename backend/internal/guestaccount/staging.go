@@ -39,20 +39,21 @@ type stagingHeld struct {
 // 元service owner threadが唯一操作する。query workerはraw readonly handleを
 // 借りるだけで、thread専用scopeやjournalを呼ばない。全ack前に借用を解かない。
 type stagingOwner struct {
-	self                   *stagingOwner
-	mu                     sync.Mutex
-	stop                   atomic.Bool
-	plan                   Plan
-	profile                stagingProfile
-	ops                    stagingOps
-	thread                 uint32
-	identity               accountQueryPrincipal
-	scope                  stagingScope
-	held                   []stagingHeld
-	journal                *journalBackend
-	accounts               *creationSource
-	lifecycle              *Lifecycle
-	fatal, closed, blocked bool
+	self                                        *stagingOwner
+	mu                                          sync.Mutex
+	stop                                        atomic.Bool
+	plan                                        Plan
+	profile                                     stagingProfile
+	ops                                         stagingOps
+	thread                                      uint32
+	identity                                    accountQueryPrincipal
+	scope                                       stagingScope
+	held                                        []stagingHeld
+	journal                                     *journalBackend
+	accounts                                    *creationSource
+	lifecycle                                   *Lifecycle
+	fatal, closed, blocked                      bool
+	coreClosed, accountsClosing, accountsClosed bool
 }
 
 func newStaging(ctx context.Context, p Plan, c stagingProfile, session sessionSource, sessionSeal *seal, ops stagingOps) (owner *stagingOwner, result error) {
@@ -263,10 +264,13 @@ func (o *stagingOwner) Prepare(ctx context.Context) (result error) {
 		return ErrDenied
 	}
 	defer o.mu.Unlock()
-	defer o.finish(&result)
 	if o.closed || o.lifecycle == nil {
 		return ErrUnconfigured
 	}
+	if o.accountsClosing || o.coreClosed {
+		return ErrDenied
+	}
+	defer o.finish(&result)
 	if o.blocked {
 		return ErrUnknown
 	}
@@ -311,10 +315,13 @@ func (o *stagingOwner) Close(ctx context.Context) (result error) {
 	if !o.rawScope() {
 		return bootstrapauth.ErrFatal
 	}
-	if o.lifecycle != nil {
+	if o.lifecycle != nil && !o.coreClosed {
 		result = o.lifecycle.Close(ctx)
+		if result == nil {
+			o.coreClosed = true
+		}
 	}
-	if o.accounts != nil && stagingQueryUnsafe(o.accounts) {
+	if o.accounts != nil && !o.accountsClosing && stagingQueryUnsafe(o.accounts) {
 		o.blocked = true
 		return ErrUnknown
 	}
@@ -322,8 +329,12 @@ func (o *stagingOwner) Close(ctx context.Context) (result error) {
 	if result != nil || !finite(ctx) {
 		return errors.Join(result, ErrCleanup)
 	}
-	if o.accounts != nil {
+	if o.accounts != nil && !o.accountsClosed {
+		o.accountsClosing = true
 		result = errors.Join(result, o.accounts.Close(ctx))
+		if result == nil {
+			o.accountsClosed = true
+		}
 	}
 	if result != nil || !finite(ctx) {
 		return errors.Join(result, ErrCleanup)

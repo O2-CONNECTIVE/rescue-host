@@ -85,7 +85,11 @@ func stagingTest(t *testing.T) (Plan, stagingProfile, *fixture, *stagingFixture,
 		q.seal = s
 		q.permission.profile = profile
 		q.permission.objects = newPermissionObjectReader(&stagingObjectKernelFixture{})
-		deps := creationDependencies{preflight: creationCheckFixture{f}, create: func() (sidExecutor, error) {
+		pre, e := newCreationCheck(p, s, k.query)
+		if e != nil {
+			return nil, e
+		}
+		deps := creationDependencies{preflight: pre, create: func() (sidExecutor, error) {
 			return &sidTestExecutor{run: func(in []byte) ([]byte, error) {
 				if k.journal.writes < 2 {
 					t.Fatal("journal確定より先のaccount作成")
