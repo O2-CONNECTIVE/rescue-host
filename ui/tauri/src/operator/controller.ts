@@ -50,7 +50,8 @@ export function createOperatorController({ adapter, onChange, history }: {
         if (state.phase === 'waiting') publish({ phase: 'failed', termination: 'not_started', validSession: false, diagnostic: 'DEMO_DENIED' });
         break;
       case 'failed':
-        if (live()) publish({ phase: 'failed', checkingStatus: false, diagnostic: 'DEMO_FAILED' });
+        if (live()) publish({ phase: 'failed', checkingStatus: false,
+          diagnostic: state.phase === 'connecting' ? 'DEMO_PREPARATION_FAILED' : 'DEMO_FAILED' });
         break;
       case 'lost':
         if (live() || state.checkingStatus) publish({ phase: 'unconfirmed', checkingStatus: false, diagnostic: 'DEMO_TERMINATION_UNCONFIRMED' });
