@@ -7,18 +7,20 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 void test('先行armの合否と独立して所有資源の終了確認が揃う場合だけ後続を開始する', () => {
+  const expected = { sourceCommit: 'a'.repeat(40), exeSha256: 'b'.repeat(64), runId: '12345678-1234-4234-8234-123456789abc' };
   const clean = { schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true,
-    mode: 'with-html', sourceCommit: 'a'.repeat(40), exeSha256: 'b'.repeat(64),
+    mode: 'with-html', ...expected,
     ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true,
     driversExited: true, listenersAbsent: true, cleanupFailures: 0, normalCloseVerified: false, forcedApp: true };
-  assert.equal(mayStartSecond(clean), true);
+  assert.equal(mayStartSecond(clean, expected), true);
   for (const change of [{ ownerSetRecorded: false }, { observedChildren: 0 }, { appExited: false },
     { observedChildrenExited: false }, { driversExited: false }, { listenersAbsent: false }, { cleanupFailures: 1 },
     { fixedInputsVerified: false }, { kind: 'other' }, { mode: 'load-html' }, { sourceCommit: 'bad' },
-    { exeSha256: 'bad' }]) assert.equal(mayStartSecond({ ...clean, ...change }), false);
-  assert.equal(mayStartSecond(null), false);
+    { exeSha256: 'bad' }, { sourceCommit: 'c'.repeat(40) }, { exeSha256: 'd'.repeat(64) },
+    { runId: '12345678-1234-4234-8234-123456789abd' }]) assert.equal(mayStartSecond({ ...clean, ...change }, expected), false);
+  assert.equal(mayStartSecond(null, expected), false);
   const missing = { ...clean } as Partial<typeof clean>; delete missing.cleanupFailures;
-  assert.equal(mayStartSecond(missing), false);
+  assert.equal(mayStartSecond(missing, expected), false);
 });
 
 void test('開始gate CLIは欠落や秘密を含む入力を露出せず拒否する', () => {
