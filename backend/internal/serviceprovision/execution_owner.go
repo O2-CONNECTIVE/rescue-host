@@ -60,6 +60,18 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 	}
 	ready <- executionReady{service: service}
 	for request := range e.requests {
+		if request.confirmation != nil {
+			resolveErr := e.resolvePreviewOnOwner(request.ctx, service, *request.confirmation)
+			request.reply <- resolveErr // buffered; canceled caller cannot hold up cleanup
+			if errors.Is(resolveErr, ErrRootFatal) {
+				healthy = false
+				// unknown/fatal ownerを他threadへ移さず、参照を保持して退役する。
+				for {
+					time.Sleep(e.cfg.CleanupRetry)
+				}
+			}
+			continue
+		}
 		if !rootLive(request.ctx) || !request.proof.Confirms(service) {
 			request.reply <- ErrRootUnconfirmed
 			continue

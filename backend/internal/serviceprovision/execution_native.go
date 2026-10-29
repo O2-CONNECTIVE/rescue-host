@@ -15,11 +15,12 @@ type nativeExecutionCalls struct {
 	launch  func(context.Context, *Prepared) (*LaunchToken, error)
 }
 type nativeExecutionStage struct {
-	preview  *PreviewLimits
-	calls    nativeExecutionCalls
-	cfg      ExecutionConfig
-	prepared *Prepared
-	token    *LaunchToken
+	previewSnapshot *servicehost.PreviewDescriptor
+	preview         *PreviewLimits
+	calls           nativeExecutionCalls
+	cfg             ExecutionConfig
+	prepared        *Prepared
+	token           *LaunchToken
 }
 
 func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *servicehost.Service, err error) {
@@ -36,7 +37,12 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 	}
 	if s.preview != nil {
 		// query-only rootを借用する。強token/Approval/Launcherは取得しない。
-		return s.prepared.ComposePreviewService(ctx, *s.preview)
+		service, snapshot, err := s.prepared.composePreviewSnapshot(ctx, *s.preview)
+		if err != nil {
+			return nil, err
+		}
+		s.previewSnapshot = &snapshot
+		return service, nil
 	}
 	launch := s.calls.launch
 	if launch == nil {

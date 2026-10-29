@@ -21,7 +21,11 @@ PRODUCT_FILES = {
         'journal.go', 'journal_codec.go', 'journal_security.go', 'sid_codec.go',
         'sid_run.go', 'sid_run_io.go', 'sid_script.go', 'sid_source.go',
         'creation_codec.go', 'creation_native.go', 'creation_query.go',
-        'creation_script.go', 'creation_source.go', 'sid_script_parts.go'},
+        'creation_script.go', 'creation_source.go', 'sid_script_parts.go',
+        'permission_aliases.go', 'permission_aliases_buffer.go', 'permission_aliases_native.go',
+        'permission_aliases_read.go', 'permission_creation.go', 'permission_facts.go',
+        'permission_facts_buffer.go', 'permission_groups.go', 'permission_inspect.go',
+        'permission_objects.go', 'permission_objects_buffer.go', 'permission_policy.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
@@ -36,7 +40,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go'},
+        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go', 'confirmation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go', 'fixed_command.go'},
@@ -52,7 +56,7 @@ PRODUCT_FILES = {
         'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go', 'service_witness.go', 'endpoint.go', 'endpoint_input.go', 'endpoint_operation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
-        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go', 'preview.go',
+        'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go', 'preview.go', 'confirmation.go',
         'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner': {'owner.go'},
@@ -65,10 +69,16 @@ PRODUCT_FILES = {
 
 
 GUEST_ACCOUNT_FILES = {
-    'linux': {'account_query_other.go', 'journal_other.go', 'creation_query_other.go'},
-    'darwin': {'account_query_other.go', 'journal_other.go', 'creation_query_other.go'},
-    'windows': {'account_query_windows.go', 'account_query_windows_machine.go',
-                'journal_windows.go', 'journal_windows_pin.go', 'creation_query_windows.go'},
+    'linux': {'account_query_other.go', 'creation_query_other.go', 'journal_other.go',
+                'permission_aliases_other.go', 'permission_facts_other.go', 'permission_native_other.go',
+                'permission_objects_other.go'},
+    'darwin': {'account_query_other.go', 'creation_query_other.go', 'journal_other.go',
+                'permission_aliases_other.go', 'permission_facts_other.go', 'permission_native_other.go',
+                'permission_objects_other.go'},
+    'windows': {'account_query_windows.go', 'account_query_windows_machine.go', 'creation_query_windows.go',
+                'journal_windows.go', 'journal_windows_pin.go', 'permission_aliases_windows.go',
+                'permission_facts_windows.go', 'permission_native_windows.go', 'permission_objects_windows.go',
+                'permission_objects_windows_identity.go'},
 }
 
 
