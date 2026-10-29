@@ -9,6 +9,8 @@ import tempfile
 import unittest
 import zipfile
 
+from evaluation_package_fixture import write_license_fixture
+
 
 ROOT = Path(__file__).resolve().parents[2]
 COMMAND = ROOT / "scripts/package_tauri_evaluation.py"
@@ -16,6 +18,68 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_generation_argument_error_does_not_repeat_private_values(self):
+        marker = "PRIVATE_GENERATOR_ARGUMENT"
+        result = subprocess.run(
+            [sys.executable, "-B", str(COMMAND), "--exe", "gui.exe", "--licenses", "licenses",
+             "--source-sha", SOURCE, "--output", "output", "--unexpected", marker],
+            capture_output=True, text=True, timeout=15,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stderr, "")
+        self.assertEqual(result.stdout.strip(), "PACKAGE_ARGUMENT_INVALID")
+        self.assertNotIn(marker, result.stdout + result.stderr)
+
+    def test_incomplete_license_inventory_is_rejected_before_output_creation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            executable = folder / "gui.exe"
+            executable.write_bytes(b"abc")
+            licenses = folder / "licenses"
+            licenses.mkdir()
+            (licenses / "NOTICE.txt").write_text("fixture notice", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-B", str(COMMAND), "--exe", str(executable),
+                 "--licenses", str(licenses), "--source-sha", SOURCE,
+                 "--output", str(folder / "output")],
+                capture_output=True, text=True, timeout=15,
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertFalse((folder / "output").exists())
+
+    def test_generation_regressions_keep_rejected_material_out_of_output(self):
+        # 実装後の回帰。先行する2つのCLI赤→緑とは区別する。
+        for case, code in [("private-json", "PACKAGE_INVALID"),
+                           ("runtime", "PACKAGE_COMPONENT_SET_UNSUPPORTED"),
+                           ("missing-text", "PACKAGE_LICENSE_INCOMPLETE"),
+                           ("wrong-hash", "PACKAGE_LICENSE_INCOMPLETE")]:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
+                folder = Path(temporary)
+                executable = folder / "gui.exe"
+                executable.write_bytes(b"abc")
+                licenses = folder / "licenses"
+                write_license_fixture(licenses)
+                inventory = licenses / "DEPENDENCIES.json"
+                if case == "private-json":
+                    inventory.write_text('{"PRIVATE_GENERATOR_VALUE":', encoding="utf-8")
+                elif case == "runtime":
+                    (licenses / "rust/fixture-1.0.0/backend.exe").write_bytes(b"MZfixture")
+                elif case == "missing-text":
+                    (licenses / "rust/fixture-1.0.0/LICENSE").unlink()
+                else:
+                    (licenses / "rust/fixture-1.0.0/LICENSE").write_bytes(b"altered fixture")
+                result = subprocess.run(
+                    [sys.executable, "-B", str(COMMAND), "--exe", str(executable),
+                     "--licenses", str(licenses), "--source-sha", SOURCE,
+                     "--output", str(folder / "output")],
+                    capture_output=True, text=True, timeout=15,
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout.strip(), code)
+                self.assertEqual(result.stderr, "")
+                self.assertNotIn(str(folder), result.stdout)
+                self.assertFalse((folder / "output").exists())
+
     def test_unverified_native_microsoft_loader_is_not_distributed(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
@@ -189,8 +253,7 @@ class EvaluationPackageTests(unittest.TestCase):
             executable = folder / "rescue-host-shell.exe"
             executable.write_bytes(b"abc")
             licenses = folder / "licenses"
-            licenses.mkdir()
-            (licenses / "runtime.txt").write_text("fixture license\n", encoding="utf-8")
+            write_license_fixture(licenses)
             result = subprocess.run(
                 [sys.executable, "-B", str(COMMAND), "--exe", str(executable),
                  "--licenses", str(licenses), "--source-sha", SOURCE,
@@ -211,7 +274,7 @@ class EvaluationPackageTests(unittest.TestCase):
                 self.assertEqual(manifest["files"]["rescue-host-shell.exe"],
                                  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
                 self.assertIn(prefix + "README_JA.txt", bundle.namelist())
-                self.assertIn(prefix + "licenses/runtime.txt", bundle.namelist())
+                self.assertIn(prefix + "licenses/rust/fixture-1.0.0/LICENSE", bundle.namelist())
             digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             self.assertEqual((archive.with_suffix(".zip.sha256")).read_text().strip(),
                              digest + "  " + archive.name)

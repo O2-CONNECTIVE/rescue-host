@@ -1,11 +1,12 @@
 """未配線 Tauri の内部評価用 ZIP を作る。実行・署名・公開はしない。"""
 
-import argparse
 import hashlib
 import json
 from pathlib import Path
 import re
+import tempfile
 import zipfile
+import zlib
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +14,22 @@ NAME = "RescueHostTauriUnwiredEvaluation"
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__)
+    # validator は NAME を参照するため、CLI の開始後に読み込む。
+    from verify_tauri_evaluation import SafeParser, VerificationError
+
+    try:
+        return package(SafeParser(description=__doc__))
+    except VerificationError as error:
+        print(str(error))
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RuntimeError,
+            NotImplementedError, zipfile.BadZipFile, zlib.error):
+        print("PACKAGE_INVALID")
+    return 1
+
+
+def package(parser):
+    from verify_tauri_evaluation import verify
+
     parser.add_argument("--exe", type=Path, required=True)
     parser.add_argument("--licenses", type=Path, required=True)
     parser.add_argument("--source-sha", required=True)
@@ -44,15 +60,22 @@ def main():
                 "nativeValidation": "別の CI 実測記録を確認。ZIP 生成だけでは成功にしない。",
                 "files": {name: hashlib.sha256(data).hexdigest() for name, data in files.items()}}
     files["MANIFEST.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode()
+    with tempfile.TemporaryDirectory() as temporary:
+        staged = Path(temporary) / (NAME + "-x64.zip")
+        with zipfile.ZipFile(staged, "x", zipfile.ZIP_DEFLATED) as bundle:
+            for name, data in sorted(files.items()):
+                bundle.writestr(NAME + "/" + name, data)
+        archive_bytes = staged.read_bytes()
+        verify(staged, args.source_sha, hashlib.sha256(archive_bytes).hexdigest(),
+               manifest["files"]["rescue-host-shell.exe"])
     args.output.mkdir(parents=True, exist_ok=False)
     archive = args.output / (NAME + "-x64.zip")
-    with zipfile.ZipFile(archive, "x", zipfile.ZIP_DEFLATED) as bundle:
-        for name, data in sorted(files.items()):
-            bundle.writestr(NAME + "/" + name, data)
+    archive.write_bytes(archive_bytes)
     archive.with_suffix(".zip.sha256").write_text(
         hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + archive.name + "\n", encoding="ascii")
     print("TAURI_UNWIRED_EVALUATION_ARCHIVE_CREATED")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
