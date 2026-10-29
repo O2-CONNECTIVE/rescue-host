@@ -63,7 +63,7 @@ mod navigation_trace {
         })
     }
     pub fn start(path: PathBuf) -> Option<Sender> {
-        let (tx, rx) = mpsc::sync_channel(32);
+        let (tx, rx) = mpsc::sync_channel::<String>(32);
         let dropped = Arc::new(AtomicUsize::new(0));
         let worker_dropped = dropped.clone();
         thread::Builder::new().name("baseline-navigation-trace".into()).spawn(move || {
