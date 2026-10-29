@@ -3,11 +3,14 @@ package servicehost
 import (
 	"context"
 	"errors"
+	"fmt"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
@@ -291,9 +294,19 @@ func TestServiceAuthFailureRevokesSameIssuerAndClosesOutsideLock(t *testing.T) {
 func TestServiceAuthUnconfirmedCleanupRetainsOwnerUntilAcknowledged(t *testing.T) {
 	s, a, serveDone := authTestService(t, 1)
 	batch := fixtureAuthBatch(dispatchHello)
-	batch.start = func(context.Context) error { return errors.New("start rejected") }
+	var owner uint64
+	batch.start = func(context.Context) error { owner = authFixtureGoroutine(); return errors.New("start rejected") }
 	var ack atomic.Bool
+	attempted := make(chan struct{}, 1)
+	var wrong atomic.Bool
 	batch.close = func(context.Context) error {
+		if authFixtureGoroutine() != owner {
+			wrong.Store(true)
+		}
+		select {
+		case attempted <- struct{}{}:
+		default:
+		}
 		if !ack.Load() {
 			return ErrRuntimeUnconfirmed
 		}
@@ -301,12 +314,17 @@ func TestServiceAuthUnconfirmedCleanupRetainsOwnerUntilAcknowledged(t *testing.T
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	if err := a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }); err == nil {
-		t.Fatal("unconfirmed cleanup accepted")
+	exchanged := make(chan error, 1)
+	go func() { exchanged <- a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }) }()
+	<-attempted
+	select {
+	case <-exchanged:
+		t.Error("original owner returned before cleanup acknowledgement")
+	default:
 	}
 	s.mu.Lock()
 	r := a.active
-	held := r != nil && !r.finished && !r.cleaned && !r.running
+	held := r != nil && !r.finished && !r.cleaned
 	s.mu.Unlock()
 	if !held {
 		t.Fatal("unconfirmed owner dropped")
@@ -322,12 +340,23 @@ func TestServiceAuthUnconfirmedCleanupRetainsOwnerUntilAcknowledged(t *testing.T
 	if err := s.Close(closeCtx); err != nil {
 		t.Fatal(err)
 	}
-	s.mu.Lock()
-	finished := r.finished
-	s.mu.Unlock()
-	if !finished {
-		t.Fatal("same owner acknowledgement not recorded")
+	select {
+	case <-exchanged:
+	case <-closeCtx.Done():
+		t.Fatal("owner failed to leave after acknowledged cleanup")
 	}
+	if wrong.Load() {
+		t.Fatal("cleanup moved to another goroutine")
+	}
+}
+
+// Memory-only observation of the retained execution worker, never authentication.
+func authFixtureGoroutine() uint64 {
+	var b [80]byte
+	n := runtime.Stack(b[:], false)
+	var id uint64
+	_, _ = fmt.Sscanf(string(b[:n]), "goroutine %d ", &id)
+	return id
 }
 
 func TestServiceAuthResponseWriteRemainsAnOwnedOperation(t *testing.T) {
@@ -416,5 +445,139 @@ func TestServiceAuthQuiesceWritesReceiptBeforeOperationAcknowledgement(t *testin
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func authUnstartedMemoryOwner(t *testing.T) (*Service, *serviceAuthAdapter) {
+	t.Helper()
+	s, err := newService(ServiceConfig{Provisioning: lifetimePolicySource(func(context.Context) (ephemeral.ApprovedPolicy, error) {
+		return ephemeral.ApprovedPolicy{}, ErrProvisioningUnconfigured
+	}), Launcher: &lifetimeLauncher{}, Budgets: Budgets{Startup: time.Second, Cleanup: time.Second, Observe: time.Millisecond}}, func(context.Context) (servicePlane, error) { return nil, ErrProvisioningUnconfigured })
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := newServiceAuthAdapter(s, serviceDispatchProfile{ChannelNonce: strings.Repeat("b", 64), RequestLimit: 4}, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	s.issuer = issuer
+	s.state = Running
+	s.used = true
+	s.started = true
+	s.mu.Unlock()
+	// No real Service worker, native object, or process exists in this fixture.
+	return s, a
+}
+
+func TestServiceAuthFatalSentinelsRemainStickyWithoutClaimingCleanup(t *testing.T) {
+	for _, sentinel := range []error{operatorauth.ErrFatal, bootstrapauth.ErrFatal} {
+		for _, stage := range []string{"start", "collect", "close"} {
+			t.Run(sentinel.Error()+"/"+stage, func(t *testing.T) {
+				s, a := authUnstartedMemoryOwner(t)
+				batch := fixtureAuthBatch(dispatchHello)
+				nativeErr := errors.Join(sentinel, errors.New("private-native-error-text"))
+				var closes int
+				batch.close = func(context.Context) error {
+					closes++
+					if stage == "close" {
+						return nativeErr
+					}
+					return nil
+				}
+				switch stage {
+				case "start":
+					batch.start = func(context.Context) error { return nativeErr }
+				case "collect":
+					batch.collect = func(context.Context) (*operatorauth.Read, error) { return nil, nativeErr }
+				case "close":
+					batch.start = func(context.Context) error { return ErrProvisioningRejected }
+				}
+				result := make(chan error, 1)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				go func() { result <- a.exchangeOps(ctx, batch, func(context.Context, []byte) error { return nil }) }()
+				var err error
+				select {
+				case err = <-result:
+				case <-ctx.Done():
+					t.Fatal("fatal caller did not retire")
+				}
+				if !errors.Is(err, sentinel) {
+					t.Fatalf("fatal lost: %v", err)
+				}
+				if strings.Contains(err.Error(), "private-native-error-text") {
+					t.Fatal("native error text escaped")
+				}
+				s.mu.Lock()
+				fatal := s.stopCause
+				r := a.active
+				cleaned := r.cleaned
+				s.mu.Unlock()
+				if !errors.Is(fatal, sentinel) || !fatalServiceThread(fatal) {
+					t.Fatal("Service lost sticky fatal")
+				}
+				if cleaned {
+					t.Fatal("fatal fabricated cleanup acknowledgement")
+				}
+				cleanup, end := context.WithTimeout(context.Background(), 2*time.Millisecond)
+				closeErr := s.Close(cleanup)
+				end()
+				if !errors.Is(closeErr, sentinel) {
+					t.Fatal("Close discarded sticky fatal", closeErr)
+				}
+				cleanup, end = context.WithTimeout(context.Background(), time.Second)
+				waitErr := s.waitAuthRequest(cleanup)
+				end()
+				if !errors.Is(waitErr, sentinel) {
+					t.Fatal("cleanup request did not preserve retired worker fatal", waitErr)
+				}
+
+				select {
+				case <-r.done:
+					t.Fatal("fatal closed cleanup ack")
+				default:
+				}
+				select {
+				case <-s.done:
+					t.Fatal("fatal reported Service done")
+				default:
+				}
+				want := 0
+				if stage == "close" {
+					want = 1
+				}
+				if closes != want {
+					t.Fatal("fatal thread performed native retry")
+				}
+			})
+		}
+	}
+}
+
+func TestServiceAuthNewAdmissionWaitsForBothCleanupAndWorkerAcknowledgement(t *testing.T) {
+	s, a := authUnstartedMemoryOwner(t)
+	a.limit = 2
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	r, err := a.register(ctx, fixtureAuthBatch(dispatchHello))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	r.finished = true
+	r.cleaned = true
+	close(r.done)
+	s.mu.Unlock()
+	if _, err := a.register(ctx, fixtureAuthBatch(dispatchHello)); err == nil {
+		t.Fatal("new admission displaced owner before worker acknowledgement")
+	}
+	close(r.ownerDone)
+	if _, err := a.register(ctx, fixtureAuthBatch(dispatchHello)); err != nil {
+		t.Fatal("acknowledged owner kept channel blocked")
 	}
 }
