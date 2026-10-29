@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'backend'
 GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
-    'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/auth': {'keys.go'},
@@ -48,7 +48,8 @@ PRODUCT_FILES = {
         'execution.go', 'execution_native.go', 'execution_owner.go', 'launch.go', 'launch_security.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {
-        'collector.go', 'controller.go', 'helper.go', 'types.go'},
+        'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
+        'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go'},
 }
 
 
@@ -130,9 +131,11 @@ SERVICE_PROVISION_FILES = {
 
 
 OPERATOR_AUTH_FILES = {
-    'linux': {'native_other.go'},
-    'darwin': {'native_other.go'},
-    'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go'},
+    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go'},
+    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go'},
+    'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go', 'native_batch_windows.go',
+                'native_launch_binding_windows.go', 'native_launch_image_windows.go', 'native_launch_windows.go',
+                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go'},
 }
 
 

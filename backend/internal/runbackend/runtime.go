@@ -29,10 +29,13 @@ var ErrAlreadyUsed = errors.New("runtimeの制御入口は使用済みです")
 // ApprovedConfig は保護側が照合した固定値だけを渡すinternal入口。
 // 同じIdentityのhelloを読めたことは、この入力の認証にならない。
 type ApprovedConfig struct {
-	Grant   supervisor.ProvisionedGrant
-	Backend backend.Config
-	Wire    control.WireContext
-	Limits  stdio.Limits
+	// AcceptedSourceは保護された子profileが別途供給する。wire入力/認証の根拠ではない。
+	// nilは既存stdioだけの基盤を維持し、listenerやendpointを選択しない。
+	AcceptedSource backend.AcceptedSource `json:"-"`
+	Grant          supervisor.ProvisionedGrant
+	Backend        backend.Config
+	Wire           control.WireContext
+	Limits         stdio.Limits
 }
 
 // KeySetDigest は生Ed25519鍵の集合を一意に表す候補規則。
@@ -131,6 +134,13 @@ func New(c ApprovedConfig) (*Runtime, error) {
 	adapter, err := control.NewAdapter(c.Wire, coordinator)
 	if err != nil {
 		return reject()
+	}
+	// 所有移転は最後のfallible step。Newがerrorならsourceは常にcallerの所有に残る。
+	// 部分Runtimeが返る場合も、そのruntimeが持つのは既存Sessionだけである。
+	if c.AcceptedSource != nil {
+		if err := session.AttachAcceptedSource(c.AcceptedSource, g.HardDeadline, c.Limits.CleanupTimeout); err != nil {
+			return reject()
+		}
 	}
 	return &Runtime{session: session, adapter: adapter, coordinator: coordinator, grant: g, limits: c.Limits}, nil
 }
