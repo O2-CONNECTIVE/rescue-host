@@ -212,6 +212,8 @@ jobs:
           [IO.File]::WriteAllText("$env:RUNNER_TEMP/baseline-feature-check.json", ([ordered]@{ schema = 1; matched = $true; features = $features; manifestParity = 'not-proven' } | ConvertTo-Json -Depth 6 -Compress))
           cargo +1.99.1 build --locked --release --config $env:STARTUP_WRY_CONFIG --manifest-path "$env:RUNNER_TEMP/baseline-project/Cargo.toml" --features custom-protocol,startup-diagnostics --bin rescue-wry-creation-baseline
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo +1.99.1 test --locked --release --config $env:STARTUP_WRY_CONFIG --manifest-path "$env:RUNNER_TEMP/baseline-project/Cargo.toml" --features custom-protocol,startup-diagnostics --bin rescue-wry-creation-baseline
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python scripts/prepare_wry_baseline.py --verify --manifest ui/tauri/src-tauri/Cargo.toml --lock ui/tauri/src-tauri/Cargo.lock --fixture tools/wry-creation-baseline/main.rs --output "$env:RUNNER_TEMP/baseline-project" --report "$env:RUNNER_TEMP/baseline-provenance.json" --source-commit $env:STARTUP_SOURCE
           exit $LASTEXITCODE
       - name: Bind source and binary to diagnostic-only build

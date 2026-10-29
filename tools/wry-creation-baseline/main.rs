@@ -1,11 +1,20 @@
 // 診断専用。Tauriの組立て・IPC・初期化scriptを持たない単一WebView。
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+#[cfg(any(windows, test))]
+fn begin_on_initial_event(attempted: &mut bool, is_init: bool) -> bool {
+    if !is_init || *attempted {
+        return false;
+    }
+    *attempted = true;
+    true
+}
+
 #[cfg(windows)]
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     use tao::{
         dpi::LogicalSize,
-        event::{Event, WindowEvent},
+        event::{Event, StartCause, WindowEvent},
         event_loop::{ControlFlow, EventLoopBuilder},
         window::WindowBuilder,
     };
@@ -23,21 +32,28 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         .with_inner_size(LogicalSize::new(900.0, 780.0))
         .with_min_inner_size(LogicalSize::new(360.0, 480.0))
         .build(&event_loop)?;
-    let mut context = WebContext::new(Some(profile));
-    let webview = WebViewBuilder::new_with_web_context(&mut context)
-        .with_id("main")
-        .with_incognito(false)
-        .with_transparent(false)
-        .with_navigation_handler(|url| url == "about:blank")
-        .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
-        .with_html("<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>")
-        .build(&window)?;
-    let mut webview = Some(webview);
+    let context = WebContext::new(Some(profile));
     let mut context = Some(context);
+    let mut webview = None;
+    let mut attempted = false;
     // build()/CloseRequested/Dropは同じUI thread。別thread wakeは追加しない。
     event_loop.run(move |event, _, flow| {
         let _keep_window = &window;
         *flow = ControlFlow::Wait;
+        if begin_on_initial_event(&mut attempted, matches!(&event, Event::NewEvents(StartCause::Init))) {
+            let created = WebViewBuilder::new_with_web_context(context.as_mut().expect("context"))
+                .with_id("main")
+                .with_incognito(false)
+                .with_transparent(false)
+                .with_navigation_handler(|url| url == "about:blank")
+                .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
+                .with_html("<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>")
+                .build(&window);
+            match created {
+                Ok(value) => webview = Some(value),
+                Err(_) => std::process::exit(1),
+            }
+        }
         if let Event::WindowEvent {
             window_id,
             event: WindowEvent::CloseRequested,
@@ -72,8 +88,12 @@ mod tests {
         let mut attempted = false;
         let mut calls = 0;
         assert!(!begin_on_initial_event(&mut attempted, false));
-        if begin_on_initial_event(&mut attempted, true) { calls += 1; }
-        if begin_on_initial_event(&mut attempted, true) { calls += 1; }
+        if begin_on_initial_event(&mut attempted, true) {
+            calls += 1;
+        }
+        if begin_on_initial_event(&mut attempted, true) {
+            calls += 1;
+        }
         assert_eq!(calls, 1);
     }
 }

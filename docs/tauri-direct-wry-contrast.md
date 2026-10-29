@@ -44,6 +44,12 @@ feature一致は設定・実行環境全体の一致を意味しない。fixedIn
 既存debug/releaseの後に別のfresh runnerでrelease対照1回を行うため、同一物理host・起動順・warm-upの統制もない。
 これらの差を隠して単一変数対照や根因証明とは呼ばない。
 
+後続の対照は上記direct Wryと同じwindow・context・設定を保ち、WebViewのbuild呼出しだけをevent loop開始前から初回`StartCause::Init`処理内へ移す。
+保存済み固定runtime-wry 2.12.3はInitから同期的に`RunEvent::Ready`を呼ぶ。これはTauri setupと同じwindow作成順やcallback層を証明しない。
+初回Init以外と重複Initではbuildせず、failureは非0終了する。独自wake・別thread・追加要求はない。
+新対照が成功しても元障害の根因修復としない。同じcallback未観測なら、event loop開始前だけで生じる説明を弱める。
+前回と別runner・別EXEである点、manifest/DPI・profile・設定の未照合部分は残る。欠測・所有不確定は判別不能のままにする。
+
 ## 独立判定と終了
 
 対照kindはdirect-wry-controller-contrast、productNativePassは常にfalse。
