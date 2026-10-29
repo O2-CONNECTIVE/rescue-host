@@ -13,3 +13,17 @@ export function mayStartSecond(value: unknown, expected: unknown): boolean {
     && v.appExited === true && v.observedChildrenExited === true && v.driversExited === true
     && v.listenersAbsent === true && v.cleanupFailures === 0;
 }
+
+type Outcome = 'passed' | 'failed' | 'timeout' | 'error';
+type First = { outcome: Outcome; report: unknown };
+type Second = { outcome: Outcome };
+export async function runSequential(first: () => Promise<First>, second: () => Promise<Second>, expected: unknown) {
+  let a: First;
+  try { a = await first(); } catch { a = { outcome: 'error', report: null }; }
+  if ((a.outcome !== 'passed' && a.outcome !== 'failed') || !mayStartSecond(a.report, expected)) {
+    return { first: a.outcome, second: 'not-started', cleanup: 'unconfirmed' };
+  }
+  let b: Second;
+  try { b = await second(); } catch { b = { outcome: 'error' }; }
+  return { first: a.outcome, second: b.outcome, cleanup: 'confirmed' };
+}
