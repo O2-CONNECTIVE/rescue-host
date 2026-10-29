@@ -3,6 +3,7 @@
 一時非管理者guestの単発ライフサイクルは[設計文書](../docs/temporary-guest-account.md)と[PR #131](https://github.com/O2-CONNECTIVE/rescue-host/pull/131)を参照してください。
 作成・保護journal・SID指定清掃と[限定権限検査](../docs/guest-limited-inspection.md)には内部source候補と合成試験があります。
 正規provisioningとの接続と実Windowsでの保護成立は未検証で、公開入口は未設定拒否を維持します。
+[固定配置adapterの接続範囲](../docs/guest-staging-adapter.md)は、実行時token gateと実機操作の残件を分けて説明します。
 
 この Go モジュールは製品向けの基盤候補です。
 Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI からの呼び出し、Upterm への配線を持ちません。
