@@ -42,7 +42,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth': {
         'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready': {
-        'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go'},
+        'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go', 'service_witness.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
