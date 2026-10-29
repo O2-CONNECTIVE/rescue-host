@@ -4,6 +4,10 @@ use std::{ffi::c_void, ptr, sync::atomic::Ordering::SeqCst};
 pub const COMPLETE: u32 = 0x8001;
 pub const BENIGN: u32 = 0x8002;
 pub const QUIT: u32 = 0x12;
+const CONTEXT_SENT: u32 = 1;
+const CONTEXT_DISPATCHED: u32 = 2;
+const SMTO_BLOCK: u32 = 0x1;
+const SMTO_ABORTIFHUNG: u32 = 0x2;
 type Handle = *mut c_void;
 #[repr(C)]
 #[derive(Default)]
@@ -43,7 +47,7 @@ extern "system" {
 unsafe extern "system" fn procedure(window: Handle, message: u32, wparam: usize, lparam: isize) -> isize {
     if message == COMPLETE {
         let s = crate::state();
-        s.context.store(if InSendMessageEx(ptr::null_mut()) != 0 { 1 } else { 2 }, SeqCst);
+        s.context.store(if InSendMessageEx(ptr::null_mut()) != 0 { CONTEXT_SENT } else { CONTEXT_DISPATCHED }, SeqCst);
         s.completion.fetch_add(1, SeqCst);
         s.ready.send(()).unwrap();
         return 0;
@@ -84,7 +88,8 @@ pub fn post(handle: usize, message: u32) {
 }
 pub fn send(handle: usize, message: u32) {
     let mut result = 0;
-    assert_ne!(unsafe { SendMessageTimeoutW(handle as Handle, message, 0, 0, 3, 1000, &mut result) }, 0);
+    assert_ne!(unsafe { SendMessageTimeoutW(handle as Handle, message, 0, 0,
+        SMTO_BLOCK | SMTO_ABORTIFHUNG, 1000, &mut result) }, 0);
 }
 pub fn current_thread() -> u32 { unsafe { GetCurrentThreadId() } }
 pub fn post_quit(thread: u32) {
