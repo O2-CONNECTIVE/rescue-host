@@ -1,0 +1,13 @@
+# 認証helper専用processの入口
+
+`cmd/rescue-auth-helper`は同じ単回認証だけを扱う専用入口である。標準入力から設定を読み込まず、環境変数や任意pathによる設定切替を提供しない。失敗時の診断にargvや認証情報を出力しない。
+
+launcherの引数は`--operator-auth-internal`、operator読取handle、report書込handle、profile読取handle、launch IDである。番号とIDはlocatorであり、親・認証主体・profileの真正性を作らない。private入口は別途取得した保護sourceの同一launch記録と完全一致させ、source確認前にnative adoptionしない。
+
+正規sourceの実装・登録と同一launchのOS bindingは未接続で、公開`RunFixed`は未構成拒否する。sourceは正規producerから得た不変の設定、信頼された期限とcleanup予算、独立した保持証拠を提供する必要がある。runtime自身のtokenや受信payloadをそのまま期待値へ採用しない。実helper executableの配置・署名・固定hashと祖先保護、実SID/ACLの検証も別途必要である。
+
+入口はraw handleの所有を保持し、constructorが非nil ownerを返したときだけそのownerへ移す。profile受信・EOF確認後に既存`Helper.Run`へ進み、profile/operator/reportの各I/Oとsourceを有限cleanupで回収する。致命的thread不明時は通常のnative cleanupへ戻さず、専用helper processの異常終了に委ねる。未確認cleanupを正常終了としない。
+
+sourceの準備は固定OS threadと有限deadlineを要する。`Helper.Run`の内側のlock/unlockとは別に入口のsource scopeを保持する。正規sourceと期限の供給がない既定の入口を、ローカルの固定値・自己申告SID・環境から埋めない。
+
+通常試験は保護sourceとnative endpointをメモリseamへ置換する。実Windowsのprocess/pipe/token/ACL、実SSHの成立を証明しない。OS登録・設定・資格情報作成は本差分の実行対象外である。

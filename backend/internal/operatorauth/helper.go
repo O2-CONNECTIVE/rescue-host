@@ -40,7 +40,10 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 	if api.clean() != nil {
 		return fatal()
 	}
-	if h.ops.check(ctx) != nil || !finite(ctx) {
+	if checkErr := h.ops.check(ctx); checkErr != nil || !finite(ctx) {
+		if errors.Is(checkErr, ErrFatal) {
+			return fatal()
+		}
 		return ErrDenied
 	}
 	frame, err := h.ops.read(ctx)
@@ -48,7 +51,10 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 		return ErrDenied
 	}
 	frame = append([]byte(nil), frame...)
-	if h.ops.check(ctx) != nil || !finite(ctx) {
+	if checkErr := h.ops.check(ctx); checkErr != nil || !finite(ctx) {
+		if errors.Is(checkErr, ErrFatal) {
+			return fatal()
+		}
 		return ErrDenied
 	}
 	if e := api.impersonate(h.ops.pipe); e != nil {
@@ -67,7 +73,10 @@ func (h *Helper) Run(ctx context.Context) (result error) {
 	if _, err = servicecontrol.DecodeUntrustedFrame(frame); err != nil {
 		return ErrDenied
 	}
-	if h.ops.check(ctx) != nil || !finite(ctx) {
+	if checkErr := h.ops.check(ctx); checkErr != nil || !finite(ctx) {
+		if errors.Is(checkErr, ErrFatal) {
+			return fatal()
+		}
 		return ErrDenied
 	}
 	if h.ops.publish(ctx, frame) != nil || !finite(ctx) {

@@ -71,7 +71,7 @@ func newProfileReceiver(ctx context.Context, handle uintptr, binding profileRece
 func (r *profileReceiver) adopt(ctx context.Context) (result error) {
 	defer func() {
 		if recover() != nil {
-			result = ErrUnconfirmed
+			result = errors.Join(ErrFatal, ErrUnconfirmed)
 		}
 	}()
 	if err := r.ops.adopt(r.handle); err != nil {
@@ -107,7 +107,7 @@ func (r *profileReceiver) consume(ctx context.Context) (profile helperProfile, r
 		if recover() != nil {
 			r.uncertain = true
 			profile = helperProfile{}
-			result = ErrUnconfirmed
+			result = errors.Join(ErrFatal, ErrUnconfirmed)
 		}
 	}()
 	if r.used {
@@ -264,6 +264,9 @@ func (r *profileReceiver) run(ctx context.Context, ops helperOps) error {
 	}
 	profile, err := r.consume(ctx)
 	if err != nil {
+		if errors.Is(err, ErrFatal) {
+			return err
+		}
 		cleanup, cancel := context.WithTimeout(context.Background(), r.budget)
 		defer cancel()
 		return errors.Join(err, r.close(cleanup))
