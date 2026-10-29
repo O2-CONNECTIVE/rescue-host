@@ -58,3 +58,20 @@ func TestProfileFrameRequiresMatchingLaunchAndStrictFields(t *testing.T) {
 		}
 	}
 }
+
+func TestProfileFrameEncodingRejectsUnconfiguredProfile(t *testing.T) {
+	id := strings.Repeat("a", 64)
+	p := helperProfile{operator: tokenProjection{user: "S-1-5-21-1", authentication: 7, session: 3, integrity: 8192, kind: 2, level: 1}, guest: tokenProjection{user: "S-1-5-21-2"}}
+	frame, err := encodeHelperProfileFrame(id, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := decodeHelperProfileFrame(frame, id)
+	if err != nil || decoded != p {
+		t.Fatalf("roundtrip=%+v err=%v", decoded, err)
+	}
+	p.operator.authentication = 0
+	if _, err := encodeHelperProfileFrame(id, p); err == nil {
+		t.Fatal("unconfigured producer input accepted")
+	}
+}

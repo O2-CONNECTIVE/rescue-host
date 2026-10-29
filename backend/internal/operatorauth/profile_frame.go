@@ -9,6 +9,37 @@ import (
 	"unicode/utf8"
 )
 
+// encodeHelperProfileFrameは値の形式だけを確認し、正規producerの証拠を生成しない。
+func encodeHelperProfileFrame(launchID string, p helperProfile) ([]byte, error) {
+	type operatorWire struct {
+		User           string `json:"user"`
+		Authentication string `json:"authentication"`
+		Session        string `json:"session"`
+		Integrity      string `json:"integrity"`
+		Kind           string `json:"kind"`
+		Level          string `json:"level"`
+		Restricted     bool   `json:"restricted"`
+		AppContainer   bool   `json:"appContainer"`
+	}
+	w := struct {
+		Version   string       `json:"version"`
+		Type      string       `json:"type"`
+		LaunchID  string       `json:"launchId"`
+		Operator  operatorWire `json:"operator"`
+		GuestUser string       `json:"guestUser"`
+	}{"1", "helper-profile", launchID, operatorWire{p.operator.user, strconv.FormatUint(p.operator.authentication, 10), strconv.FormatUint(uint64(p.operator.session), 10), strconv.FormatUint(uint64(p.operator.integrity), 10), strconv.FormatUint(uint64(p.operator.kind), 10), strconv.FormatUint(uint64(p.operator.level), 10), p.operator.restricted, p.operator.appContainer}, p.guest.user}
+	frame, err := json.Marshal(w)
+	if err != nil {
+		return nil, ErrDenied
+	}
+	frame = append(frame, '\n')
+	decoded, err := decodeHelperProfileFrame(frame, launchID)
+	if err != nil || decoded != p {
+		return nil, ErrDenied
+	}
+	return frame, nil
+}
+
 // decodeHelperProfileFrameは完全frameの純粋な構造検査だけを行う。
 // EOF・正規producer・同一launchのOS bindingは配送側の責任である。
 func decodeHelperProfileFrame(frame []byte, expected string) (helperProfile, error) {
