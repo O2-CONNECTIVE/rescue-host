@@ -50,7 +50,7 @@ privateなreport factoryは、暗号学的乱数名の専用message-mode OVERLAP
 ## native launcherと単回batch
 
 `startNativeHelper`は固定artifactを保持してhash/最終pathを検査し、`CreateProcessAsUserW`でsuspended childを作り、専用Jobへ割り当ててからresumeするsourceである。
-継承はoperator readerとreport writerの2handleだけで、親側の全writer/read複製を閉じてからresumeする。
+継承はoperator reader・report writer・profile readerの3handleだけで、親側の子向けreaderと不要なwriter/read複製を閉じてからresumeする。profile送信はresumeと保持binding再検査の後に開始する。
 同sessionの保有primary token・process/threadの明示SDDLが必須で、LocalSystemへのfallback・logon・privilege付与はしない。
 OS APIが呼出し中に既存privilegeを一時enableする可能性は、変更なしの保証へ読み替えない。
 保持processのcreation/image/tokenとsource tokenの初回観測を固定し、後の変化を拒否する。初回観測以前の変更がないことや発行主体の真正性は証明しない。
@@ -64,7 +64,7 @@ reportを実EOFまでdrainし、保持helperの終了waitとbinding再照合の�
 取消や回収失敗は同じCollectorの失効/回収へ進み、未確認参照を保持する。
 context-freeな終端確認は、既に有限回収が完了した記録だけを読み、新しいOS callを開始しない。
 
-native helper executableの固定entry、最小token/実SID/保護SDDLのproducer、service-owned endpointのsole-read移譲adapter、起動の累積上限、controller server認証producer、同Service adapterは未接続である。
+privateなprofile receiverのrunは、保持source確認・frame・実EOF・同source再確認後に既存Helper.Runへ接続する。CreatePipe/sender/receiver/batchのsourceと接続したメモリfixtureを含む。実helper executableの固定entryと保護source供給、最小token/実SID/保護SDDLのproducer、service-owned endpointのsole-read移譲adapter、起動の累積上限、controller server認証producer、同Service adapterは未接続である。
 `messageEndpoint`は継承handleの権限/種別確認と単回read/write/closeまでを扱い、handle番号だけからprovenanceを作らない。
 これらの未設定値をUI・argv・環境変数・自己申告SIDで埋めない。
 

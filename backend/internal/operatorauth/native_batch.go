@@ -9,9 +9,10 @@ import (
 // inputは保護serviceから所有移譲する唯一のread handle。元のduplex等の
 // readableな複製を外側が残す場合、このconstructorを呼んではならない。
 type nativeBatchSpec struct {
-	input  uintptr
-	launch nativeLaunchSpec
-	report reportConfig
+	input    uintptr
+	launch   nativeLaunchSpec
+	report   reportConfig
+	producer profilePipeProducer
 }
 type batchOwner struct {
 	revoke  func() error // 同Serviceの発行拒否/失効だけ。native I/Oを入れない。
@@ -21,6 +22,13 @@ type batchReport interface {
 	childWriter() uintptr
 	releaseWriter(context.Context) error
 	drain(context.Context) (reportResult, error)
+	close(context.Context) error
+}
+type batchProfile interface {
+	childReader() uintptr
+	launchID() string
+	releaseReader(context.Context) error
+	sendAfterResume(context.Context) error
 	close(context.Context) error
 }
 type batchChild interface {
@@ -34,6 +42,7 @@ type nativeBatchOps struct {
 	parent        func(context.Context) error
 	clean         func() error
 	newReport     func(context.Context, reportConfig) (batchReport, error)
+	newProfile    func(context.Context) (batchProfile, error)
 	duplicateRead func(uintptr) (uintptr, error)
 	start         func(context.Context, nativeLaunchSpec) (batchChild, error)
 	closeHandle   func(uintptr) error
@@ -43,6 +52,7 @@ type nativeBatch struct {
 	ops                nativeBatchOps
 	input, readCopy    uintptr
 	report             batchReport
+	profile            batchProfile
 	child              batchChild
 	collector          *Collector
 	ready, childClosed bool
@@ -51,15 +61,15 @@ type nativeBatch struct {
 
 func (s nativeBatchSpec) valid() bool {
 	l := s.launch
-	return helperHandle(s.input) && s.input != l.primaryToken && l.operatorRead == 0 && l.reportWrite == 0 &&
-		localHelperImage(l.imagePath) && l.imageSHA256 != ([32]byte{}) && l.maxImageBytes > 0 && l.maxImageBytes <= 1<<30 &&
+	return helperHandle(s.input) && s.input != l.primaryToken && l.operatorRead == 0 && l.reportWrite == 0 && l.profileRead == 0 &&
+		localHelperImage(l.imagePath) && l.imageSHA256 != ([32]byte{}) && profileLaunchID(l.launchID) && l.maxImageBytes > 0 && l.maxImageBytes <= 1<<30 &&
 		helperHandle(l.primaryToken) && l.cleanup > 0 && l.processSDDL != "" && l.threadSDDL != "" && l.helperUserSID == s.report.helperSID && s.report.valid()
 }
 
 // startBatchは1要求の固定deadlineを全起動段階で使う。値の正当主体・保護root・
 // sole-read所有の供給元は別の固定provisioningで必要であり、公開入口は閉鎖中。
 func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (b *nativeBatch, err error) {
-	if !s.valid() || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
+	if !s.valid() || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
 		return nil, ErrUnconfigured
 	}
 	b = &nativeBatch{ops: ops, input: s.input}
@@ -88,6 +98,14 @@ func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops na
 	if e := b.parent(ctx); e != nil {
 		return b, e
 	}
+	profile, e := ops.newProfile(ctx)
+	b.profile = profile
+	if e != nil || profile == nil {
+		return b, ErrUnconfigured
+	}
+	if e = b.parent(ctx); e != nil {
+		return b, e
+	}
 	p, e := ops.newReport(ctx, s.report)
 	b.report = p
 	if e != nil || p == nil {
@@ -97,7 +115,7 @@ func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops na
 		return b, e
 	}
 	b.readCopy, e = ops.duplicateRead(b.input)
-	if !helperHandle(b.readCopy) || b.readCopy == b.input || b.readCopy == s.launch.primaryToken || b.readCopy == p.childWriter() {
+	if !helperHandle(b.readCopy) || b.readCopy == b.input || b.readCopy == s.launch.primaryToken || b.readCopy == p.childWriter() || b.readCopy == profile.childReader() {
 		b.readCopy = 0
 		return b, ErrDenied
 	}
@@ -110,12 +128,22 @@ func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops na
 	l := s.launch
 	l.operatorRead = b.readCopy
 	l.reportWrite = p.childWriter()
+	l.profileRead = profile.childReader()
+	if !profileLaunchID(l.launchID) || profile.launchID() != l.launchID {
+		return b, ErrDenied
+	}
+	if !helperHandle(l.profileRead) || l.profileRead == s.input || l.profileRead == b.readCopy || l.profileRead == l.reportWrite || l.profileRead == l.primaryToken {
+		return b, ErrDenied
+	}
 	c, e := ops.start(ctx, l)
 	b.child = c
 	if e != nil || c == nil {
 		return b, ErrDenied
 	}
 	if e = b.parent(ctx); e != nil {
+		return b, e
+	}
+	if e = profile.releaseReader(ctx); e != nil {
 		return b, e
 	}
 	if e = p.releaseWriter(ctx); e != nil {
@@ -136,14 +164,23 @@ func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops na
 	if e = c.recheck(ctx); e != nil {
 		return b, e
 	}
-	if !finite(ctx) {
+	if e = profile.sendAfterResume(ctx); e != nil {
+		return b, e
+	}
+	if e = b.parent(ctx); e != nil {
+		return b, e
+	}
+	if e = c.recheck(ctx); e != nil {
+		return b, e
+	}
+	if !reportContextValid(ctx) {
 		return b, ErrDenied
 	}
 	b.ready = true
 	return b, nil
 }
 func (b *nativeBatch) parent(ctx context.Context) error {
-	if !finite(ctx) {
+	if !reportContextValid(ctx) {
 		return ErrDenied
 	}
 	if e := b.ops.parent(ctx); e != nil {
@@ -154,7 +191,7 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 		}
 		return e
 	}
-	if !finite(ctx) {
+	if !reportContextValid(ctx) {
 		return ErrDenied
 	}
 	return nil
@@ -214,7 +251,7 @@ func (b *nativeBatch) closeInputs(ctx context.Context) error {
 		if *h == 0 {
 			continue
 		}
-		if !finite(ctx) {
+		if !reportContextValid(ctx) {
 			return ErrUnconfirmed
 		}
 		if e := b.ops.closeHandle(*h); e != nil {
@@ -229,6 +266,11 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 	if e := b.cleanupGuard(); e != nil {
 		return e
 	}
+	if b.profile != nil {
+		if e := b.profile.close(ctx); e != nil {
+			return e
+		}
+	}
 	if b.report != nil {
 		if e := b.report.close(ctx); e != nil {
 			return e
@@ -242,7 +284,7 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 			return e
 		}
 	}
-	if !finite(ctx) {
+	if !reportContextValid(ctx) {
 		return ErrUnconfirmed
 	}
 	b.childClosed = true

@@ -12,12 +12,13 @@ import (
 // not proof of ancestor ACLs, service provenance or guest separation. That
 // protection supplier is unimplemented; RunFixed remains closed.
 type nativeLaunchSpec struct {
-	imagePath                               string
-	imageSHA256                             [32]byte
-	maxImageBytes                           int64
-	primaryToken, operatorRead, reportWrite uintptr
-	cleanup                                 time.Duration
-	processSDDL, threadSDDL, helperUserSID  string
+	imagePath                                            string
+	imageSHA256                                          [32]byte
+	launchID                                             string
+	maxImageBytes                                        int64
+	primaryToken, operatorRead, reportWrite, profileRead uintptr
+	cleanup                                              time.Duration
+	processSDDL, threadSDDL, helperUserSID               string
 }
 type helperBinding struct {
 	pid                                              uint32
@@ -42,7 +43,7 @@ type helperLaunchKernel interface {
 }
 
 // helperChild owns the original process/thread/image/job references. The token
-// and two inherited pipe references remain borrowed from the outer owner.
+// and three inherited pipe references remain borrowed from the outer owner.
 type helperChild struct {
 	mu                          sync.RWMutex
 	kernel                      helperLaunchKernel
@@ -65,7 +66,7 @@ func localHelperImage(path string) bool {
 	return true
 }
 func (s nativeLaunchSpec) valid() bool {
-	return localHelperImage(s.imagePath) && s.imageSHA256 != ([32]byte{}) && s.maxImageBytes > 0 && s.maxImageBytes <= 1<<30 && helperHandle(s.primaryToken) && helperHandle(s.operatorRead) && helperHandle(s.reportWrite) && s.primaryToken != s.operatorRead && s.primaryToken != s.reportWrite && s.operatorRead != s.reportWrite && s.cleanup > 0 && s.cleanup <= time.Minute && s.processSDDL != "" && s.threadSDDL != "" && s.helperUserSID != ""
+	return localHelperImage(s.imagePath) && s.imageSHA256 != ([32]byte{}) && profileLaunchID(s.launchID) && s.maxImageBytes > 0 && s.maxImageBytes <= 1<<30 && helperHandle(s.primaryToken) && helperHandle(s.operatorRead) && helperHandle(s.reportWrite) && helperHandle(s.profileRead) && s.primaryToken != s.operatorRead && s.primaryToken != s.reportWrite && s.primaryToken != s.profileRead && s.operatorRead != s.reportWrite && s.operatorRead != s.profileRead && s.reportWrite != s.profileRead && s.cleanup > 0 && s.cleanup <= time.Minute && s.processSDDL != "" && s.threadSDDL != "" && s.helperUserSID != ""
 }
 
 // startHelper returns a suspended, assigned child. The outer owner must release
