@@ -99,4 +99,5 @@ type Collector struct {
 	cleanup                                                         time.Duration
 	revoked, terminated, waited, ioClosed, processClosed, reclaimed bool
 	revokeErr                                                       error
+	reclaimErr                                                      error
 }

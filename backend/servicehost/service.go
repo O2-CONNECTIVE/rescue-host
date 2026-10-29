@@ -51,6 +51,7 @@ type Service struct {
 	reservation                               *serviceReservation
 	host                                      *Host
 	delivery                                  *serviceHostDelivery
+	workload                                  *serviceWorkloadReclaim
 	plane                                     servicePlane
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
@@ -262,6 +263,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	}
 	s.mu.Lock()
 	s.issuer = issuer
+	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer, changed: make(chan struct{})}
 	stopping = s.stopping
 	s.mu.Unlock()
 	if stopping {
@@ -315,20 +317,13 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(cleanup, min(cfg.Budgets.Observe, cfg.Budgets.Cleanup/8))
 			_ = publish(report, StopPending)
 			finish()
-			closeErr := s.waitAuthRequest(cleanup)
+			// workload待機だけで全予算を使い、独立したauth owner回収を飢餓させない。
+			deadline, _ := cleanup.Deadline()
+			workload, endWorkload := context.WithTimeout(cleanup, time.Until(deadline)/2)
+			closeErr := s.reclaimWorkload(workload)
+			endWorkload()
+			closeErr = errors.Join(closeErr, s.waitAuthRequest(cleanup))
 			if closeErr == nil {
-				closeErr = s.waitOwnerReservation(cleanup)
-			}
-			if closeErr == nil {
-				closeErr = s.waitHostDelivery(cleanup)
-			}
-			if closeErr == nil {
-				s.mu.Lock()
-				host := s.host
-				s.mu.Unlock()
-				if host != nil {
-					closeErr = errors.Join(closeErr, host.Close(cleanup))
-				}
 				if approvalDone != nil {
 					select {
 					case <-approvalDone:

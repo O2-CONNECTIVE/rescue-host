@@ -10,6 +10,7 @@ import (
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -314,7 +315,7 @@ func (r *serviceAuthRequest) awaitCleanup() error {
 }
 
 func authFatal(err error) bool {
-	return errors.Is(err, operatorauth.ErrFatal) || errors.Is(err, bootstrapauth.ErrFatal)
+	return errors.Is(err, operatorauth.ErrFatal) || errors.Is(err, bootstrapauth.ErrFatal) || errors.Is(err, protectedkey.ErrFatal)
 }
 
 // Preserve only known sentinels. Native error text must never reach responses,
@@ -325,6 +326,9 @@ func authFailure(err, kind error) error {
 	}
 	if errors.Is(err, bootstrapauth.ErrFatal) {
 		kind = errors.Join(kind, bootstrapauth.ErrFatal)
+	}
+	if errors.Is(err, protectedkey.ErrFatal) {
+		kind = errors.Join(kind, protectedkey.ErrFatal)
 	}
 	return kind
 }
@@ -395,14 +399,22 @@ func (s *Service) waitAuthRequest(ctx context.Context) error {
 
 func (s *Service) awaitAuthRequestBeforeReturn() {
 	s.mu.Lock()
-	var done, ownerDone <-chan struct{}
-	if s.auth != nil && s.auth.active != nil {
-		done = s.auth.active.done
-		ownerDone = s.auth.active.ownerDone
+	var r *serviceAuthRequest
+	if s.auth != nil {
+		r = s.auth.active
 	}
 	s.mu.Unlock()
-	if done != nil {
-		<-done
-		<-ownerDone
+	if r != nil {
+		<-r.ownerDone
+		s.mu.Lock()
+		fatal := r.fatal
+		same := s.stopping && s.auth == r.adapter && r.adapter.service == s && s.auth.active == r && s.issuer == r.issuer
+		s.mu.Unlock()
+		// ownerDoneは実workerの終了。fatalで未発行のcleanup ackを
+		// 成功へ変換せず保持し、native再試行なしでServiceを退役させる。
+		if same && authFatal(fatal) {
+			return
+		}
+		<-r.done
 	}
 }
