@@ -5,6 +5,8 @@ import (
 	"errors"
 	"runtime"
 	"time"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 )
 
 func (e *Execution) own(ctx context.Context, factory func() executionStage, ready chan<- executionReady) {
@@ -40,12 +42,20 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 			e.service.Store(service)
 		}
 	}
+	if errors.Is(err, ErrRootFatal) {
+		healthy = false
+	}
 	if err != nil {
 		// 構成済みでもまだSCM/Serveへ渡していない。inner-emptyの終了を先に確認する。
 		if service != nil {
-			e.closeService(service)
+			e.closeUnpublishedService(service)
 		}
 		ready <- executionReady{err: err}
+		select {
+		case <-e.cleaned:
+			return // 実outer RPCで既に回収した。Closeとackを重複しない。
+		default:
+		}
 		ticker := time.NewTicker(e.cfg.CleanupRetry)
 		defer ticker.Stop()
 		for {
@@ -109,6 +119,46 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 			healthy = false
 			for {
 				time.Sleep(e.cfg.CleanupRetry)
+			}
+		}
+	}
+}
+
+// 未公開ServiceのCloseは別workerで進め、元threadが自身へのouter RPCを処理する。
+// 内部参照はcleanup identityだけで、ready/SCMへ成功として公開しない。
+func (e *Execution) closeUnpublishedService(service *servicehost.Service) {
+	e.service.Store(service)
+	joined := make(chan struct{})
+	go func() {
+		defer close(joined)
+		e.closeService(service)
+	}()
+	for {
+		select {
+		case <-joined:
+			return // outer未登録なら、呼出元が元threadでRootを回収する。
+		case request := <-e.requests:
+			if request.guest != nil || request.confirmation != nil || !rootLive(request.ctx) || !request.proof.Confirms(service) {
+				request.reply <- ErrRootUnconfirmed
+				continue
+			}
+			cleanup, cancel := context.WithTimeout(request.ctx, e.cfg.Anchor.CleanupTimeout)
+			err := e.stage.Close(cleanup)
+			cancel()
+			if err == nil {
+				close(e.cleaned)
+			}
+			request.reply <- err
+			if err == nil {
+				<-joined // native回収だけでなく、所有Close workerも実returnまでjoinする。
+				return
+			}
+			if errors.Is(err, ErrRootFatal) {
+				// 不明な元thread/所有参照を他threadへ作り直さず保持して退役する。
+				ticker := time.NewTicker(e.cfg.CleanupRetry)
+				defer ticker.Stop()
+				for range ticker.C {
+				}
 			}
 		}
 	}

@@ -162,3 +162,6 @@ Serviceは認証後のopaque bindingを同じCollector/owner/issuerとstop gate�
 指定SIDの別ログオン資格は既存許可の引継ぎではなく、新規channelでの新規承認だけに使う。
 専用helper token・same-launch evidence・helper entryの保護sourceは未構成であり、Endpoint取得/Moveより前に拒否する。Service起動tokenを専用helper tokenの代用品にしない。
 source/fake試験と実Windows・実runtime/inner sshd・実SSHの成立を分け、後者のgateは閉鎖を維持する。
+
+policyの再検査失敗や取消でServiceを公開しない場合も、inner Close workerと元threadのcleanup-only RPCを分離し、実inner proof→元Root回収→Close workerの実returnを待って起動エラーを返す。
+outer未登録の失敗では元threadがRootを回収し、fatalなthreadや未確認参照を再利用しない。
