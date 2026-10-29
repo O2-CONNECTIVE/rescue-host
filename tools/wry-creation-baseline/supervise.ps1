@@ -94,6 +94,8 @@ try {
         } catch { $report.ownerSetRecorded = $false }
     }
     try { if (-not $report.Contains('wryStartupFileClosed')) { $report.wryStartupFileClosed = Wait-WryStartupTrace $trace $budget } } catch { $report.wryStartupFileClosed = $false }
+    # verdict確定後、所有プロセスの停止前に匿名traceを同じ1秒予算で回収する。
+    try { $report.driverStageFileClosed = Wait-DriverStageTrace $ToolsDirectory $budget } catch { $report.driverStageFileClosed = $false }
     $report.cleanupStarted = $true; $forceErrors = @(); $forceWait = [Diagnostics.Stopwatch]::StartNew()
     try {
         if ($report.ownerSetRecorded) {

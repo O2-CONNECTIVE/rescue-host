@@ -26,3 +26,24 @@ function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget
 function Wait-WryStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
     return Wait-ClosedStartupTrace $Directory $Budget 'wry-startup-stages.json'
 }
+
+# 同じ観測budgetを共有し、固定Driverの完全なfileだけを停止前に確認する。
+function Wait-DriverStageTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    if (-not $Budget.IsRunning) { $Budget.Start() }
+    try {
+        [IO.File]::WriteAllText((Join-Path $Directory 'driver-stage.finish'), 'finish')
+        $file = Join-Path $Directory 'driver-stage.jsonl'
+        do {
+            $stream = $null
+            try {
+                $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+                return $stream.Length -gt 0 -and $stream.Length -le 8192
+            } catch [IO.IOException] { }
+            finally { if ($null -ne $stream) { $stream.Dispose() } }
+            if ($Budget.ElapsedMilliseconds -ge 1000) { break }
+            Start-Sleep -Milliseconds 20
+        } while ($Budget.ElapsedMilliseconds -lt 1000)
+        return $false
+    } catch { return $false }
+    finally { $Budget.Stop() }
+}

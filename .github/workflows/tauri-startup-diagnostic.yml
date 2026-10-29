@@ -239,6 +239,10 @@ jobs:
           node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory "$env:RUNNER_TEMP/baseline-evidence" --source $env:STARTUP_SOURCE --exe $exe --build "$env:RUNNER_TEMP/baseline-build.json" > "$env:RUNNER_TEMP/baseline-evidence/contrast-decision.json"
           if ($wryCode -ne 0) { exit $wryCode }
           exit $LASTEXITCODE
+      - name: Validate anonymous contrast driver trace
+        if: always()
+        timeout-minutes: 1
+        run: ./ui/tauri/native-smoke/inspect-driver-trace.ps1 -ToolsDirectory "$env:RUNNER_TEMP/baseline-tools" -OutputDirectory "$env:RUNNER_TEMP/baseline-evidence"
       - name: Save safe contrast evidence without EXE or profile
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
