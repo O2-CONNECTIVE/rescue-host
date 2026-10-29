@@ -25,7 +25,7 @@ type nativeGuestAttempt struct {
 }
 
 func (e *Execution) PrepareNeverCreatedGuest(ctx context.Context, t servicehost.GuestStagingTicket, l *serviceready.InspectionLease) error {
-	if e == nil || !e.configured || !e.staging || !rootLive(ctx) {
+	if e == nil || !e.configured || !e.staging || !rootLive(ctx) || !t.MatchesService(e.service.Load()) {
 		return ErrRootDenied
 	}
 	if _, err := t.DescriptorFor(ctx, e); err != nil {
@@ -34,7 +34,7 @@ func (e *Execution) PrepareNeverCreatedGuest(ctx context.Context, t servicehost.
 	return e.guestRPC(ctx, t, l, false)
 }
 func (e *Execution) CloseNeverCreatedGuest(ctx context.Context, t servicehost.GuestStagingTicket, l *serviceready.InspectionLease) error {
-	if e == nil || !e.configured || !e.staging || !rootLive(ctx) {
+	if e == nil || !e.configured || !e.staging || !rootLive(ctx) || !t.MatchesService(e.service.Load()) {
 		return ErrRootUnconfirmed
 	}
 	if _, err := t.CleanupDescriptorFor(ctx, e); err != nil {
@@ -84,7 +84,7 @@ func (e *Execution) guestOnOwner(ctx context.Context, t servicehost.GuestStaging
 	return stage.PrepareGuest(ctx, t, e, l)
 }
 func (s *nativeExecutionStage) PrepareGuest(ctx context.Context, t servicehost.GuestStagingTicket, owner servicehost.GuestStagingOwner, l *serviceready.InspectionLease) (result error) {
-	if !s.staging || s.guest == nil || s.prepared == nil || s.guestAttempt != nil {
+	if !s.staging || s.guest == nil || s.prepared == nil || s.guestAttempt != nil || !t.MatchesService(s.service) {
 		return ErrRootDenied
 	}
 	descriptor, err := t.DescriptorFor(ctx, owner)
@@ -145,7 +145,7 @@ func buildNativeGuestStaging(ctx context.Context, s *nativeExecutionStage, t ser
 	return held, err
 }
 func (s *nativeExecutionStage) CloseGuest(ctx context.Context, t servicehost.GuestStagingTicket, owner servicehost.GuestStagingOwner, l *serviceready.InspectionLease) error {
-	if !s.staging || !rootLive(ctx) {
+	if !s.staging || !rootLive(ctx) || !t.MatchesService(s.service) {
 		return ErrRootUnconfirmed
 	}
 	descriptor, err := t.CleanupDescriptorFor(ctx, owner)

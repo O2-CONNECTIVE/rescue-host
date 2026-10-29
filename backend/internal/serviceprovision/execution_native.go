@@ -27,6 +27,7 @@ type nativeExecutionStage struct {
 	token           *LaunchToken
 	guest           *GuestConfiguration
 	guestAttempt    *nativeGuestAttempt
+	service         *servicehost.Service
 }
 
 func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *servicehost.Service, err error) {
@@ -56,6 +57,7 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 				return nil, err
 			}
 			s.previewSnapshot = &snapshot
+			s.service = service
 			return service, nil
 		}
 		// query-only rootを借用する。強token/Approval/Launcherは取得しない。

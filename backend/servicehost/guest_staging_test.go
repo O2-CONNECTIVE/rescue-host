@@ -118,6 +118,9 @@ func TestGuestStagingOwnerBindsOnlySameUnusedOuterAndKeepsMissingEndpointClosed(
 	if err := s.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if !o.saved.MatchesService(s) || o.saved.MatchesService(new(Service)) || (GuestStagingTicket{}).MatchesService(s) {
+		t.Fatal("ticket changed exact Service provenance")
+	}
 	ns := o.descriptor.Namespace
 	if ns.Epoch == ([32]byte{}) || ns.Intent == ([32]byte{}) || ns.Generation != 1 || o.closes.Load() != 1 || o.finalizes.Load() != 1 || !s.executionClosed || s.executionAdmissions != 0 || s.Snapshot().Generation != 0 || s.Snapshot().HasAuthority {
 		t.Fatal("guest namespace or never-created cleanup lost owner binding")

@@ -35,10 +35,22 @@ func (r *previewConfirmation) prepareGuestStaging() (string, error) {
 	if !valid {
 		return "SERVICE_NOT_READY", nil
 	}
-	if err := callGuestPrepare(r.ctx, stage); err != nil {
+	if err := stage.prepare(r.ctx); err != nil {
 		return r.failGrant(err)
 	}
 	return "SERVICE_NOT_READY", nil // disabled staging never generates runtime proof/grant
+}
+
+// A nil reply is the original owner's actual SDK return acknowledgement. A
+// caller cancellation/error is deliberately insufficient to end the borrow.
+func (r *guestStagingRecord) prepare(ctx context.Context) error {
+	err := callGuestPrepare(ctx, r)
+	if err == nil {
+		r.service.mu.Lock()
+		r.prepareJoined = true
+		r.service.mu.Unlock()
+	}
+	return err
 }
 func callGuestPrepare(ctx context.Context, r *guestStagingRecord) (err error) {
 	defer func() {

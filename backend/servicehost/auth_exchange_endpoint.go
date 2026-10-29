@@ -19,7 +19,9 @@ type serviceAuthEndpoint struct {
 	written                       *serviceready.WriteReceipt
 	inspection                    *serviceready.InspectionLease
 	input                         *serviceready.SoleInput
-	acquiring, uncertain, cleaned bool // Service.mu
+	inspectionClose               func(context.Context) error // private physical-OS seam; production uses exact lease.Close
+	inspectionReturned            bool                        // actual physical close ack; independent of whole guest teardown
+	acquiring, uncertain, cleaned bool                        // Service.mu
 }
 
 func (r *serviceAuthRequest) authenticatedEndpointLocked() bool {
@@ -31,9 +33,8 @@ func (r *serviceAuthRequest) endpointInputBoundLocked() bool {
 	return r.endpointExchange && held != nil && held.ops.concrete != nil && held.ops.factories.canonical() && held.inspection != nil && held.input != nil && r.batch.concrete != nil && r.batch.concrete.MatchesSoleInput(held.input) && r.batch.concrete.MatchesServiceFactory(held.ops.factories.auth)
 }
 
-// prepareEndpoint is ownership preparation only. There is no configured caller
-// until same-Service/profile binding, the Native typed-input factory, and SCM
-// readiness composition exist. Ownership capture alone proves none of them.
+// prepareEndpoint is ownership preparation only. The protected expected
+// operator source remains unconfigured; ownership capture authenticates no Read.
 func (r *serviceAuthRequest) prepareEndpoint(ctx context.Context, f *serviceready.Factory) (*serviceready.Endpoint, error) {
 	if f == nil {
 		return nil, ErrProvisioningUnconfigured
@@ -88,8 +89,8 @@ func (r *serviceAuthRequest) prepareEndpointOps(ctx context.Context, prepare fun
 	return ops.concrete, nil
 }
 
-// AwaitConnected/Split and typed SoleInput-to-Batch preparation are not connected
-// here. A caller-supplied input pointer cannot establish that provenance.
+// A transferred inspection lease belongs to the original execution owner until
+// its actual guest/query cleanup acknowledgement. Caller cancellation is not one.
 func (r *serviceAuthRequest) closeEndpoint(ctx context.Context) error {
 	if !authBudget(ctx) {
 		return ErrRuntimeUnconfirmed
@@ -103,17 +104,29 @@ func (r *serviceAuthRequest) closeEndpoint(ctx context.Context) error {
 	}
 	cleaned, acquiring, uncertain, ops := held.cleaned, held.acquiring, held.uncertain, held.ops
 	inspection := held.inspection
-	guestOwnsInspection := s.staging != nil && s.staging.lease == inspection && s.staging.transferred && !s.staging.closed
+	guestOwnsInspection := s.staging != nil && s.staging.lease == inspection && s.staging.transferred && !s.staging.prepareJoined && !s.staging.closed
+	inspectionReturned, closeInspection := held.inspectionReturned, held.inspectionClose
 	s.mu.Unlock()
 	if acquiring {
 		return ErrRuntimeUnconfirmed
 	}
-	if inspection != nil {
+	if inspection != nil && !inspectionReturned {
 		if guestOwnsInspection {
 			return ErrRuntimeUnconfirmed
 		}
-		if err := inspection.Close(ctx); err != nil {
+		if closeInspection == nil {
+			closeInspection = inspection.Close
+		}
+		if err := authCleanupCall(func() error { return closeInspection(ctx) }); err != nil {
 			return authFailure(err, ErrRuntimeUnconfirmed)
+		}
+		// Retain the actual physical fact even if this caller's timer expires
+		// afterwards. It is not a whole-guest or authenticated exchange proof.
+		s.mu.Lock()
+		held.inspectionReturned = true
+		s.mu.Unlock()
+		if !authBudget(ctx) {
+			return ErrRuntimeUnconfirmed
 		}
 	}
 	if !cleaned && ops.concrete != nil {
@@ -177,6 +190,9 @@ func (r *serviceAuthRequest) splitEndpointForInspection(ctx context.Context) (*s
 	input, lease, err := endpoint.SplitForInspection(ctx)
 	s.mu.Lock()
 	held.input, held.inspection = input, lease
+	if lease != nil {
+		held.inspectionClose = lease.Close
+	}
 	live := r.acquisitionLiveLocked(ctx)
 	s.mu.Unlock()
 	if err != nil {

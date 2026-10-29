@@ -31,6 +31,7 @@ type guestStagingRecord struct {
 	lease               *serviceready.InspectionLease
 	sid                 string
 	transferred, closed bool
+	prepareJoined       bool // successful reply from the original owner after SDK actual return
 }
 
 func sameGuestOwner(a, b any) bool {
@@ -56,6 +57,14 @@ func (r *guestStagingRecord) matchesLocked(owner GuestStagingOwner) bool {
 	s := r.service
 	return sameGuestOwner(r.owner, owner) && sameGuestOwner(s.outer, owner) && sameGuestOwner(s.guestOwner, owner) && s.staging == r && s.executionClosed && r.confirmation != nil && r.confirmation.service == s && r.confirmation.issuer == s.issuer && r.confirmation.owner == s.authOwner && s.preview != nil && s.preview.intent == r.confirmation.intent && s.preview.intent.confirmation == r.confirmation && s.reservation == r.confirmation.work.reservation && s.reservation != nil && s.reservation.claimed && s.reservation.purpose == reservationGuestPreparation
 }
+
+// MatchesService observes immutable provenance only. It grants no acquisition,
+// cleanup, authentication or execution permission; callers also use the gated
+// descriptor/owner/deadline methods.
+func (t GuestStagingTicket) MatchesService(s *Service) bool {
+	return s != nil && t.record != nil && t.record.service == s
+}
+
 func (t GuestStagingTicket) DescriptorFor(ctx context.Context, owner GuestStagingOwner) (GuestStagingDescriptor, error) {
 	r := t.record
 	if r == nil || !authBudget(ctx) || !r.service.mu.TryLock() {

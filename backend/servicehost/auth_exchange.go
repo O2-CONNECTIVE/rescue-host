@@ -8,7 +8,7 @@ import (
 
 // reserveExchange registers ownership before an Endpoint constructor can run.
 // It grants no authentication, input provenance, or next-request readiness.
-// Native SoleInput preparation and SCM witness turnover remain unconnected.
+// The configured transport still requires a protected expected operator source.
 func (a *serviceAuthAdapter) reserveExchange(ctx context.Context) (*serviceAuthRequest, error) {
 	if a == nil || a.service == nil || !authBudget(ctx) {
 		return nil, ErrProvisioningRejected
@@ -46,8 +46,9 @@ func (a *serviceAuthAdapter) retainBatchLocked(r *serviceAuthRequest, batch serv
 	a.seen[batch.collector] = struct{}{}
 }
 
-// attachBatch verifies only issuer/Owner/Collector identity. The current Batch
-// cannot prove which SoleInput it used. This does not open Endpoint Start.
+// attachBatch transfers exact issuer/Owner/Collector ownership only. Endpoint
+// Start separately requires the concrete Batch's immutable SoleInput and Factory
+// provenance, so attachment alone never opens it.
 func (r *serviceAuthRequest) attachBatch(batch *operatorauth.Batch) error {
 	if r == nil || r.adapter == nil {
 		return ErrProvisioningRejected
