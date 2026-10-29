@@ -32,6 +32,8 @@ export function readScripts(value: unknown, end: number, pump: Pump): Scripts | 
   if (pump.phase === 'receiver-ready' && (s.sentUs === null || pump.lastUs < s.sentUs)) return null;
   if (s.returnUs !== null && pump.entered && pump.lastUs > s.returnUs) return null;
   if (s.result === 'ok' && pump.phase !== 'receiver-ready') return null;
+  if (s.result === 'error' && pump.entered && !(['quit', 'os-error'].includes(pump.phase)
+    || (pump.phase === 'receiver-ready' && s.callbackOk === false && s.sends === s.calls))) return null;
   return s;
 }
 export function scriptPhase(s: Scripts): string {
