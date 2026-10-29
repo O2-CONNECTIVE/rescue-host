@@ -38,6 +38,10 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
     { cwd: new URL('..', import.meta.url), encoding: 'utf8', timeout: 5000 });
     const good = invoke(); assert.equal(good.status, 0); assert.equal(good.stderr, '');
     assert.equal((JSON.parse(good.stdout) as { startup: { phase: string } }).startup.phase, 'environment-api-start-not-observed');
+    // 対照は製品native合格を名乗らず、別kindで同じ記録来歴を検証する。
+    await writeFile(path.join(folder, 'collection.json'), JSON.stringify({ kind: 'direct-wry-controller-contrast', schema: 1,
+      productNativePass: false, wryStartupFileClosed: true }));
+    assert.equal(invoke().status, 0);
     await writeFile(path.join(folder, 'wry-startup-stages.json'), JSON.stringify({ ...trace, url: 'PRIVATE_FIXTURE' }));
     const bad = invoke(); assert.equal(bad.status, 1); assert.equal(bad.stdout.includes('PRIVATE_FIXTURE'), false);
     await writeFile(path.join(folder, 'provenance.json'), JSON.stringify({ ...provenance, exeSha256: 'b'.repeat(64) }));
