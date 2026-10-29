@@ -18,6 +18,7 @@ memory fixtureの保存成功は、OS保護された永続化や実Windowsの非
 SSHへの有効化、実token発行、既存guest主体への置換は今回の実装範囲外である。
 後続の[Windows照会とjournal境界](temporary-guest-native-boundary.md)では、実API呼出sourceとmock試験を分けて準備する。
 実機操作に必要な入力・権限・変更対象・復元は[別途承認する計画](temporary-guest-provisioning-plan.md)へ分離する。
+[作成入口と検査拒否](temporary-guest-create-boundary.md)では、作成返却SIDを同じcoreへ接続し、未構成の完全検査を成功にしない。
 
 ## 作成と有効化の境界
 
@@ -38,7 +39,8 @@ UIが任意の既存ユーザー名、SID、path、資格情報を渡す入口�
 戻り値とerrorが同時に存在する部分取得も、同じ所有記録へ保持する。
 SID記録のcommitが未確認なら有効化へ進まず、メモリに残る確定参照も捨てない。
 
-Windowsの候補APIはlocal限定の`NetUserAdd`と`NetUserGetInfo`であるが、今回は呼び出さない。
+新規作成のsource候補は、返却objectから作成SIDを得る`New-LocalUser -Disabled -NoPassword`である。
+`NetUserAdd`後の名前lookupだけでは作成来歴を確定しない。`NetUserGetInfo`は読取診断に限定し、今回実APIを実行しない。
 native実装ではdomain controllerを拒否し、実際のlocal account-domain SIDを照合する。SIDの形やNULL server指定だけでlocal accountと認定しない。
 `USER_PRIV_USER`や非管理者の直接groupだけを検査しても十分ではない。
 間接membership、実効privilege、logon rights、監督/設定/鍵/記録への書込・停止・複製権限を含め、必要範囲を確認する。

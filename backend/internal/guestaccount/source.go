@@ -65,9 +65,12 @@ type journalSource interface {
 	save(context.Context, record) (journalReceipt, error)
 	load(context.Context) (journalReceipt, error)
 }
-type accountSource interface {
-	createDisabled(context.Context, binding) (accountReceipt, error)
+type accountInspector interface {
 	inspect(context.Context, binding) (accountSnapshot, error)
+}
+type accountSource interface {
+	accountInspector
+	createDisabled(context.Context, binding) (accountReceipt, error)
 	disable(context.Context, binding) (accountReceipt, error)
 	deleteExact(context.Context, binding) (accountReceipt, error)
 }

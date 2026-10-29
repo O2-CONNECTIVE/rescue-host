@@ -36,7 +36,12 @@ func sidRequest(b binding, op accountKind) []byte {
 	if operation == "" {
 		return nil
 	}
-	w := sidFrame{"rescue-host-guest-sid/1", operation, hex.EncodeToString(b.epoch[:]), hex.EncodeToString(b.intent[:]), hex.EncodeToString(b.policy[:]), strconv.FormatUint(b.generation, 10), b.machine, b.operator, b.service, b.name, b.sid}
+	return encodeSIDFrame(sidFrameFor(b, operation))
+}
+func sidFrameFor(b binding, operation string) sidFrame {
+	return sidFrame{"rescue-host-guest-sid/1", operation, hex.EncodeToString(b.epoch[:]), hex.EncodeToString(b.intent[:]), hex.EncodeToString(b.policy[:]), strconv.FormatUint(b.generation, 10), b.machine, b.operator, b.service, b.name, b.sid}
+}
+func encodeSIDFrame(w sidFrame) []byte {
 	encoded, err := json.Marshal(w)
 	if err != nil || len(encoded)+1 > sidFrameLimit {
 		return nil

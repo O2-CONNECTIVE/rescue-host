@@ -12,7 +12,8 @@
 Goから非公開のsamlib ABIを直接呼び出しません。
 
 `sidSource`は、作成来歴が既に確定した一つの完全bindingとSIDだけを保持します。
-作成処理は未構成を返し、元producerの完全権限検査を代用しません。
+SID清掃source自身の作成処理は未構成を返し、元producerの完全権限検査を代用しません。
+[後続の作成入口](temporary-guest-create-boundary.md)は、作成元が確定したSIDだけをこの清掃sourceへ接続します。
 coreの失効→無効化→旧workload回収→再検査→削除意図保存→再検査→削除の順序を維持します。
 不明な操作は単回で消費し、同じsourceで再dispatchしません。
 正規の作成元と完全権限producerの実装は別の未完了境界です。

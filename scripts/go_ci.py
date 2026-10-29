@@ -19,7 +19,9 @@ PRODUCT_FILES = {
         'close.go', 'lifecycle.go', 'model.go', 'plan.go', 'prepare.go', 'recovery.go', 'source.go', 'validation.go',
         'account_query.go', 'account_query_buffer.go', 'account_query_read.go',
         'journal.go', 'journal_codec.go', 'journal_security.go', 'sid_codec.go',
-        'sid_run.go', 'sid_run_io.go', 'sid_script.go', 'sid_source.go'},
+        'sid_run.go', 'sid_run_io.go', 'sid_script.go', 'sid_source.go',
+        'creation_codec.go', 'creation_native.go', 'creation_query.go',
+        'creation_script.go', 'creation_source.go', 'sid_script_parts.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
@@ -63,10 +65,10 @@ PRODUCT_FILES = {
 
 
 GUEST_ACCOUNT_FILES = {
-    'linux': {'account_query_other.go', 'journal_other.go'},
-    'darwin': {'account_query_other.go', 'journal_other.go'},
+    'linux': {'account_query_other.go', 'journal_other.go', 'creation_query_other.go'},
+    'darwin': {'account_query_other.go', 'journal_other.go', 'creation_query_other.go'},
     'windows': {'account_query_windows.go', 'account_query_windows_machine.go',
-                'journal_windows.go', 'journal_windows_pin.go'},
+                'journal_windows.go', 'journal_windows_pin.go', 'creation_query_windows.go'},
 }
 
 
