@@ -16,6 +16,7 @@ patchと追加sourceのhashをscript内でpinし、文脈ずれ・fuzz・未知p
 `.gitattributes`はこのdiagnostic bundleだけcheckout改行変換を禁止し、Windowsでもpin済みbytesを保持する。
 
 CIでは既存の固定Rust1.99.1とPython3.13.17を選び、自己所有runner tempだけでfixture test/buildする。
+現在はstage-2で、終端時の接続割当てsnapshotを追加した。[接続境界の意味と未観測範囲](native-timeout-connection-boundary.md)を参照する。
 元のupstream crate/hash、patch/hash、追加source/hash、変更対象の前後hash、Cargo.lock hashをprovenanceへ残す。
 build後にsourceを再照合してbinary hashを記録し、起動直前・終了後も同じbinary hashを確認する。
 これはreview済みrepositoryと公式固定buildを信頼する対応記録であり、新しい署名・信頼根ではない。
@@ -74,5 +75,5 @@ CLI相関と厳密patch適用はmodule/CLI未実装のREDを先に観測した�
 EOF後のfuture drop、schema型と単調時刻の不整合もCLIでRED→GREENを確認した。
 Rust fixtureは固定sourceのproducer未実装によるcompile REDを既存Windows CIで確認し、同じfixtureを実装へ残す。
 追加のheader/error/overflow/未終了request・秘密field・未知差分・pin driftは実装後回帰で、TDD先行件数とは区別する。
-fixtureはmemoryと固定JSONだけで、追加listener/OS保護/実SSHの証明ではない。
+従来fixtureはmemoryと固定JSONで、新しいstage-2には[自己所有loopbackの単一要求fixture](native-timeout-connection-boundary.md)も含む。OS保護や実SSHの証明ではない。
 最終独立security/規約review、固定headのtool fixtureと通常native/展開EXEの結果を別々に保存する。

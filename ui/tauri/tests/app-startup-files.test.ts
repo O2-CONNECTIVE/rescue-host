@@ -12,9 +12,9 @@ void test('所有trace fileを有限に読み、page-load済みと欠測を匿�
     assert.equal(missing.phase, 'diagnostic-incomplete');
     const stages = ['setup-enter', 'webview-build-start', 'webview-build-ok', 'setup-return', 'first-page-load-finished'];
     await writeFile(path.join(directory, 'app-startup-stages.json'), JSON.stringify({
-      schema: 1, variant: 'host-startup-stage-1', purpose: 'diagnostic-hints-only',
+      schema: 1, variant: 'host-startup-stage-2', purpose: 'diagnostic-hints-only',
       events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
-      attempted: 5, recorded: 5, dropped: 0, sealed: true, inFlight: 0
+      attempted: 5, recorded: 5, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000
     }));
     assert.equal((await inspectAppStartupFile(directory, {
       kind: 'windows-webview2-native-smoke', appStartupFileClosed: true
