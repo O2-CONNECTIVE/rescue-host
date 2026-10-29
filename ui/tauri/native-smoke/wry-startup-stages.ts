@@ -7,9 +7,9 @@ function object(x: unknown): x is Record<string, unknown> { return !!x && typeof
 function exact(x: Record<string, unknown>, keys: string[]) { return Object.keys(x).length === keys.length && keys.every(k => Object.hasOwn(x, k)); }
 function integer(x: unknown): x is number { return typeof x === 'number' && Number.isSafeInteger(x) && x >= 0; }
 export function classifyWryStartup(input: unknown) {
-  const incomplete = { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [] as Event[], windowEndUs: null };
-  if (!object(input) || !exact(input, ['schema', 'variant', 'purpose', 'events', 'attempted', 'recorded', 'dropped', 'sealed', 'inFlight', 'windowEndUs']) ||
-    input.schema !== 1 || input.variant !== 'wry-webview2-stage-1' || input.purpose !== 'diagnostic-hints-only' ||
+  const incomplete = { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [] as Event[], windowEndUs: null, pumps: null, pumpHint: null };
+  if (!object(input) || !exact(input, ['schema', 'variant', 'purpose', 'events', 'attempted', 'recorded', 'dropped', 'sealed', 'inFlight', 'windowEndUs', 'pumps']) ||
+    input.schema !== 1 || input.variant !== 'wry-webview2-stage-2' || input.purpose !== 'diagnostic-hints-only' ||
     !integer(input.windowEndUs) || input.sealed !== true || input.inFlight !== 0 || input.dropped !== 0 ||
     !Array.isArray(input.events) || input.events.length > 10 || input.recorded !== input.events.length || input.attempted !== input.events.length) return incomplete;
   const events: Event[] = []; const seen = new Set<Stage>(); let elapsed = 0;
@@ -30,6 +30,15 @@ export function classifyWryStartup(input: unknown) {
     seen.add(stage); events.push({ seq: events.length + 1, stage, elapsedUs: row.elapsedUs }); elapsed = row.elapsedUs;
   }
   if (input.windowEndUs < elapsed) return incomplete;
+  const pumps = readPumps(input.pumps, input.windowEndUs); if (!pumps) return incomplete;
+  for (const [scope, pump] of Object.entries(pumps)) {
+    const api = events.find(e => e.stage === `${scope}-api-return`);
+    const returned = events.find(e => e.stage === `${scope}-wait-return`);
+    if ((pump.entered && (!api || pump.lastUs < api.elapsedUs))
+      || (returned && (pump.phase !== 'receiver-ready' || pump.lastUs > returned.elapsedUs))
+      || (pump.phase === 'receiver-ready' && !events.some(e => e.stage === `${scope}-callback`))) return incomplete;
+  }
+  if (seen.has('environment-reused') && pumps.environment.entered) return incomplete;
   let phase = 'webview-entry-not-observed';
   if (seen.has('webview-enter')) {
     if (!seen.has('environment-reused') && !seen.has('environment-wait-return')) {
@@ -41,5 +50,7 @@ export function classifyWryStartup(input: unknown) {
       : !seen.has('controller-callback') ? 'controller-callback-not-observed'
       : !seen.has('controller-wait-return') ? 'controller-wait-return-not-observed' : 'controller-wait-returned';
   }
-  return { schema: 1, purpose: 'diagnostic-hints-only', phase, events, windowEndUs: input.windowEndUs };
+  return { schema: 1, purpose: 'diagnostic-hints-only', phase, events, windowEndUs: input.windowEndUs, pumps,
+    pumpHint: phase === 'controller-callback-not-observed' ? controllerPumpHint(pumps.controller) : null };
 }
+import { readPumps, controllerPumpHint } from './wry-pump-state.ts';

@@ -20,8 +20,11 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
     const native = { kind: 'windows-webview2-native-smoke', wryStartupFileClosed: true };
     await writeFile(path.join(folder, 'provenance.json'), JSON.stringify(provenance));
     await writeFile(path.join(folder, 'collection.json'), JSON.stringify(native));
-    const trace = { schema: 1, variant: 'wry-webview2-stage-1', purpose: 'diagnostic-hints-only',
-      events: [{ seq: 1, stage: 'webview-enter', elapsedUs: 0 }], attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 100 };
+    const empty = { entered: false, phase: 'not-entered', iterations: 0, getCalls: 0, getReturns: 0,
+      dispatchCalls: 0, dispatchReturns: 0, lastUs: 0, invalid: false };
+    const trace = { schema: 1, variant: 'wry-webview2-stage-2', purpose: 'diagnostic-hints-only',
+      events: [{ seq: 1, stage: 'webview-enter', elapsedUs: 0 }], attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 100,
+      pumps: { environment: empty, controller: empty } };
     await writeFile(path.join(folder, 'wry-startup-stages.json'), JSON.stringify(trace));
     assert.equal((await inspectWryStartupFile(folder, {})).phase, 'diagnostic-incomplete');
     const invoke = () => spawnSync(process.execPath, ['native-smoke/inspect-wry-startup.ts', '--directory', folder,

@@ -16,9 +16,14 @@ void test('callback未観測でもdispatch入口後のreturn未観測を区別�
 });
 
 function fixture(stages: string[]) {
-  return { schema: 1, variant: 'wry-webview2-stage-1', purpose: 'diagnostic-hints-only',
+  const empty = { entered: false, phase: 'not-entered', iterations: 0, getCalls: 0, getReturns: 0,
+    dispatchCalls: 0, dispatchReturns: 0, lastUs: 0, invalid: false };
+  const pump = (scope: string) => stages.includes(`${scope}-wait-return`)
+    ? { ...empty, entered: true, phase: 'receiver-ready', iterations: 1, lastUs: stages.indexOf(`${scope}-wait-return`) * 100 - 1 } : { ...empty };
+  return { schema: 1, variant: 'wry-webview2-stage-2', purpose: 'diagnostic-hints-only',
     events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
-    attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000 };
+    attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000,
+    pumps: { environment: pump('environment'), controller: pump('controller') } };
 }
 void test('環境callback済みの後でcontroller callbackを観測しない窓を区別する', () => {
   const report = classifyWryStartup(fixture(['webview-enter', 'environment-api-start',
