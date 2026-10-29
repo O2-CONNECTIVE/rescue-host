@@ -2,7 +2,7 @@
 
 `serviceready`は、固定serviceの自主体・配置・OS objectの保護と、service所有listenerのkernel準備を保持する。
 operator命令、operatorに対するserver認証、承認codec、session、grant、SSH接続を提供しない。
-listenerが接続済みでも、payloadを一切読み書きせず、命令受理や認可の成功と呼ばない。
+既存のPlaneはlistenerが接続済みでもpayloadを一切読み書きせず、命令受理や認可の成功と呼ばない。
 
 `NewNative(Config)`は静的検証とdeep copyだけを行う。
 Profile、既存PrimaryToken、Endpoint、ServiceCommandLine、service/processの明示SecurityPolicy、CleanupTimeoutが必須である。
