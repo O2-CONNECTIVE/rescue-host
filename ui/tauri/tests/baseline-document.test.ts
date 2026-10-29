@@ -27,10 +27,15 @@ void test('同一応答の要素不在と文字列不一致と読込状態を匿
   assert.equal(inspectBaselineDocument({ ...base, marker: null, markerPresent: true }).markerDetail, 'unknown');
 });
 
+void test('markerが存在しないと申告した矛盾応答は成功にしない', () => {
+  const result = inspectBaselineDocument({ href: 'about:blank', uri: 'about:blank', origin: 'null', marker: 'Wry creation contrast', markerPresent: false, tauri: 'undefined' });
+  assert.equal(result.accepted, false);
+});
+
 void test('同じ応答の各項目を固定値との一致だけに変換する', () => {
   assert.deepEqual(inspectBaselineDocument({ href: 'about:blank', uri: 'about:blank', origin: 'null',
     marker: 'Wry creation contrast', tauri: 'undefined' }),
-  { href: 'match', uri: 'match', origin: 'match', marker: 'match', tauri: 'match', accepted: true, markerDetail: 'unknown', readyState: 'unknown' });
+  { href: 'match', uri: 'match', origin: 'match', marker: 'match', tauri: 'match', accepted: false, markerDetail: 'unknown', readyState: 'unknown' });
 });
 void test('固定document拒否を未知例外と混同せず記録する', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'baseline-rejection-'));

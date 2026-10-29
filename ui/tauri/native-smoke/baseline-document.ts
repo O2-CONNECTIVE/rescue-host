@@ -14,5 +14,5 @@ export function inspectBaselineDocument(value: unknown) {
       : input.markerPresent === true && typeof input.marker === 'string' ? 'text-mismatch' : 'unknown';
   const readyState = input.readyState === 'loading' || input.readyState === 'interactive' || input.readyState === 'complete'
     ? input.readyState : 'unknown';
-  return { ...result, accepted: Object.values(result).every(x => x === 'match'), markerDetail, readyState };
+  return { ...result, accepted: Object.values(result).every(x => x === 'match') && markerDetail === 'match', markerDetail, readyState };
 }

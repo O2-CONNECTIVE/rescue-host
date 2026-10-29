@@ -6,11 +6,18 @@ const FIXTURE_HTML: &str = "<!doctype html><meta http-equiv=\"Content-Security-P
 
 #[cfg(any(windows, test))]
 #[derive(Clone, Copy)]
-enum BaselineMode { WithHtml, LoadHtml }
+enum BaselineMode { WithHtml, LoadHtml, BlankScript }
 #[cfg(any(windows, test))]
 fn parse_baseline_mode(value: &str) -> Option<BaselineMode> {
-    match value { "with-html" => Some(BaselineMode::WithHtml), "load-html" => Some(BaselineMode::LoadHtml), _ => None }
+    match value { "with-html" => Some(BaselineMode::WithHtml), "load-html" => Some(BaselineMode::LoadHtml), "blank-script" => Some(BaselineMode::BlankScript), _ => None }
 }
+
+#[cfg(any(windows, test))]
+fn allow_baseline_navigation(url: &str) -> bool { url == "about:blank" }
+
+// 固定blank内だけでmarkerを作る。外部resource、入力値、navigationを含めない。
+#[cfg(windows)]
+const BLANK_SCRIPT: &str = "(()=>{const m=document.createElement('meta');m.httpEquiv='Content-Security-Policy';m.content=\"default-src 'none'; base-uri 'none'; form-action 'none'\";document.head.appendChild(m);const h=document.createElement('h1');h.id='wry-creation-contrast';h.textContent='Wry creation contrast';document.body.appendChild(h)})()";
 
 // 限定data URIの固定HTML完全一致だけを匿名観測する。許可判定には使用しない。
 #[cfg(any(windows, test))]
@@ -155,7 +162,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .with_id("main")
                 .with_incognito(false)
                 .with_transparent(false)
-                .with_navigation_handler(|url| url == "about:blank")
+                .with_navigation_handler(|url| allow_baseline_navigation(&url))
                 .with_on_page_load_handler(move |stage, _| {
                     if let Some(trace) = &load_trace { trace.record(match stage { wry::PageLoadEvent::Started => "load-started", wry::PageLoadEvent::Finished => "load-finished" }); }
                 })
@@ -163,6 +170,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             let created = match mode {
                 BaselineMode::WithHtml => builder.with_html(FIXTURE_HTML).build(&window),
                 BaselineMode::LoadHtml => builder.build(&window).and_then(|view| { view.load_html(FIXTURE_HTML)?; Ok(view) }),
+                BaselineMode::BlankScript => builder.build(&window).and_then(|view| { view.evaluate_script(BLANK_SCRIPT)?; Ok(view) }),
             };
             match created {
                 Ok(value) => webview = Some(value),
@@ -199,9 +207,19 @@ mod tests {
     use super::begin_on_initial_event;
 
     #[test]
-    fn 対照modeは二つの固定値だけを受け付ける() {
+    fn 診断正例の遷移はblank以外を拒否する() {
+        assert!(super::allow_baseline_navigation("about:blank"));
+        assert!(!super::allow_baseline_navigation("https://example.invalid/"));
+        assert!(!super::allow_baseline_navigation("data:text/html,anything"));
+        assert!(!super::allow_baseline_navigation("about:blank#fragment"));
+        assert!(!super::allow_baseline_navigation(""));
+    }
+
+    #[test]
+    fn 対照modeは三つの固定値だけを受け付ける() {
         assert!(matches!(super::parse_baseline_mode("with-html"), Some(super::BaselineMode::WithHtml)));
         assert!(matches!(super::parse_baseline_mode("load-html"), Some(super::BaselineMode::LoadHtml)));
+        assert!(matches!(super::parse_baseline_mode("blank-script"), Some(super::BaselineMode::BlankScript)));
         assert!(super::parse_baseline_mode("").is_none());
         assert!(super::parse_baseline_mode("other").is_none());
     }
