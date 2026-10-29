@@ -2,6 +2,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('callback未観測でもdispatch入口後のreturn未観測を区別する', () => {
+  const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
+    'environment-callback', 'environment-wait-return', 'controller-api-start', 'controller-api-return']);
+  const report = classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-2', pumps: {
+    environment: { entered: true, phase: 'receiver-ready', iterations: 1, getCalls: 0, getReturns: 0,
+      dispatchCalls: 0, dispatchReturns: 0, lastUs: 350, invalid: false },
+    controller: { entered: true, phase: 'dispatch', iterations: 1, getCalls: 1, getReturns: 1,
+      dispatchCalls: 1, dispatchReturns: 0, lastUs: 900, invalid: false }
+  } });
+  assert.equal(report.phase, 'controller-callback-not-observed');
+  assert.equal(report.pumpHint, 'controller-dispatch-return-not-observed');
+});
+
 function fixture(stages: string[]) {
   return { schema: 1, variant: 'wry-webview2-stage-1', purpose: 'diagnostic-hints-only',
     events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
