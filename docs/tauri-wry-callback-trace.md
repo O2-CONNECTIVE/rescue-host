@@ -107,3 +107,39 @@ pumpHintの「return未観測」は最後の観測点を示す。API内の物理
 記録自体の追加によるタイミング変化も残るため、元FAILを合格へ変えない。
 公開分類の先行RED f1ed2ad → GREEN97d002dでdispatch return未観測を区別した。元Windows障害の再現ではない。
 GetMessage/Translate/Dispatch各hint、旧版/欠測/counter改変拒否は実装後回帰、導出sourceの改変拒否もCLIで別に検証する。
+
+## GetMessageの識別試験と残る原因
+
+#112のdebugはDispatch18回完了後、19回目GetMessage入口から同じWry cutoffまで2.891544秒return未観測。
+controller callbackも未観測で、Nodeの15秒要求は失敗した。releaseの1成功で原因解消とはしない。
+
+[MicrosoftのGetMessage契約](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessagea)では、
+GetMessageはposted messageを返す前にもsent messageを処理する。
+したがってGetMessage入口markerだけでUIが実行していない、あるいはDispatchが停止したとは判定できない。
+[WebView2のthreading契約](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/threading-model)はUI/STAとmessage pumpを要求し、callback内の再入を許容しない。
+今回のWryはenvironment waitの外へ戻った後でcontrollerを作る。固定macro0.8.1のcompleted callbackはUnsafeCellからclosureを一度takeして呼ぶ。
+このソースにはclosure入口までのmutex待ちや独自pumpは無い。COM/runtime内部の待ちが無いという証明ではない。
+公式macro archiveのhashは既存lockの`67a921c1b6914c367b2b823cd4cde6f96beec77d30a939c8199bb377cf9b9b54`へ照合した。
+
+仮説と識別予測は次の通り。
+
+1. sent message処理中なら、GetMessageが未returnでも自己所有WndProcの実行を観測できる。
+2. completionがそのWndProcで届いてもposted messageが無ければ、receiverがreadyなのに元loopがtry_recvへ戻らない場合がある。
+3. completionが届いていない場合も同じGetMessage/Dispatch回数になり得るが、callback入口は未観測のまま。
+
+`tools/win32-pump-contract/`はこの3状態を区別する自己所有message-only windowの有限試験。
+公式固定archiveから元wait_with_pump関数をhash検査し、一字も変更せずincludeする。
+Win32呼出adapterだけでcountを取り、sent-completion/posted-completion/no-completionを別processで一度ずつ実行する。
+18回の無害なposted messageをDispatchした後、19回目GetMessageでsent callbackが実行され、戻らない状態を識別する。
+InSendMessageExは送信contextかどうかの固定値にだけ変換し、ID/handle/メッセージ内容は出力しない。
+自己所有workerはSendMessageTimeout 1秒と同期channelで制御し、sleepや成功までの反復を使わない。
+観測後のWM_NULL/自己threadへのWM_QUITはfixtureだけの終了操作で、製品pumpをwakeさせない。
+各processは5秒で直接の自己所有子だけを回収し、通常成功ではworker join/window破棄/class解除を検査する。
+一時directory消去を確認して匿名JSONのみ保存する。通常配布workflowと診断対象のアプリは変更しない。
+
+分類はcallback済みのwait-return未観測にも既存pumpHintを残す。先行RED4e02d79 → GREENf34bb30。
+これは分類境界のTDDで、fixtureの初回実行や#112障害の修正をTDDと改称しない。
+#112はcallback自体未観測なので、仮説2だけでは説明できない。fixtureの成功をその根因の証明にしない。
+最後のGetMessage内部処理、callback未到着、UI scheduling停止は現artifactから未分離。
+WebView/runtimeの故障や再入、OS errorをこのWin32 fixtureで合格扱いしない。
+15秒単一要求・通常終了・残留のゲートは維持し、製品依存を推測で置換しない。

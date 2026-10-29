@@ -2,10 +2,10 @@ name: Tauri startup diagnostic variant
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', '.github/workflows/tauri-startup-diagnostic.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', '.github/workflows/tauri-startup-diagnostic.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', '.github/workflows/tauri-startup-diagnostic.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', '.github/workflows/tauri-startup-diagnostic.yml']
 permissions:
   contents: read
 concurrency:
@@ -59,6 +59,11 @@ jobs:
           python -I scripts/tests/run_wry_probe.py "$env:RUNNER_TEMP/wry-probe-fixture.exe"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -I scripts/tests/run_wry_provenance.py "$env:RUNNER_TEMP/wry.crate" "$env:RUNNER_TEMP/pump.crate" tools/wry-startup-trace "$env:RUNNER_TEMP/wry-startup-source" ui/tauri/src-tauri/Cargo.lock $env:STARTUP_SOURCE
+          exit $LASTEXITCODE
+      - name: Distinguish sent callbacks from GetMessage returns on owned windows
+        timeout-minutes: 3
+        run: |
+          python -I scripts/tests/run_win32_pump_contract.py "$env:RUNNER_TEMP/pump.crate" "$env:RUNNER_TEMP/win32-pump-contract.json"
           exit $LASTEXITCODE
       - name: Prepare pinned driver diagnostic source
         timeout-minutes: 6
@@ -135,5 +140,6 @@ jobs:
           path: |
             ${{ runner.temp }}/startup-evidence/*.json
             ${{ runner.temp }}/startup-inventory.json
+            ${{ runner.temp }}/win32-pump-contract.json
           if-no-files-found: error
           retention-days: 7
