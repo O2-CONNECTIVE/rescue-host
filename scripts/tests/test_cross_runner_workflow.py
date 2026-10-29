@@ -26,8 +26,19 @@ class CrossRunnerWorkflowTests(unittest.TestCase):
         self.assertIn("EVIDENCE_CHECK: ${{ steps.verify_evidence.outcome }}", worker)
         self.assertIn("if: ${{ always() && steps.verify_evidence.outcome == 'success' }}", worker)
         self.assertIn("$names += 'webview-result.json'", worker)
+        self.assertIn("$optional = @(Get-ChildItem -LiteralPath $out -Force -ErrorAction Stop | Where-Object Name -CEQ 'webview-result.json')", worker)
+        self.assertIn("@('two-trials.json','evaluation-inventory.json','verification.json')", worker)
+        self.assertNotIn('evaluation-trial-*-evidence/', worker)
+        self.assertIn("if (Test-Path -LiteralPath $out) { throw 'EVIDENCE_UNEXPECTED' }", worker)
         self.assertIn("($summary.trials.trial -join ',') -cne '1,2'", worker)
         self.assertIn("$defaultOutcome = if ($env:TRIAL_RESULT -eq 'skipped') { 'not-started' } else { 'unknown' }", worker)
+
+    def test_publish_is_conditional_on_preflight(self):
+        workflow = pathlib.Path('.github/workflows/main-timeout-cross-runner.yml').read_text(encoding='utf-8')
+        self.assertIn('test_cross_payload_preflight.py', workflow)
+        self.assertIn('verify_cross_payload.py --payload', workflow)
+        self.assertIn("if: ${{ steps.preflight.outcome == 'success' }}", workflow)
+        self.assertNotIn('payload/*', workflow)
 
 
 if __name__ == '__main__':

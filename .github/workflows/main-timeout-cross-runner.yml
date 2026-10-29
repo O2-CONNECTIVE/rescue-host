@@ -2,7 +2,7 @@ name: Fixed main cross-runner comparison
 on:
   pull_request:
     branches: [main]
-    paths: ['.github/workflows/main-timeout-cross-runner.yml', '.github/workflows/main-timeout-cross-worker.yml', 'scripts/collect_driver_license_material.py', 'scripts/tests/test_driver_license_material.py', 'scripts/tests/test_cross_runner_workflow.py', 'docs/third-party/tauri-driver-LICENSE-MIT']
+    paths: ['.github/workflows/main-timeout-cross-runner.yml', '.github/workflows/main-timeout-cross-worker.yml', 'scripts/collect_driver_license_material.py', 'scripts/verify_cross_payload.py', 'scripts/tests/test_cross_payload_preflight.py', 'scripts/tests/test_driver_license_material.py', 'scripts/tests/test_cross_runner_workflow.py', 'docs/third-party/tauri-driver-LICENSE-MIT']
 permissions:
   contents: read
   actions: read
@@ -37,6 +37,9 @@ jobs:
       - name: Test cross-runner workflow contract
         working-directory: control
         run: python -I -m unittest discover -s scripts/tests -p test_cross_runner_workflow.py -v
+      - name: Test pre-upload payload inspection
+        working-directory: control
+        run: python -I -m unittest discover -s scripts/tests -p test_cross_payload_preflight.py -v
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: 1eda7a4e964d34a751dcc89509ee07b3482917a7
@@ -145,12 +148,23 @@ jobs:
           $manifestHash = (Get-FileHash "$payload/manifest.json" -Algorithm SHA256).Hash.ToLowerInvariant()
           "manifest_sha=$manifestHash" >> $env:GITHUB_OUTPUT
           foreach ($entry in @{zip_sha=$zipHash; exe_sha=$exeHash; driver_sha=$driverHash; provenance_sha=$provenanceHash; licenses_sha=$licensesHash}.GetEnumerator()) { "$($entry.Key)=$($entry.Value)" >> $env:GITHUB_OUTPUT }
+      - name: Validate exact payload before publication
+        id: preflight
+        run: |
+          python -I ../control/scripts/verify_cross_payload.py --payload "$env:REPRO_ROOT/payload" --app-scripts scripts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Publish approved fixed diagnostic payload for one day
         id: upload
+        if: ${{ steps.preflight.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
           name: fixed-main-cross-runner-payload
-          path: ${{ env.REPRO_ROOT }}/payload/*
+          path: |
+            ${{ env.REPRO_ROOT }}/payload/RescueHostTauriUnwiredEvaluation-x64.zip
+            ${{ env.REPRO_ROOT }}/payload/tauri-driver.exe
+            ${{ env.REPRO_ROOT }}/payload/driver-provenance.json
+            ${{ env.REPRO_ROOT }}/payload/driver-licenses.zip
+            ${{ env.REPRO_ROOT }}/payload/manifest.json
           if-no-files-found: error
           retention-days: 1
   runner-one:

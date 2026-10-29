@@ -201,14 +201,19 @@ jobs:
         id: verify_evidence
         if: always()
         run: |
+          foreach ($name in @('two-trials.json','evaluation-inventory.json','verification.json')) {
+            $item = Get-Item -LiteralPath (Join-Path $env:REPRO_ROOT $name) -ErrorAction Stop
+            if ($item.PSIsContainer -or $item.Length -le 0 -or $item.Length -gt 65536 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'EVIDENCE_INCOMPLETE' }
+          }
           $summary = Get-Content "$env:REPRO_ROOT/two-trials.json" -Raw -ErrorAction Stop | ConvertFrom-Json
           if ($summary.schema -ne 1 -or @($summary.trials).Count -ne 2 -or ($summary.trials.trial -join ',') -cne '1,2') { throw 'EVIDENCE_INCOMPLETE' }
           foreach ($row in $summary.trials) {
             if ($row.trial -notin @(1,2)) { throw 'EVIDENCE_INCOMPLETE' }
-            if ($row.outcome -eq 'not-started') { continue }
             $out = "$env:REPRO_ROOT/evaluation-trial-$($row.trial)-evidence"
+            if ($row.outcome -eq 'not-started') { if (Test-Path -LiteralPath $out) { throw 'EVIDENCE_UNEXPECTED' }; continue }
             $names = @('native-observation.json','native-result.json','session-startup-timing.json','driver-provenance.json','driver-stage-report.json')
-            if ($row.outcome -eq 'success') { $names += 'webview-result.json' }
+            $optional = @(Get-ChildItem -LiteralPath $out -Force -ErrorAction Stop | Where-Object Name -CEQ 'webview-result.json')
+            if ($row.outcome -eq 'success' -or $optional.Count -gt 0) { $names += 'webview-result.json' }
             foreach ($name in $names) {
               $item = Get-Item -LiteralPath (Join-Path $out $name) -ErrorAction Stop
               if ($item.PSIsContainer -or $item.Length -le 0 -or $item.Length -gt 65536 -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'EVIDENCE_INCOMPLETE' }
@@ -216,7 +221,6 @@ jobs:
             $trace = Get-Content (Join-Path $out 'driver-stage-report.json') -Raw | ConvertFrom-Json
             if ($trace.diagnostic -ne 'complete' -or $trace.code -cne 'TRACE_COMPLETE') { throw 'EVIDENCE_INCOMPLETE' }
           }
-          foreach ($name in @('evaluation-inventory.json','verification.json')) { if (-not (Test-Path -LiteralPath (Join-Path $env:REPRO_ROOT $name) -PathType Leaf)) { throw 'EVIDENCE_INCOMPLETE' } }
       - name: Save anonymous trial evidence
         id: evidence
         if: ${{ always() && steps.verify_evidence.outcome == 'success' }}
@@ -225,12 +229,18 @@ jobs:
           name: fixed-main-cross-${{ inputs.label }}-evidence
           path: |
             ${{ env.REPRO_ROOT }}/two-trials.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/native-observation.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/native-result.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/session-startup-timing.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/driver-provenance.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/driver-stage-report.json
-            ${{ env.REPRO_ROOT }}/evaluation-trial-*/webview-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/native-observation.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/native-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/session-startup-timing.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/driver-provenance.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/driver-stage-report.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-1-evidence/webview-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/native-observation.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/native-result.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/session-startup-timing.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/driver-provenance.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/driver-stage-report.json
+            ${{ env.REPRO_ROOT }}/evaluation-trial-2-evidence/webview-result.json
             ${{ env.REPRO_ROOT }}/evaluation-inventory.json
             ${{ env.REPRO_ROOT }}/verification.json
           if-no-files-found: error

@@ -22,4 +22,6 @@
 - MIT本文: https://raw.githubusercontent.com/tauri-apps/tauri/447fa9f3f993fe77724189e355078b38ce20baea/LICENSE-MIT
 - Apache本文: https://raw.githubusercontent.com/tauri-apps/tauri/447fa9f3f993fe77724189e355078b38ce20baea/LICENSE-APACHE-2.0
 
+upload前に、固定５ファイル以外・未参照license・本文hash不一致・ZIP内のパス逸脱・代表的な秘密候補を拒否する。評価ZIPは既存の固定source validatorでも検査し、失敗時uploadを実行しない。秘密候補の検出は限定的なパターン照合であり、秘密が存在しない証明ではない。Windowsで実際に生成したZIPとbinaryの検査は未実施。
+
 使い捨てrunner内では、固定SHAの公式artifact action、同一runのartifact ID/digest、producerが別途渡すmanifestと各ファイルのhashを照合する。製品ホストの敵対的guestに対する隔離を保証するものではない。rootの安全な削除を保証できないため、各試行の所有process終了確認は行い、rootの削除は試みずrunnerの破棄に委ねる。runner破棄による消去はこの手順では確認しない。Windows CIとartifact公開は未実施。
