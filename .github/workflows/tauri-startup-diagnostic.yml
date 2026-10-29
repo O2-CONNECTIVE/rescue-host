@@ -2,10 +2,10 @@ name: Tauri startup diagnostic variant
 on:
   pull_request:
     branches: [main]
-    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', 'tools/wry-creation-baseline/**', 'scripts/prepare_wry_baseline.py', 'scripts/tests/test_wry_baseline.py', '.github/workflows/tauri-startup-diagnostic.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', 'tools/wry-creation-baseline/**', 'scripts/prepare_wry_baseline.py', 'scripts/tests/test_wry_baseline.py', '.github/tests/driver-trace-contract.ps1', '.github/workflows/tauri-startup-diagnostic.yml']
   push:
     branches: [main]
-    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', 'tools/wry-creation-baseline/**', 'scripts/prepare_wry_baseline.py', 'scripts/tests/test_wry_baseline.py', '.github/workflows/tauri-startup-diagnostic.yml']
+    paths: ['ui/tauri/**', 'tools/native-driver-trace/**', 'scripts/*driver_trace.py', 'tools/wry-startup-trace/**', 'scripts/*wry_trace.py', 'tools/win32-pump-contract/**', 'scripts/tests/run_win32_pump_contract.py', 'tools/wry-creation-baseline/**', 'scripts/prepare_wry_baseline.py', 'scripts/tests/test_wry_baseline.py', '.github/tests/driver-trace-contract.ps1', '.github/workflows/tauri-startup-diagnostic.yml']
 permissions:
   contents: read
 concurrency:
@@ -168,7 +168,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location ui/tauri
           try { node --test tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
-          exit $code
+          if ($code -ne 0) { exit $code }
+          ./.github/tests/driver-trace-contract.ps1
       - name: Record fixed source and existing runtime only
         run: |
           $sha = (git rev-parse HEAD).Trim()
