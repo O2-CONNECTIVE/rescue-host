@@ -46,7 +46,7 @@ void test('成果回収後のcleanup CLIは同じrunの確認済armを削除し�
       mode: 'with-html', sourceCommit, exeSha256, runId, ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 }));
     const run = spawnSync(process.execPath, ['native-smoke/cleanup-baseline-sequential.ts', root], { encoding: 'utf8' });
     assert.equal(run.status, 0);
-    assert.deepEqual(JSON.parse(await readFile(path.join(root, 'baseline-cleanup.json'), 'utf8')), { schema: 1, first: 'removed', second: 'not-started' });
+    assert.deepEqual(JSON.parse(await readFile(path.join(root, 'baseline-cleanup.json'), 'utf8')), { schema: 1, first: 'removed', second: 'not-started', shared: 'removed' });
     await assert.rejects(access(path.join(root, 'baseline-tools')));
   } finally { await rm(root, { recursive: true, force: true }); }
 });
