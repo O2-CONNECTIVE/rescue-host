@@ -5,6 +5,8 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
 type memoryBatchReport struct {
@@ -63,7 +65,7 @@ func batchFixture(t *testing.T) (nativeBatchSpec, batchOwner, nativeBatchOps, *[
 	events := []string{}
 	p := &memoryBatchReport{events: &events}
 	c := &memoryBatchChild{events: &events}
-	o := batchOwner{revoke: func() error { events = append(events, "revoke"); return nil }, reclaim: func(context.Context) error { events = append(events, "reclaim-workload"); return nil }}
+	o := batchOwner{issuer: &ephemeral.Issuer{}, revoke: func() error { events = append(events, "revoke"); return nil }, reclaim: func(context.Context) error { events = append(events, "reclaim-workload"); return nil }}
 	k := nativeBatchOps{
 		parent: func(context.Context) error { return nil }, clean: func() error { return nil },
 		newProfile: func(context.Context) (batchProfile, error) {

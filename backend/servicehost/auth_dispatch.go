@@ -26,6 +26,7 @@ type serviceAuthAdapter struct {
 // Production operations always wrap a concrete prepared Batch and its exact
 // Collector. Only package tests replace this private operation seam.
 type serviceAuthBatchOps struct {
+	issuer    *ephemeral.Issuer
 	collector *operatorauth.Collector
 	start     func(context.Context) error
 	collect   func(context.Context) (*operatorauth.Read, error)
@@ -42,12 +43,12 @@ func authBudget(ctx context.Context) bool {
 	return ok && time.Now().Before(deadline)
 }
 
-func nativeServiceAuthBatch(batch *operatorauth.Batch) (serviceAuthBatchOps, error) {
-	if batch == nil || batch.Collector() == nil {
+func nativeServiceAuthBatch(batch *operatorauth.Batch, issuer *ephemeral.Issuer) (serviceAuthBatchOps, error) {
+	if !batch.MatchesIssuer(issuer) || batch.Collector() == nil {
 		return serviceAuthBatchOps{}, ErrProvisioningUnconfigured
 	}
 	collector := batch.Collector()
-	return serviceAuthBatchOps{collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
+	return serviceAuthBatchOps{issuer: issuer, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
 }
 
 type serviceAuthRequest struct {
@@ -91,7 +92,7 @@ func (a *serviceAuthAdapter) register(ctx context.Context, batch serviceAuthBatc
 	s := a.service
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.auth != a || s.dispatch != a.dispatch || s.state != Running || s.stopping || s.issuer == nil || a.attempts >= a.limit || !a.previousAcknowledgedLocked() {
+	if s.auth != a || s.dispatch != a.dispatch || s.state != Running || s.stopping || s.issuer == nil || batch.issuer != s.issuer || a.attempts >= a.limit || !a.previousAcknowledgedLocked() {
 		return nil, ErrProvisioningRejected
 	}
 	if _, seen := a.seen[batch.collector]; seen {
@@ -124,7 +125,13 @@ func (a *serviceAuthAdapter) previousAcknowledgedLocked() bool {
 }
 
 func (a *serviceAuthAdapter) exchange(ctx context.Context, batch *operatorauth.Batch, write func(context.Context, []byte) error) error {
-	ops, err := nativeServiceAuthBatch(batch)
+	if a == nil || a.service == nil {
+		return ErrProvisioningRejected
+	}
+	a.service.mu.Lock()
+	issuer := a.service.issuer
+	a.service.mu.Unlock()
+	ops, err := nativeServiceAuthBatch(batch, issuer)
 	if err != nil {
 		return err
 	}

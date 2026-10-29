@@ -6,7 +6,57 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
+
+func TestPreparedBatchMatchesOnlyItsOriginalIssuer(t *testing.T) {
+	s, owner, ops, events, _, _ := batchFixture(t)
+	original := owner.issuer
+	b, err := prepareBatch(s, owner, ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := &ephemeral.Issuer{}
+	owner.issuer = foreign
+	clone := new(Batch)
+	reflect.ValueOf(clone).Elem().Set(reflect.ValueOf(b).Elem())
+	for _, test := range []struct {
+		name   string
+		batch  *Batch
+		issuer *ephemeral.Issuer
+		want   bool
+	}{
+		{"original", b, original, true},
+		{"foreign", b, foreign, false},
+		{"nil-issuer", b, nil, false},
+		{"nil-batch", nil, original, false},
+		{"zero-batch", &Batch{}, original, false},
+		{"copied-batch", clone, original, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.batch.MatchesIssuer(test.issuer); got != test.want {
+				t.Fatalf("issuer match = %v, want %v", got, test.want)
+			}
+		})
+	}
+	if len(*events) != 0 {
+		t.Fatal("issuer comparison acquired resources", *events)
+	}
+}
+
+func TestPreparedBatchMissingIssuerCannotAcquireResources(t *testing.T) {
+	s, owner, ops, events, _, _ := batchFixture(t)
+	ops.parent = func(context.Context) error { *events = append(*events, "parent"); return nil }
+	ops.clean = func() error { *events = append(*events, "clean"); return nil }
+	missing := batchOwner{revoke: owner.revoke, reclaim: owner.reclaim}
+	if b, err := prepareBatch(s, missing, ops); b != nil || !errors.Is(err, ErrUnconfigured) {
+		t.Fatal("missing issuer prepared", b != nil, err)
+	}
+	if len(*events) != 0 {
+		t.Fatal("missing issuer acquired resources", *events)
+	}
+}
 
 func TestPreparedBatchKeepsCollectorWithoutAcquiringBeforeStart(t *testing.T) {
 	s, owner, ops, events, _, _ := batchFixture(t)
