@@ -46,7 +46,7 @@ operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
 serviceauthownerは共通owner.goだけを許可し、実issuerと共通gateの状態を扱います。正規profile sourceや実OSの認証は提供しません。
-servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.go/preview.go/preview_dispatch.go/confirmation.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
+servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued.go/nativebootstrap.go/nativestdio.go/ownedstdio.go/scm_ready.go/service.go/outer.go/dispatch.go/dispatch_owner.go/reservation.go/delivery.go/auth_dispatch.go/workload_reclaim.go/auth_exchange.go/auth_exchange_endpoint.go/auth_exchange_worker.go/control_factory.go/control_readiness.go/control_exchange.go/preview.go/preview_dispatch.go/confirmation.go/confirmed_grant.go/confirmed_grant_snapshot.goと、go env GOOSに対応するSCM実装1件・nativebootstrap実装1件・SCM ready実装1件だけを許可します。
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
 SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
