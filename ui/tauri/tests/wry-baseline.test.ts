@@ -43,3 +43,9 @@ void test('POST成功後のdocument失敗をsession timeoutと混同しない', 
   assert.equal(decideBaseline({ ...collection, sessionSucceeded: true, normalCloseVerified: false }, wry,
     { ...session, documentChecked: false, failurePhase: 'document' }).outcome, 'document-not-verified');
 });
+void test('controller未完了でもPOSTの別失敗をtimeoutへ読み替えない', () => {
+  const r = decideBaseline({ ...collection, sessionSucceeded: false, sessionTimedOut: false },
+    { diagnostic: 'complete', startup: { phase: 'controller-callback-not-observed', events: [{ stage: 'controller-api-return' }] } },
+    { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'request-failed', failurePhase: 'session-create' });
+  assert.equal(r.outcome, 'session-request-failed');
+});
