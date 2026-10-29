@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは222実装、Windowsでは244実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは226実装、Windowsでは248実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -163,3 +163,6 @@ NewInspectionLeaseをduplexが残るSplit前に取得し、後段の失敗・取
 
 未起動guest準備の呼出し境界はguestaccount/never_created.go/never_created_session.goと、serviceprovision/staging_execution.go/staging_preview.goを共通登録します。
 検査lease・元要求・所有owner・設定digestの一致と実回収完了を各層で検査し、登録されたこと自体を認証や起動許可へ昇格させません。
+
+方式Bの認証結果はoperatorauth/authenticated_report.go/operator_binding.go/sid_policy.go/sid_profile_frame.goだけを共通追加登録します。
+profile/reportの明示v2と単回binding消費を検査し、policy構成をRoot証明やhelper起動可能性へ昇格させません。実Windows/SSH成功は示しません。

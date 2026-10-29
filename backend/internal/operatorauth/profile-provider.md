@@ -4,7 +4,10 @@
 `RunFixed`とcontrollerの既定入口は未設定拒否のままであり、Service adapterへの配線も行わない。
 保護配置の実SID・権限・ACLと実Windowsでの成立は未実証である。
 
-## 入力と出力
+[方式B](../../../docs/adr/0002-operator-sid-policy.md)はsid_policy.goを使い、固定SIDと実message認証後のbindingを分離する。
+以下はprofile/1互換providerの契約であり、Bへ独立AuthId登録を要求しない。
+
+## profile/1互換経路の入力と出力
 
 private providerは候補を照会する前に固定したpolicyを保持する。
 operatorのuser、AuthenticationId、session、integrity、restricted/AppContainerと、messageに要求するkind/levelが必須である。
