@@ -39,7 +39,7 @@ export function readScripts(value: unknown, end: number, pump: Pump): Scripts | 
 export function scriptPhase(s: Scripts): string {
   if (s.calls === 0) return 'script-entry-not-observed';
   if (s.result === 'error') return 'script-error-return-observed';
-  if (s.result === 'ok') return 'script-registrations-returned';
+  if (s.result === 'ok') return 'script-latest-returned-next-boundary-unobserved';
   if (s.apiStartUs === null) return 'script-api-start-not-observed';
   if (s.apiReturnUs === null) return 'script-api-return-not-observed';
   if (s.callbackUs === null) return 'script-callback-not-observed';

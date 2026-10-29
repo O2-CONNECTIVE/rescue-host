@@ -25,7 +25,7 @@
 ## 反証可能な仮説と次手
 
 1. **script完了送信後に元loopがreceiverへ戻らない。** 同じ操作のchannel send成功と、対応するwait未returnを必要条件とする。
-   callback入口だけならsend前の停止・errorも残る。callback未観測の試行やscript全完了では、この説をその試行の説明から外す。
+   callback入口だけならsend前の停止・errorも残る。callback未観測の試行やinit-return観測では、この説をその試行の停止像から外す。
 2. **非同期初期化の前段・後段が予算を消費する。** 同じWry clockの段階が進んでも作成退出が未観測なら候補として残る。
    send成功後だけの待機が見えた場合は、その局所的待機欠陥説との識別へ進む。cold startやCI CPU制約そのものはまだ証明していない。
 3. **Wry以外の組立て・driver/session経路にも未完了がある。** Wry退出guard、app build、pageの観測が進んでもNodeがtimeoutなら候補になる。
@@ -41,7 +41,7 @@
 | script入口、callback未観測 | 完了後のreceiver待ち説を支持しない。API/COM完了経路が候補 |
 | callback入口観測、send成功未観測 | callback入口からchannel送信までの未分離区間。送信失敗と断定しない |
 | 同一操作send成功、wait未return | 送信成功後に一度だけ自己threadをwakeするtest-only対照の前提成立。今回wakeは入れない |
-| script全登録return、Wry退出未観測 | script待機説を外し、残る後段を調べる |
+| init-return観測、Wry退出未観測 | init呼出中のscript待機をその時点の停止像から外し、残る後段を調べる |
 | Wry退出guard/app build/page観測、Node timeout | Wry作成停止説を外し、driver/session経路へ進む |
 
 無変更head rerun、負荷での再現率調整、timeout延長、成功までのretryは行わない。
@@ -63,6 +63,7 @@ raw variantはwry-webview2-stage-3、依存variantはwry-0.57.1-script-3。
 旧variantは新consumerで不完全とし、過去artifactへ後段状態を後付けしない。
 固定12 event枠とenvironment/controller/scriptのpump snapshot、scriptの開始/API終了/callback/send/return数を記録する。
 最後の操作の序数・同Wry時刻・callback結果の成功boolを結び、前操作の観測や欠測を混ぜない。
+直近の登録returnだけでは次の登録に進む前の窓も含むため、登録領域全体の終了とは表現しない。
 128操作上限や記録競合は診断をinvalidにするだけで、129個目のAPI/send/waitを止めない。
 controller完了でsealせず、Wryの正常/Err退出guard・panic unwindまたは既存app finishまで観測する。
 それぞれ別stageで、panicを作成成功にしない。cutoff後の観測は窓外であり、イベント失敗の証明にしない。
@@ -74,6 +75,7 @@ script内容、ID、URL、handle、thread/PID、HRESULTや原例外、資格情�
 分類のRED d1e5a3f → GREEN baeaa35は公開診断境界のTDD。実WebViewの失敗再現ではない。
 記録producerの14条件と来歴CLIの9条件は実装後回帰。COMを起動せず、fake binaryもhash入力だけで実行しない。
 producer fixtureはcallback先行、error payload送信、送信失敗のpanic、複数登録、旧序数、129操作、早いseal等を確認する。
+panic fixtureはstdlib内でRust unwindがguardへ届いた場合だけを検査し、実COM境界でのpanic/abort回収の証明ではない。
 同じ14条件で2KiBの出力上界を検査し、producer/consumer/collectorの上限を拡げない。
 実callback・native合否・所有資源のcleanupは新head Windows CIで別判定する。
 cleanup失敗0でも全WebView消滅が証明されなければ未証明と記録し、hosted runnerの破棄を実測済みとしない。
