@@ -73,36 +73,43 @@ func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servi
 	})
 }
 
-func nativeDuplicateOperatorRead(h uintptr) (uintptr, error) {
+func validateNativeOperatorRead(h uintptr) error {
 	if !helperHandle(h) {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	var flags uint32
 	ok, _, _ := reportHandleInfo.Call(h, uintptr(unsafe.Pointer(&flags)))
 	if ok == 0 || flags != 0 {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	kind, e := windows.GetFileType(windows.Handle(h))
 	if e != nil || kind != windows.FILE_TYPE_PIPE {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	var info [14]uint32
 	var size uint32
 	status, _, _ := reportQueryObject.Call(h, 0, uintptr(unsafe.Pointer(&info[0])), unsafe.Sizeof(info), uintptr(unsafe.Pointer(&size)))
 	if status != 0 || size != uint32(unsafe.Sizeof(info)) || info[1] != 0x120089 {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	var pipeFlags, mode, pid uint32
 	if windows.GetNamedPipeInfo(windows.Handle(h), &pipeFlags, nil, nil, nil) != nil || pipeFlags != 5 {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	if windows.GetNamedPipeHandleState(windows.Handle(h), &mode, nil, nil, nil, nil, 0) != nil || mode != windows.PIPE_READMODE_MESSAGE {
-		return 0, ErrDenied
+		return ErrDenied
 	}
 	if windows.GetNamedPipeServerProcessId(windows.Handle(h), &pid) != nil || pid != windows.GetCurrentProcessId() {
-		return 0, ErrDenied
+		return ErrDenied
+	}
+	return nil
+}
+
+func nativeDuplicateOperatorRead(h uintptr) (uintptr, error) {
+	if e := validateNativeOperatorRead(h); e != nil {
+		return 0, e
 	}
 	var copy windows.Handle
-	e = windows.DuplicateHandle(windows.CurrentProcess(), windows.Handle(h), windows.CurrentProcess(), &copy, 0x120089, true, 0)
+	e := windows.DuplicateHandle(windows.CurrentProcess(), windows.Handle(h), windows.CurrentProcess(), &copy, 0x120089, true, 0)
 	return uintptr(copy), e
 }
