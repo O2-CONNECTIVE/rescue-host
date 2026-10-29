@@ -3,6 +3,7 @@ import path from 'node:path';
 import { Driver } from './webdriver.ts';
 import { createNativeObservation } from './observation.ts';
 import { observeSessionStartup } from './session-observation.ts';
+import { inspectBaselineDocument } from './baseline-document.ts';
 
 // UI/製品IPC判定へ入らない独立対照。終了操作はsupervisorだけが行う。
 const output = process.env.NATIVE_OUTPUT_DIR;
@@ -30,11 +31,18 @@ try {
   }
   session.failurePhase = 'document';
   observation.phase('origin-check');
-  const document: unknown = await driver.execute("return {href:location.href,uri:document.documentURI,origin:location.origin,marker:document.querySelector('#wry-creation-contrast')?.textContent??null,tauri:typeof window.__TAURI__};");
-  if (!document || typeof document !== 'object' || Array.isArray(document)
-    || !('href' in document) || document.href !== 'about:blank' || !('uri' in document) || document.uri !== 'about:blank'
-    || !('origin' in document) || document.origin !== 'null' || !('marker' in document) || document.marker !== 'Wry creation contrast'
-    || !('tauri' in document) || document.tauri !== 'undefined') throw new Error('NATIVE_BASELINE_DOCUMENT_REJECTED');
+  let document: unknown;
+  try {
+    document = await driver.execute("return {href:location.href,uri:document.documentURI,origin:location.origin,marker:document.querySelector('#wry-creation-contrast')?.textContent??null,tauri:typeof window.__TAURI__};");
+  } catch (error) {
+    // 応答自体がない場合は原エラーを保ち、各項目をunknownにする。
+    try { await writeFile(path.join(output, 'baseline-document-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...inspectBaselineDocument(null) })); }
+    catch { /* 診断欠測は元の失敗を置き換えない。 */ }
+    throw error;
+  }
+  const documentReport = inspectBaselineDocument(document);
+  await writeFile(path.join(output, 'baseline-document-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...documentReport }));
+  if (!documentReport.accepted) throw new Error('NATIVE_BASELINE_DOCUMENT_REJECTED');
   session.documentChecked = true; session.failurePhase = 'complete';
   observation.pass();
 } catch (error) {

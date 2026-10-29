@@ -167,7 +167,7 @@ jobs:
           python -I -m unittest discover -s scripts/tests -p test_wry_baseline.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location ui/tauri
-          try { node --test tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
+          try { node --test tests/baseline-document.test.ts tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
           if ($code -ne 0) { exit $code }
           ./.github/tests/driver-trace-contract.ps1
       - name: Record fixed source and existing runtime only
