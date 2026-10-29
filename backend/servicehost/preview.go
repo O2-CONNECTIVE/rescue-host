@@ -32,17 +32,20 @@ type servicePreview struct {
 	ttl        time.Duration
 	intent     *previewIntent // Service.mu; distinct from workload serviceOwnerIntent
 	seen       map[string]struct{}
+	resolver   PreviewConfirmationResolver // fixed with the outer owner before use
 }
 type previewIntent struct {
-	owner       *Service
-	dispatcher  *serviceDispatcher
-	id          string
-	expires     time.Time
-	invalidated bool
+	owner        *Service
+	dispatcher   *serviceDispatcher
+	id           string
+	digest       string
+	expires      time.Time
+	invalidated  bool
+	confirmation *previewConfirmation
 }
 
 // NewPreviewService builds only the concrete query/auth composition. Descriptor
-// validity is not trusted provisioning, and confirm-approval stays unconfigured.
+// validity is not trusted provisioning. Confirmation alone never grants authority.
 // No successful legacy Approval/Launcher substitute is installed.
 func NewPreviewService(c PreviewServiceConfig) (*Service, error) {
 	preview, err := newServicePreview(c.Preview, c.IntentTTL, time.Now())

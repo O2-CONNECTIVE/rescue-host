@@ -57,6 +57,9 @@ func (s *Service) BindOuterFinalizer(finalizer OuterFinalizer) error {
 		return ErrAlreadyUsed
 	}
 	s.outer = finalizer
+	if s.preview != nil {
+		s.preview.resolver, _ = finalizer.(PreviewConfirmationResolver)
+	}
 	s.outerConfirmed = false
 	s.outerTicket = &innerCleanupTicket{marker: 1}
 	if s.outerGate == nil {

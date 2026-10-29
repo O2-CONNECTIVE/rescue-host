@@ -205,7 +205,7 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 	}
 	reply, err := a.dispatch.begin(r.request, frame)
 	if err != nil {
-		return ErrProvisioningRejected
+		return authFailure(err, ErrProvisioningRejected)
 	}
 	s.mu.Lock()
 	r.reply = reply
