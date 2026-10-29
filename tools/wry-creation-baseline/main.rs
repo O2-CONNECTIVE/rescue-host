@@ -4,6 +4,14 @@
 #[cfg(any(windows, test))]
 const FIXTURE_HTML: &str = "<!doctype html><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; base-uri 'none'; form-action 'none'\"><h1 id=\"wry-creation-contrast\">Wry creation contrast</h1>";
 
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy)]
+enum BaselineMode { WithHtml, LoadHtml }
+#[cfg(any(windows, test))]
+fn parse_baseline_mode(value: &str) -> Option<BaselineMode> {
+    match value { "with-html" => Some(BaselineMode::WithHtml), "load-html" => Some(BaselineMode::LoadHtml), _ => None }
+}
+
 // 限定data URIの固定HTML完全一致だけを匿名観測する。許可判定には使用しない。
 #[cfg(any(windows, test))]
 fn navigation_uri_matches_fixture(uri: &str) -> bool {
@@ -120,6 +128,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // supervisorがこの実行専用folderを渡す。既存利用者のprofileは使わない。
     let profile = std::env::var_os("RESCUE_BASELINE_PROFILE").ok_or("missing profile")?;
+    let mode = std::env::var("RESCUE_BASELINE_MODE").ok().and_then(|value| parse_baseline_mode(&value)).ok_or("invalid mode")?;
     let profile = std::path::PathBuf::from(profile);
     if !profile.is_absolute() {
         return Err("profile not absolute".into());
@@ -142,7 +151,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         *flow = ControlFlow::Wait;
         if begin_on_initial_event(&mut attempted, matches!(&event, Event::NewEvents(StartCause::Init))) {
             let load_trace = trace.clone();
-            let created = WebViewBuilder::new_with_web_context(context.as_mut().expect("context"))
+            let builder = WebViewBuilder::new_with_web_context(context.as_mut().expect("context"))
                 .with_id("main")
                 .with_incognito(false)
                 .with_transparent(false)
@@ -150,9 +159,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 .with_on_page_load_handler(move |stage, _| {
                     if let Some(trace) = &load_trace { trace.record(match stage { wry::PageLoadEvent::Started => "load-started", wry::PageLoadEvent::Finished => "load-finished" }); }
                 })
-                .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
-                .with_html(FIXTURE_HTML)
-                .build(&window);
+                .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny);
+            let created = match mode {
+                BaselineMode::WithHtml => builder.with_html(FIXTURE_HTML).build(&window),
+                BaselineMode::LoadHtml => builder.build(&window).and_then(|view| { view.load_html(FIXTURE_HTML)?; Ok(view) }),
+            };
             match created {
                 Ok(value) => webview = Some(value),
                 Err(_) => std::process::exit(1),
