@@ -77,6 +77,39 @@ func TestCollectorDirectDrainReceivesStopAndOriginalCancellation(t *testing.T) {
 	}
 }
 
+func TestPreparedBatchIssuerPanicStillCancelsDirectCollectorDrain(t *testing.T) {
+	s, owner, ops, _, _, _ := batchFixture(t)
+	owner.revoke = func() error { panic("synthetic issuer fault") }
+	b, err := startBatch(requestContext(t), s, owner, ops)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered := make(chan struct{})
+	b.collector.ops.drain = func(ctx context.Context) (reportResult, error) {
+		close(entered)
+		<-ctx.Done()
+		return reportResult{}, ctx.Err()
+	}
+	caller, cancel := context.WithCancel(requestContext(t))
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { _, e := b.Collector().Collect(caller); done <- e }()
+	<-entered
+	if err = b.Close(requestContext(t)); err == nil {
+		t.Fatal("issuer fault accepted")
+	}
+	select {
+	case err = <-done:
+		if err == nil {
+			t.Fatal("cancelled drain succeeded")
+		}
+	case <-time.After(100 * time.Millisecond):
+		cancel()
+		<-done
+		t.Fatal("issuer panic lost direct cancellation")
+	}
+}
+
 func TestCollectorFailedConsumptionBurnsProof(t *testing.T) {
 	c := (&collectorFixture{eof: true}).collector()
 	r, err := c.Collect(requestContext(t))

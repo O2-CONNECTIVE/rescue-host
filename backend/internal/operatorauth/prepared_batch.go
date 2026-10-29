@@ -30,11 +30,17 @@ func (b *nativeBatch) revoke() error {
 		b.mu.Lock()
 		startCancel, collectCancel := b.startCancel, b.collectCancel
 		b.mu.Unlock()
+		b.collector.mu.Lock()
+		activeCancel := b.collector.activeCancel
+		b.collector.mu.Unlock()
 		if startCancel != nil {
 			startCancel()
 		}
 		if collectCancel != nil {
 			collectCancel()
+		}
+		if activeCancel != nil {
+			activeCancel()
 		}
 	}()
 	b.revokeOnce.Do(func() {
