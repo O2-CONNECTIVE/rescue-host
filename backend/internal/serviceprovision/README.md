@@ -145,7 +145,8 @@ source/fake証跡は、Service内の合法auth model→実confirm→memory resol
 実native認証から元ownerまでを通した単一のWindows縦断試験ではない。
 新しい汎用Approval interfaceや自己申告の認証値でこの欠落を埋めない。
 
-guest準備のPlanは正generationを要求する一方、現Issuer.PrepareはGuestBoundary入りApprovedPolicyを受けてbindingを作る。
-未検証guestをSeparatedNonAdminGuestと仮定してこの循環を抜けない。
-権限を持たないidentity/generation予約を分離するか、guest作業番号をauthority generationと別namespaceへ分けるかは未採用の設計項目である。
-既存Challengeの意味を変更したり、独立AuthenticationId登録を新しい必須条件へ追加したりしない。
+guest準備のPlanが要求する正generationは、[既存journalの識別値](../../../docs/temporary-guest-native-boundary.md)であり、issuerのgenerationと同一にする要件ではない。
+guest作業のepoch/intent/counterを供給し、検査後の所有SID・policyと後発の同issuer grantを不変に関連付ける保護producerが必要である。
+未検証guestをSeparatedNonAdminGuestと仮定したApprovedPolicyやChallengeを先に作らない。
+この未接続を理由に、既存Issuer/Challengeの意味変更や新しいnamespace選択を必須の意思決定へ追加しない。
+独立AuthenticationId登録を新しい必須条件へ追加したり、既存の認証検査を緩めたりもしない。
