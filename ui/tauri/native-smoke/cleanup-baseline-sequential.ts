@@ -1,6 +1,6 @@
 import { lstat, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { cleanupBaselineArms } from './baseline-cleanup.ts';
+import { cleanupBaselineArms, cleanupBaselineShared } from './baseline-cleanup.ts';
 
 async function read(name: string): Promise<unknown> {
   const stat = await lstat(name); if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 65536) throw new Error();
@@ -24,9 +24,10 @@ try {
   if (s.secondCleanup === 'confirmed') second = await read(path.join(root, 'baseline-b-evidence/native-result.json'));
   const result = await cleanupBaselineArms(root, expected, first, second);
   if (s.second === 'not-started' && await absent(path.join(root, 'baseline-tools-b')) && await absent(path.join(root, 'baseline-b-evidence'))) result.second = 'not-started';
-  await writeFile(path.join(root, 'baseline-cleanup.json'), JSON.stringify({ schema: 1, ...result }), { flag: 'wx' });
+  const shared = await cleanupBaselineShared(root, result);
+  await writeFile(path.join(root, 'baseline-cleanup.json'), JSON.stringify({ schema: 1, ...result, shared }), { flag: 'wx' });
   console.log('BASELINE_CLEANUP_RECORDED');
-  process.exitCode = result.first === 'removed' && ['removed', 'not-started'].includes(result.second) ? 0 : 1;
+  process.exitCode = result.first === 'removed' && ['removed', 'not-started'].includes(result.second) && shared === 'removed' ? 0 : 1;
 } catch {
   if (root) { try { await writeFile(path.join(root, 'baseline-cleanup.json'), JSON.stringify({ schema: 1, first: 'unconfirmed', second: 'unconfirmed' }), { flag: 'wx' }); } catch { /* 記録不能も失敗。 */ } }
   console.log('BASELINE_CLEANUP_UNCONFIRMED'); process.exitCode = 1;
