@@ -19,7 +19,7 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
   if (exited && collection.sessionSucceeded === true && object(session) && session.schema === 1
     && session.kind === 'direct-wry-controller-contrast' && session.productNativePass === false
     && session.sessionCreated === true && session.documentChecked === true && session.browserVersion === '131.0.2903.86'
-    && collection.normalCloseVerified === true && collection.forcedApp === false && collection.forcedChildren === 0 && cleanupVerified) {
+    && collection.normalCloseVerified === true && collection.driverStableThroughClose === true && collection.forcedApp === false && collection.forcedChildren === 0 && cleanupVerified) {
     return { ...result, contrastPassed: true, outcome: 'contrast-pass', nextAction: 'compare-context-settings' };
   }
   const nextAction = cleanupVerified ? 'compare-controller-context' : 'repair-ownership-observation';
