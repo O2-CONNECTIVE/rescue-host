@@ -75,7 +75,7 @@ func executeNativeWithThread(ctx context.Context, args []string, source protecte
 		return refuse()
 	}
 	// startup期限をセッション寿命へ流用せず、runtimeが元の絶対hard deadlineを適用します。
-	return runApprovedRuntime(ctx, config, input, output, stderr)
+	return runApprovedRuntime(ctx, config, cleanup, input, output, stderr)
 }
 
 func fatalNativeThread(err error) bool {

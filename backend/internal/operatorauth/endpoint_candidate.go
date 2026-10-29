@@ -33,6 +33,20 @@ func newEndpointCandidateLease(input uintptr, api endpointCandidateKernel) (*end
 	return &endpointCandidateLease{input: input, api: api}, nil
 }
 
+// typed SoleInput の Move 後だけ、同じ Batch の実 return を一度結ぶ。
+// 既存 lease を再発行したり、既取得候補を別 input に付け替えたりしない。
+func (l *endpointCandidateLease) bindInput(input uintptr) error {
+	if l == nil || !l.mu.TryLock() {
+		return ErrDenied
+	}
+	defer l.mu.Unlock()
+	if !helperHandle(input) || l.input != 0 || l.api == nil || l.started || l.closed || l.failed || l.uncertain {
+		return ErrDenied
+	}
+	l.input = input
+	return nil
+}
+
 // 同じBatch inputとlaunch相関へpure構成する。policyの正規発行は別境界。
 func endpointProfileSpec(s nativeBatchSpec, policy profileProviderPolicy, api endpointCandidateKernel) (nativeBatchSpec, error) {
 	if s.producer != nil || policy.material.launchID != s.launch.launchID || policy.material.cleanup != s.launch.cleanup {
@@ -70,7 +84,7 @@ func (l *endpointCandidateLease) inspect(ctx context.Context) (out profileCandid
 	if l.fatal != nil {
 		return out, l.fatal
 	}
-	if l.failed || l.closed || !reportContextValid(ctx) {
+	if l.failed || l.closed || !helperHandle(l.input) || !reportContextValid(ctx) {
 		return out, ErrDenied
 	}
 	l.started = true
