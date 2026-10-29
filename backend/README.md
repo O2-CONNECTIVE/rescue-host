@@ -1,5 +1,8 @@
 # 未配線の SSH バックエンド基盤
 
+一時非管理者guestの単発ライフサイクルは[設計文書の候補](https://github.com/O2-CONNECTIVE/rescue-host/blob/6330b4c681cf420c6a438ec9a69cf6d54e817d62/docs/temporary-guest-account.md)と[PR #131](https://github.com/O2-CONNECTIVE/rescue-host/pull/131)で開発中です。
+この候補は未mergeのライフサイクルcoreと合成試験であり、実account作成、保護journal、SID条件付き実操作は未実装です。
+
 この Go モジュールは製品向けの基盤候補です。
 Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI からの呼び出し、Upterm への配線を持ちません。
 この基盤の追加や試験成功だけで製品の開始ゲートを解除できません。
