@@ -15,6 +15,8 @@ void test('回収証跡と固定来歴を照合し、欠測・秘密field・hash
     const pins = JSON.parse(rawPins.toString('utf8')) as Record<string, unknown>;
     const provenance = { variant: pins.variant, upstreamSha256: pins.upstreamSha256, replacementsSha256: pins.replacementsSha256,
       codeSha256: pins.codeSha256, postimage: pins.postimage, lockBeforeSha256: pins.lockBeforeSha256, lockAfterSha256: pins.lockAfterSha256,
+      pumpUpstreamSha256: pins.pumpUpstreamSha256, pumpFunctionSha256: pins.pumpFunctionSha256,
+      pumpCodeSha256: pins.pumpCodeSha256, pumpLicenseSha256: pins.pumpLicenseSha256,
       pinsSha256: createHash('sha256').update(rawPins).digest('hex'), sourceCommit: 'a'.repeat(40),
       exeSha256: createHash('sha256').update('NOT_AN_EXECUTABLE').digest('hex') };
     const native = { kind: 'windows-webview2-native-smoke', wryStartupFileClosed: true };

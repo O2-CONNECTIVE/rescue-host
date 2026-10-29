@@ -8,8 +8,8 @@ import re
 import sys
 import tarfile
 
-PINS_SHA256 = '476a42aa826c647532204c960ba4fcbcf0100f3f74a524f9ff032c02c51030bc'
-ALLOWED = {'src/lib.rs', 'src/webview2/mod.rs', 'src/startup_probe.rs'}
+PINS_SHA256 = '00a49269901133049934030352523c10d731dfd8095e286ed21516f76304b401'
+ALLOWED = {'src/lib.rs', 'src/webview2/mod.rs', 'src/startup_probe.rs', 'src/startup_pump.rs'}
 
 
 class Rejected(Exception):
@@ -33,13 +33,51 @@ def read(path, limit):
     return data
 
 
-def prepare_bytes(archive, bundle):
+def derive_pump_source(source):
+    """公式の末尾関数だけから生成。待ちAPI/分岐/戻り値を置換しない。"""
+    function = source[source.index('pub fn wait_with_pump<T>'):]
+    changes = [
+        ('(rx: mpsc::Receiver<T>)', '(rx: mpsc::Receiver<T>, scope: PumpScope)'),
+        ('    let mut msg = MSG::default();', '    observe_pump(scope, PumpSignal::Enter);\n    let mut msg = MSG::default();'),
+        ('    loop {', '    loop {\n        observe_pump(scope, PumpSignal::Check);'),
+        ('            return Ok(result);', '            observe_pump(scope, PumpSignal::Ready);\n            return Ok(result);'),
+        ('        unsafe {', '        observe_pump(scope, PumpSignal::GetEnter);\n        unsafe {'),
+        ('                    return Err(windows::core::Error::from_thread().into());',
+         '                    let error = windows::core::Error::from_thread();\n                    observe_pump(scope, PumpSignal::GetError);\n                    return Err(error.into());'),
+        ('                0 => return Err(Error::TaskCanceled),',
+         '                0 => { observe_pump(scope, PumpSignal::GetQuit); return Err(Error::TaskCanceled); },'),
+        ('                    let _ = WindowsAndMessaging::TranslateMessage(&msg);',
+         '                    observe_pump(scope, PumpSignal::GetMessage);\n                    let _ = WindowsAndMessaging::TranslateMessage(&msg);\n                    observe_pump(scope, PumpSignal::DispatchEnter);'),
+        ('                    WindowsAndMessaging::DispatchMessageA(&msg);',
+         '                    WindowsAndMessaging::DispatchMessageA(&msg);\n                    observe_pump(scope, PumpSignal::DispatchReturn);'),
+    ]
+    changed = function
+    for old, new in changes:
+        need(changed.count(old) == 1)
+        changed = changed.replace(old, new)
+    header = ('// 固定公式関数から生成する試験専用loop。通常配布には使わない。\n'
+              'use std::sync::mpsc;\nuse webview2_com::{Error, Result};\n'
+              'use windows::Win32::UI::WindowsAndMessaging::{self, MSG};\n'
+              'use crate::startup_probe::{observe_pump, PumpScope, PumpSignal};\n')
+    return function.encode(), (header + changed).encode()
+
+
+def prepare_bytes(archive, pump_archive, bundle):
     need(bundle.is_dir() and not bundle.is_symlink())
-    need({x.name for x in bundle.iterdir()} == {'probe.rs', 'fixture.rs', 'pins.json', 'replacements.json', 'UPSTREAM_LICENSE.txt'})
+    need({x.name for x in bundle.iterdir()} == {'probe.rs', 'fixture.rs', 'pins.json', 'replacements.json',
+         'UPSTREAM_LICENSE.txt', 'pump.rs', 'PUMP_UPSTREAM_LICENSE.txt'})
     pin_bytes = read(bundle / 'pins.json', 8192)
     need(sha(pin_bytes) == PINS_SHA256)
     pins = json.loads(pin_bytes)
     need(sha(archive) == pins['upstreamSha256'])
+    need(sha(pump_archive) == pins['pumpUpstreamSha256'])
+    with tarfile.open(fileobj=io.BytesIO(pump_archive)) as source:
+        member = source.getmember('webview2-com-0.39.1/src/lib.rs')
+        need(member.isfile() and member.size <= 65536)
+        function, generated = derive_pump_source(source.extractfile(member).read().decode())
+    pump = read(bundle / 'pump.rs', 32768)
+    need(sha(function) == pins['pumpFunctionSha256'] and pump == generated and sha(pump) == pins['pumpCodeSha256'])
+    need(sha(read(bundle / 'PUMP_UPSTREAM_LICENSE.txt', 8192)) == pins['pumpLicenseSha256'])
     before = {}
     with tarfile.open(fileobj=io.BytesIO(archive)) as source:
         for member in source:
@@ -61,6 +99,7 @@ def prepare_bytes(archive, bundle):
         need(name in ALLOWED and name in before and old and after[name].decode().count(old) == 1)
         after[name] = after[name].decode().replace(old, new).encode()
     after['src/startup_probe.rs'] = code
+    after['src/startup_pump.rs'] = pump
     changed = {n for n in after if after[n] != before.get(n)}
     need(changed == ALLOWED and set(pins['postimage']) == ALLOWED)
     need(all(sha(after[n]) == pins['postimage'][n] for n in changed))
@@ -78,7 +117,7 @@ def check_tree(folder, expected):
 
 
 def run(args):
-    pins, after = prepare_bytes(read(args.archive, 2 * 1024 * 1024), args.bundle)
+    pins, after = prepare_bytes(read(args.archive, 2 * 1024 * 1024), read(args.pump_archive, 65536), args.bundle)
     lock = read(args.app_lock, 1024 * 1024)
     need(re.fullmatch('[0-9a-f]{40}', args.source_commit) and not args.report.exists())
     if args.verify:
@@ -86,7 +125,8 @@ def run(args):
         check_tree(args.source, after)
         binary = read(args.exe, 64 * 1024 * 1024)
         result = {k: pins[k] for k in ['variant', 'upstreamSha256', 'replacementsSha256', 'codeSha256',
-                                     'postimage', 'lockBeforeSha256', 'lockAfterSha256']}
+                                     'postimage', 'lockBeforeSha256', 'lockAfterSha256', 'pumpUpstreamSha256',
+                                     'pumpFunctionSha256', 'pumpCodeSha256', 'pumpLicenseSha256']}
         result.update(pinsSha256=PINS_SHA256, sourceCommit=args.source_commit, exeSha256=sha(binary))
     else:
         need(not args.source.exists() and sha(lock) == pins['lockBeforeSha256'])
@@ -112,7 +152,7 @@ def main():
         def error(self, message):
             raise Rejected()
     parser = Parser(description=__doc__)
-    for name in ['archive', 'bundle', 'source', 'app-lock', 'report']:
+    for name in ['archive', 'pump-archive', 'bundle', 'source', 'app-lock', 'report']:
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--source-commit', required=True)
     parser.add_argument('--verify', action='store_true')

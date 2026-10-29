@@ -2,7 +2,7 @@
   {
     "file": "src/lib.rs",
     "old": "mod error;",
-    "new": "#[cfg(target_os = \"windows\")]\nmod startup_probe;\nmod error;"
+    "new": "#[cfg(target_os = \"windows\")]\nmod startup_probe;\n#[cfg(target_os = \"windows\")]\nmod startup_pump;\nmod error;"
   },
   {
     "file": "src/webview2/mod.rs",
@@ -27,7 +27,7 @@
   {
     "file": "src/webview2/mod.rs",
     "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[inline]\n  fn create_controller(",
-    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiReturn);\n    let result = webview2_com::wait_with_pump(rx)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentWaitReturn);\n    result\n  }\n\n  #[inline]\n  fn create_controller("
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiReturn);\n    let result = crate::startup_pump::wait_with_pump(rx, crate::startup_probe::PumpScope::Environment)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentWaitReturn);\n    result\n  }\n\n  #[inline]\n  fn create_controller("
   },
   {
     "file": "src/webview2/mod.rs",
@@ -47,6 +47,6 @@
   {
     "file": "src/webview2/mod.rs",
     "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[allow(clippy::too_many_arguments)]",
-    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiReturn);\n    let result = webview2_com::wait_with_pump(rx)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::ControllerWaitReturn);\n    result\n  }\n\n  #[allow(clippy::too_many_arguments)]"
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiReturn);\n    let result = crate::startup_pump::wait_with_pump(rx, crate::startup_probe::PumpScope::Controller)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::ControllerWaitReturn);\n    result\n  }\n\n  #[allow(clippy::too_many_arguments)]"
   }
 ]

@@ -50,3 +50,31 @@ void test('欠測・余剰field・順序違反・終了cutoff以後を不完全�
     assert.deepEqual(report.events, []); assert.equal(JSON.stringify(report).includes('PRIVATE_FIXTURE'), false);
   }
 });
+
+// 実装後回帰。pumpの状態を分類するfixtureで、Windowsの待ちを再現しない。
+void test('GetMessage前後とdispatch前後の未観測を別hintにする', () => {
+  const trace = fixture(['webview-enter', 'environment-reused', 'controller-api-start', 'controller-api-return']);
+  const base = { entered: true, phase: 'get-message', iterations: 1, getCalls: 1, getReturns: 0,
+    dispatchCalls: 0, dispatchReturns: 0, lastUs: 900, invalid: false };
+  for (const [state, expected] of [
+    [base, 'controller-get-message-return-not-observed'],
+    [{ ...base, phase: 'translate', getReturns: 1 }, 'controller-translate-return-not-observed'],
+    [{ ...base, phase: 'dispatch', getReturns: 1, dispatchCalls: 1 }, 'controller-dispatch-return-not-observed'],
+    [{ ...base, phase: 'receiver-check', getReturns: 1, dispatchCalls: 1, dispatchReturns: 1 }, 'controller-receiver-check-last-observed']
+  ] as const) {
+    assert.equal(classifyWryStartup({ ...trace, pumps: { ...trace.pumps, controller: state } }).pumpHint, expected);
+  }
+});
+void test('不整合counter・過大counter・旧版・未知pump情報から局所化しない', () => {
+  const trace = fixture(['webview-enter', 'environment-reused', 'controller-api-start', 'controller-api-return']);
+  const base = { entered: true, phase: 'get-message', iterations: 1, getCalls: 1, getReturns: 0,
+    dispatchCalls: 0, dispatchReturns: 0, lastUs: 900, invalid: false };
+  for (const pump of [{ ...base, invalid: true }, { ...base, dispatchReturns: 1 }, { ...base, getCalls: 1000001 },
+    { ...base, lastUs: 1001 }, { ...base, phase: 'PRIVATE_FIXTURE' }, { ...base, url: 'PRIVATE_FIXTURE' },
+    { ...base, phase: 'receiver-ready', getCalls: 0 }]) {
+    const report = classifyWryStartup({ ...trace, pumps: { ...trace.pumps, controller: pump } });
+    assert.equal(report.phase, 'diagnostic-incomplete'); assert.equal(report.pumpHint, null);
+    assert.equal(JSON.stringify(report).includes('PRIVATE_FIXTURE'), false);
+  }
+  assert.equal(classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-1' }).phase, 'diagnostic-incomplete');
+});

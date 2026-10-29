@@ -1,6 +1,6 @@
 const phases = ['not-entered', 'receiver-check', 'get-message', 'translate', 'dispatch', 'receiver-ready', 'quit', 'os-error'] as const;
 type Phase = typeof phases[number];
-export type Pump = { entered: boolean; phase: Phase; iterations: number; getCalls: number; getReturns: number;
+type Pump = { entered: boolean; phase: Phase; iterations: number; getCalls: number; getReturns: number;
   dispatchCalls: number; dispatchReturns: number; lastUs: number; invalid: false };
 function object(x: unknown): x is Record<string, unknown> { return !!x && typeof x === 'object' && !Array.isArray(x); }
 function read(input: unknown, end: number): Pump | null {

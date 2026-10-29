@@ -45,9 +45,125 @@ struct Event {
     stage: Stage,
     elapsed: u128,
 }
+#[derive(Clone, Copy)]
+pub(crate) enum PumpScope {
+    Environment,
+    Controller,
+}
+#[derive(Clone, Copy)]
+pub(crate) enum PumpSignal {
+    Enter,
+    Check,
+    Ready,
+    GetEnter,
+    GetMessage,
+    GetQuit,
+    GetError,
+    DispatchEnter,
+    DispatchReturn,
+}
+#[derive(Clone)]
+struct Pump {
+    entered: bool,
+    phase: &'static str,
+    iterations: u32,
+    get_calls: u32,
+    get_returns: u32,
+    dispatch_calls: u32,
+    dispatch_returns: u32,
+    last_us: u128,
+    invalid: bool,
+}
+impl Pump {
+    fn empty() -> Self {
+        Self {
+            entered: false,
+            phase: "not-entered",
+            iterations: 0,
+            get_calls: 0,
+            get_returns: 0,
+            dispatch_calls: 0,
+            dispatch_returns: 0,
+            last_us: 0,
+            invalid: false,
+        }
+    }
+    fn update(&mut self, signal: PumpSignal, elapsed: u128) {
+        use PumpSignal::*;
+        let valid = match signal {
+            Enter => !self.entered,
+            Check => {
+                self.entered && self.phase == "receiver-check" && self.iterations == self.get_calls
+            }
+            Ready | GetEnter => {
+                self.phase == "receiver-check" && self.iterations == self.get_calls + 1
+            }
+            GetMessage | GetQuit | GetError => self.phase == "get-message",
+            DispatchEnter => self.phase == "translate",
+            DispatchReturn => self.phase == "dispatch",
+        };
+        if !valid
+            || self.invalid
+            || [
+                self.iterations,
+                self.get_calls,
+                self.get_returns,
+                self.dispatch_calls,
+                self.dispatch_returns,
+            ]
+            .iter()
+            .any(|v| *v >= 1000000)
+        {
+            self.invalid = true;
+            return;
+        }
+        self.last_us = elapsed;
+        match signal {
+            Enter => {
+                self.entered = true;
+                self.phase = "receiver-check";
+            }
+            Check => {
+                self.iterations += 1;
+            }
+            Ready => self.phase = "receiver-ready",
+            GetEnter => {
+                self.get_calls += 1;
+                self.phase = "get-message";
+            }
+            GetMessage | GetQuit | GetError => {
+                self.get_returns += 1;
+                self.phase = match signal {
+                    GetMessage => "translate",
+                    GetQuit => "quit",
+                    _ => "os-error",
+                };
+            }
+            DispatchEnter => {
+                self.dispatch_calls += 1;
+                self.phase = "dispatch";
+            }
+            DispatchReturn => {
+                self.dispatch_returns += 1;
+                self.phase = "receiver-check";
+            }
+        }
+    }
+    fn json(&self) -> String {
+        format!(
+        "{{\"entered\":{},\"phase\":\"{}\",\"iterations\":{},\"getCalls\":{},\"getReturns\":{},\"dispatchCalls\":{},\"dispatchReturns\":{},\"lastUs\":{},\"invalid\":{}}}",
+        self.entered, self.phase, self.iterations, self.get_calls, self.get_returns,
+        self.dispatch_calls, self.dispatch_returns, self.last_us, self.invalid)
+    }
+}
+#[derive(Clone)]
+struct Observation {
+    events: Vec<Event>,
+    pumps: [Pump; 2],
+}
 struct Recorder {
     start: Instant,
-    events: Mutex<Vec<Event>>,
+    state: Mutex<Observation>,
     attempted: AtomicU64,
     dropped: AtomicU64,
     in_flight: AtomicUsize,
@@ -74,7 +190,10 @@ pub(crate) fn record(stage: Stage) {
         let path = PathBuf::from(std::env::var_os("RESCUE_HOST_STARTUP_TRACE_DIR")?);
         let memory = Arc::new(Recorder {
             start: Instant::now(),
-            events: Mutex::new(Vec::with_capacity(10)),
+            state: Mutex::new(Observation {
+                events: Vec::with_capacity(10),
+                pumps: [Pump::empty(), Pump::empty()],
+            }),
             attempted: AtomicU64::new(0),
             dropped: AtomicU64::new(0),
             in_flight: AtomicUsize::new(0),
@@ -95,9 +214,9 @@ pub(crate) fn record(stage: Stage) {
         return;
     }
     let seq = memory.attempted.fetch_add(1, SeqCst) + 1;
-    if let Ok(mut events) = memory.events.try_lock() {
-        if events.len() < 10 {
-            events.push(Event {
+    if let Ok(mut state) = memory.state.try_lock() {
+        if state.events.len() < 10 {
+            state.events.push(Event {
                 seq,
                 stage,
                 elapsed: memory.start.elapsed().as_micros(),
@@ -109,6 +228,25 @@ pub(crate) fn record(stage: Stage) {
         }
     }
     memory.dropped.fetch_add(1, SeqCst);
+}
+pub(crate) fn observe_pump(scope: PumpScope, signal: PumpSignal) {
+    let Some(Some(memory)) = TRACE.get() else {
+        return;
+    };
+    memory.in_flight.fetch_add(1, SeqCst);
+    let _flight = Flight(memory);
+    if !memory.enabled.load(SeqCst) {
+        return;
+    }
+    if let Ok(mut state) = memory.state.try_lock() {
+        let index = match scope {
+            PumpScope::Environment => 0,
+            PumpScope::Controller => 1,
+        };
+        state.pumps[index].update(signal, memory.start.elapsed().as_micros());
+    } else {
+        memory.dropped.fetch_add(1, SeqCst);
+    }
 }
 impl Recorder {
     fn publish(&self, path: PathBuf) {
@@ -127,11 +265,15 @@ impl Recorder {
             }
             thread::sleep(Duration::from_millis(1));
         }
-        let mut events = self
-            .events
+        let state = self
+            .state
             .try_lock()
             .map(|v| v.clone())
-            .unwrap_or_default();
+            .unwrap_or(Observation {
+                events: Vec::new(),
+                pumps: [Pump::empty(), Pump::empty()],
+            });
+        let mut events = state.events;
         events.sort_by_key(|e| e.seq);
         let rows: Vec<_> = events
             .iter()
@@ -146,8 +288,9 @@ impl Recorder {
             .collect();
         let flights = self.in_flight.load(SeqCst);
         let text = format!(
-            "{{\"schema\":1,\"variant\":\"wry-webview2-stage-1\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{}}}",
-            rows.join(","), self.attempted.load(SeqCst), events.len(), self.dropped.load(SeqCst), requested && flights == 0, flights, end);
+            "{{\"schema\":1,\"variant\":\"wry-webview2-stage-2\",\"purpose\":\"diagnostic-hints-only\",\"events\":[{}],\"attempted\":{},\"recorded\":{},\"dropped\":{},\"sealed\":{},\"inFlight\":{},\"windowEndUs\":{},\"pumps\":{{\"environment\":{},\"controller\":{}}}}}",
+            rows.join(","), self.attempted.load(SeqCst), events.len(), self.dropped.load(SeqCst), requested && flights == 0, flights, end,
+            state.pumps[0].json(), state.pumps[1].json());
         if text.len() <= 2048 {
             if let Ok(mut file) = OpenOptions::new()
                 .write(true)

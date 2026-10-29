@@ -3,6 +3,8 @@
 関連 #91 / #102 / #105。#105の同一診断release失敗では、app内の保守的cutoffまで約14.842秒、build戻りmarkerが未観測だった。
 driverは同じ試行でheader未到達。これは内部の待ち場所やOS原因の証明ではない。
 #102/#105のFAILを保持し、自動mergeや成功までの再実行はしない。
+続く#108の同一release失敗ではenvironment callback/wait-returnとcontroller API returnを観測し、同じWry時計で11.308111秒controller callback未観測へ局所化した。
+これも根因未確定のFAILとして保持する。
 
 ## 仮説と観測境界
 
@@ -35,7 +37,7 @@ WebView作成はSTA/message pumpを使うが、今回pumpや呼出順は変更�
 公式 https://static.crates.io/crates/wry/wry-0.57.1.crate を既存Cargo.lockのSHA256
 `759c50ddad0ef9913bb5496cb9d509a50433a3b78cb0238d61105526589cf0e9`へ照合する。
 `tools/wry-startup-trace/pins.json`自体のhashを適用scriptとconsumerで固定する。
-置換差分、追加Rust、変更3fileの前後hash、全upstream file集合を検査し、未知fileや無関係変更を拒否する。
+置換差分、追加Rust、変更4fileの前後hash、全upstream file集合を検査し、未知fileや無関係変更を拒否する。
 bundleと元lockは.gitattributesの-textでWindows checkoutの改行変換も防ぐ。
 診断CIの自己所有tempだけへ展開し、Cargoの一時path patchで選ぶ。
 元lockの固定hashを検査し、Wry1entryのregistry source/checksumだけを外した固定postimageへ変換する。
@@ -68,6 +70,40 @@ I/Oの非returnに厳密な実時間保証はない。回収失敗は局所化�
 公開分類の先行RED `121fecd` → 最小GREEN `08a6825`。元Windows障害の再現ではなく分類のTDD。
 その後の余剰field・順序・CLI hash拒否は実装後回帰。
 `node --test tests/wry-startup-stages.test.ts tests/wry-startup-files.test.ts`を使う。
-stdlib record入口の3つの有限fixtureはCOMを呼ばず、producerの実file/closeを確認する。
+stdlib record入口の4つの有限fixtureはCOMを呼ばず、producerの実file/closeとpump状態を確認する。
 fixtureだけを--cfg testでbuildし、writerのfile drop後の完了通知を待つ。存在確認と固定sleepでcloseを代替しない。
 Windowsの実callback・EXE・元のnative合否は、新headのCIで別に判定する。
+
+## pump内部を区別する試験variant
+
+raw variantはwry-webview2-stage-2、依存variantはwry-0.57.1-pump-2。
+新しいpumps fieldが欠測した場合や旧variant1はincompleteで、前回のartifactへ後付けで状態を補わない。
+API returnだけでは、waitへの未到達、GetMessage return未観測、Translate/Dispatch return未観測を区別できない。
+次の予測を最小観測で区別する。
+
+1. waitへ未到達ならpumpのEnterが未観測。
+2. Dispatch入口から戻りが未観測ならdispatchCalls > dispatchReturns。
+3. pumpが進んでもcallbackが未観測なら、dispatchReturnsが増えた後の別のreceiver-check/GetMessage等を観測し得る。
+
+固定公式webview2-com0.39.1 archiveのSHA256
+`3f89fca7a704cee10dcb3654c1dbb8941d1783132f1917358af75bec37a7d7e6`を元lockへ照合する。
+公式wait_with_pumpの末尾関数そのもののhashを固定し、適用scriptが限定置換で生成するstartup_pump.rsとbundleのpump.rsをbyte照合する。
+新しい依存や2つ目のCargo path patchは追加しない。既存Wryの2つのstartup waitだけが、診断専用の導出loopを呼ぶ。
+normal製品と元webview2-com関数は変更しない。このvariantの成功を元実装の根因修正と扱わない。
+
+元のtry_recv/GetMessageA/TranslateMessage/DispatchMessageAと分岐条件、戻り値の意味は維持する。
+GetMessage errorは観測処理より前にError::from_threadで捕捉し、元のerror値を保持する。
+message投稿、追加timer、sleep、retry、要求数、OS/security設定の変更はない。
+固定commitの[MIT license](https://raw.githubusercontent.com/wravery/webview2-rs/edc2caf886175ccaebe86078c9cfe1ae2a187328/LICENSE)をbundleへ保存する。
+
+UI上は既存のmemory/try_lock/時計だけを使う。environment/controllerごとにentered、固定phase、iterations/getCalls/getReturns/dispatchCalls/dispatchReturns、最後の同Wry時刻、invalidだけを記録。
+message ID、MSG payload、window handle、thread/PID、URL、原例外は保存しない。
+反復でevent listを増やさず、counterは各100万で不完全化する。overflowで元pumpの実行を止めない。
+lock競合・非合法遷移・count不整合・cutoff後の状態はincomplete。workerとUIの同期は既存in-flight/cutoff規則を共有する。
+counterの均衡とAPI/wait markerとの順序もconsumerで検査する。
+
+pumpHintの「return未観測」は最後の観測点を示す。API内の物理的block、CPU時間、message不着の理由、OS根因を証明しない。
+最後のmarker後にUIがscheduleされなかった場合とも区別できない。別probe/process時計は差し引かない。
+記録自体の追加によるタイミング変化も残るため、元FAILを合格へ変えない。
+公開分類の先行RED f1ed2ad → GREEN97d002dでdispatch return未観測を区別した。元Windows障害の再現ではない。
+GetMessage/Translate/Dispatch各hint、旧版/欠測/counter改変拒否は実装後回帰、導出sourceの改変拒否もCLIで別に検証する。

@@ -13,7 +13,7 @@ try {
     collection: { type: 'string' }, source: { type: 'string' }, exe: { type: 'string' } } });
   if (!v.directory || !v.provenance || !v.collection || !v.source || !v.exe || !/^[0-9a-f]{40}$/.test(v.source)) throw new Error();
   const rawPins = await bounded(fileURLToPath(new URL('../../../tools/wry-startup-trace/pins.json', import.meta.url)), 8192);
-  if (createHash('sha256').update(rawPins).digest('hex') !== '476a42aa826c647532204c960ba4fcbcf0100f3f74a524f9ff032c02c51030bc') throw new Error();
+  if (createHash('sha256').update(rawPins).digest('hex') !== '00a49269901133049934030352523c10d731dfd8095e286ed21516f76304b401') throw new Error();
   const pins = JSON.parse(rawPins.toString('utf8')) as Record<string, unknown>;
   const rawProvenance = (await bounded(v.provenance, 8192)).toString('utf8');
   const provenance: unknown = JSON.parse(rawProvenance);
@@ -21,7 +21,9 @@ try {
   const exeSha256 = createHash('sha256').update(await bounded(v.exe, 64 * 1024 * 1024)).digest('hex');
   const expected = { variant: pins.variant, upstreamSha256: pins.upstreamSha256, replacementsSha256: pins.replacementsSha256,
     codeSha256: pins.codeSha256, postimage: pins.postimage, lockBeforeSha256: pins.lockBeforeSha256,
-    lockAfterSha256: pins.lockAfterSha256, pinsSha256: createHash('sha256').update(rawPins).digest('hex'), sourceCommit: v.source, exeSha256 };
+    lockAfterSha256: pins.lockAfterSha256, pumpUpstreamSha256: pins.pumpUpstreamSha256,
+    pumpFunctionSha256: pins.pumpFunctionSha256, pumpCodeSha256: pins.pumpCodeSha256, pumpLicenseSha256: pins.pumpLicenseSha256,
+    pinsSha256: createHash('sha256').update(rawPins).digest('hex'), sourceCommit: v.source, exeSha256 };
   function same(a: unknown, b: unknown): boolean {
     if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return a === b;
     if (Array.isArray(a) || Array.isArray(b)) return false;
