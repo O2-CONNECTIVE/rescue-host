@@ -318,7 +318,7 @@ func TestPreparedBatchZeroValueAndMissingSourceFailClosed(t *testing.T) {
 		t.Fatal(err)
 	}
 	s, owner, _, events, _, _ := batchFixture(t)
-	if b, err := prepareNativeBatch(s, nil, owner); b != nil || !errors.Is(err, ErrUnconfigured) {
+	if b, err := prepareNativeBatch(s, nil, 0, owner); b != nil || !errors.Is(err, ErrUnconfigured) {
 		t.Fatal("missing protected source prepared", b, err)
 	}
 	if len(*events) != 0 {

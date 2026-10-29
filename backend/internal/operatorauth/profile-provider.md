@@ -26,8 +26,9 @@ processは非継承のQUERY_LIMITED_INFORMATIONとSYNCHRONIZE、tokenは非継�
 read、impersonate、duplicate、tokenの発行や権限の追加を行わない。
 同じ固定workerでNoThreadTokenと実threadを確認し、保持processの生存・creation・imageを前後照合する。
 保持primary tokenの各照会はTokenStatisticsのTokenId/ModifiedIdを前後照合する。
-processの現在のprimary tokenもquery-onlyで開き、保持tokenとの対応とその後の変化を照合する。
-保持tokenだけを観測してprocess側のtoken置換を見落とす成功経路を設けない。
+processの現在のprimary tokenも前後でquery-onlyに開き、保持tokenとの対応と照会間に観測した変化を照合する。
+この照会列はatomic snapshotではなく、最終照会以降の変更がないことも証明しない。
+保持tokenだけの観測へ縮小せず、helper側でも実messageの主体を別に検査する。
 
 一時query tokenの部分取得はerrorと同時に元ownerへ保持する。
 close失敗、取消、panicでは再利用を拒否し、pending参照を同じproviderから回収する。

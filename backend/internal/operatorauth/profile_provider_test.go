@@ -2,16 +2,18 @@ package operatorauth
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 )
 
 type profileQueryFixture struct {
-	snapshot  profileCandidateSnapshot
-	queries   int
-	closed    int
-	onInspect func(int)
+	snapshot             profileCandidateSnapshot
+	queries              int
+	closed               int
+	onInspect            func(int)
+	inspectErr, closeErr error
 }
 
 func (f *profileQueryFixture) inspect(context.Context) (profileCandidateSnapshot, error) {
@@ -19,9 +21,9 @@ func (f *profileQueryFixture) inspect(context.Context) (profileCandidateSnapshot
 	if f.onInspect != nil {
 		f.onInspect(f.queries)
 	}
-	return f.snapshot, nil
+	return f.snapshot, f.inspectErr
 }
-func (f *profileQueryFixture) close(context.Context) error { f.closed++; return nil }
+func (f *profileQueryFixture) close(context.Context) error { f.closed++; return f.closeErr }
 
 func providerFixture() (profileProviderPolicy, *profileQueryFixture) {
 	op := tokenProjection{user: "S-1-5-21-1", authentication: 7, session: 3, integrity: 8192, kind: 2, level: 2}
@@ -37,6 +39,50 @@ func TestProtectedProfileProviderRejectsMissingPolicyWithoutQuery(t *testing.T) 
 	provider, err := newProtectedProfileProvider(p, q)
 	if provider != nil || err == nil || q.queries != 0 {
 		t.Fatalf("unconfigured policy accepted: %v %v queries=%d", provider, err, q.queries)
+	}
+}
+
+func TestProtectedProfileProviderFatalRetiresBatchAcrossAcquireAndClose(t *testing.T) {
+	for _, stage := range []string{"acquire", "close"} {
+		t.Run(stage, func(t *testing.T) {
+			p, q := providerFixture()
+			provider, err := newProtectedProfileProvider(p, q)
+			if err != nil {
+				t.Fatal(err)
+			}
+			s, owner, ops, events, _, _ := batchFixture(t)
+			s.producer = provider
+			ops.newProfile = func(ctx context.Context) (batchProfile, error) {
+				if _, _, err := prepareProfilePipe(ctx, provider); err != nil {
+					return nil, err
+				}
+				return &memoryBatchProfile{events: events}, nil
+			}
+			if stage == "acquire" {
+				q.inspectErr = ErrFatal
+			}
+			b, err := prepareBatch(s, owner, ops)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			err = b.Start(ctx)
+			if stage == "close" {
+				if err != nil {
+					t.Fatal(err)
+				}
+				q.closeErr = ErrFatal
+				err = b.Close(ctx)
+			}
+			if !errors.Is(err, ErrFatal) {
+				t.Fatalf("fatal retired as ordinary error: %v", err)
+			}
+			q.closeErr, q.inspectErr = nil, nil
+			if err = b.Close(ctx); !errors.Is(err, ErrFatal) {
+				t.Fatalf("fatal recovered with clean fixture: %v", err)
+			}
+		})
 	}
 }
 
@@ -139,6 +185,25 @@ func TestProtectedProfileProviderLateCancellationCannotPublishMaterial(t *testin
 	q.onInspect = func(int) { cancel() }
 	if material, err := provider.prepare(ctx); err == nil || material != (profilePipeMaterial{}) {
 		t.Fatal("late query cancellation accepted")
+	}
+}
+
+func TestProtectedProfileProviderCannotExtendOriginalRequest(t *testing.T) {
+	p, q := providerFixture()
+	provider, err := newProtectedProfileProvider(p, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	if _, err = provider.prepare(ctx); err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	cancel()
+	fresh, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	if err = provider.recheck(fresh); err == nil {
+		t.Fatal("fresh context revived original request")
 	}
 }
 

@@ -31,6 +31,15 @@ type batchScope struct {
 	fatal                        error
 }
 
+// serviceToken は Service 自身の既存 primary token を借用する。
+// helper 起動用 token から補完せず、構築中は native 照会を行わない。
+func newBatchScope(serviceToken uintptr, ops batchScopeOps) (*batchScope, error) {
+	if !helperHandle(serviceToken) || ops.verify == nil || ops.threadID == nil || ops.clean == nil {
+		return nil, ErrUnconfigured
+	}
+	return &batchScope{token: serviceToken, ops: ops}, nil
+}
+
 func (s *batchScope) acquire(ctx context.Context) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -21,9 +21,10 @@ type profileQueryKernel interface {
 }
 type profileQuery struct {
 	mu                                 sync.Mutex
-	process, token, probe              uintptr
+	process, token, probe, finalProbe  uintptr
 	api                                profileQueryKernel
 	started, closed, failed, uncertain bool
+	fatal                              error
 }
 
 func newProfileQuery(process, token uintptr, api profileQueryKernel) (*profileQuery, error) {
@@ -46,7 +47,13 @@ func (q *profileQuery) inspect(ctx context.Context) (out profileCandidateSnapsho
 			q.failed = true
 			out = profileCandidateSnapshot{}
 		}
+		if errors.Is(err, ErrFatal) {
+			q.fatal = errors.Join(ErrFatal, err)
+		}
 	}()
+	if q.fatal != nil {
+		return out, q.fatal
+	}
 	if q.closed || q.failed || q.probe != 0 || !reportContextValid(ctx) {
 		return out, ErrDenied
 	}
@@ -62,12 +69,18 @@ func (q *profileQuery) inspect(ctx context.Context) (out profileCandidateSnapsho
 	if e != nil {
 		return out, e
 	}
+	if !reportContextValid(ctx) {
+		return out, ErrDenied
+	}
 	probe, e := q.api.current(q.process)
 	if helperHandle(probe) && probe != q.process && probe != q.token {
 		q.probe = probe
 	}
 	if e != nil || q.probe == 0 {
 		return out, errors.Join(ErrDenied, e)
+	}
+	if !reportContextValid(ctx) {
+		return out, ErrDenied
 	}
 	current, e := q.api.token(q.probe)
 	if e != nil {
@@ -84,9 +97,30 @@ func (q *profileQuery) inspect(ctx context.Context) (out profileCandidateSnapsho
 	if before != after || held != heldAfter || held != current || held.projection.kind != 1 || held.projection.level != 0 || held.tokenID == 0 || held.modifiedID == 0 {
 		return out, ErrDenied
 	}
+	if !reportContextValid(ctx) {
+		return out, ErrDenied
+	}
+	final, e := q.api.current(q.process)
+	if helperHandle(final) && final != q.process && final != q.token && final != q.probe {
+		q.finalProbe = final
+	}
+	if e != nil || q.finalProbe == 0 {
+		return out, errors.Join(ErrDenied, e)
+	}
+	if !reportContextValid(ctx) {
+		return out, ErrDenied
+	}
+	last, e := q.api.token(q.finalProbe)
+	if e != nil || last != held {
+		return out, errors.Join(ErrDenied, e)
+	}
 	if err = q.api.subject(); err != nil {
 		return out, err
 	}
+	if err = q.api.close(q.finalProbe); err != nil {
+		return out, errors.Join(ErrUnconfirmed, err)
+	}
+	q.finalProbe = 0
 	if err = q.api.close(q.probe); err != nil {
 		return out, errors.Join(ErrUnconfirmed, err)
 	}
@@ -110,8 +144,14 @@ func (q *profileQuery) close(ctx context.Context) (err error) {
 			q.uncertain = true
 			err = ErrUnconfirmed
 		}
+		if errors.Is(err, ErrFatal) {
+			q.fatal = errors.Join(ErrFatal, err)
+		}
 	}()
 	q.closed = true
+	if q.fatal != nil {
+		return q.fatal
+	}
 	if !q.started {
 		return nil
 	} // pure prepareだけなら所有query参照はなく、thread照会も不要。
@@ -120,6 +160,12 @@ func (q *profileQuery) close(ctx context.Context) (err error) {
 	}
 	if err = q.api.subject(); err != nil {
 		return err
+	}
+	if q.finalProbe != 0 {
+		if err = q.api.close(q.finalProbe); err != nil {
+			return errors.Join(ErrUnconfirmed, err)
+		}
+		q.finalProbe = 0
 	}
 	if q.probe != 0 {
 		if err = q.api.close(q.probe); err != nil {

@@ -2,6 +2,7 @@ package operatorauth
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -13,23 +14,65 @@ type profileQueryKernelFixture struct {
 	onCurrent     func()
 	probeEvidence *profilePrimaryEvidence
 	currentErr    error
+	currentCalls  int
+	lateEvidence  *profilePrimaryEvidence
+	subjectErr    error
 }
 
-func (f *profileQueryKernelFixture) subject() error { return nil }
+func (f *profileQueryKernelFixture) subject() error { return f.subjectErr }
 func (f *profileQueryKernelFixture) process(uintptr) (profileCandidateSnapshot, error) {
 	return f.state, nil
 }
 func (f *profileQueryKernelFixture) token(h uintptr) (profilePrimaryEvidence, error) {
+	if h == 78 && f.lateEvidence != nil {
+		return *f.lateEvidence, nil
+	}
 	if h == 77 && f.probeEvidence != nil {
 		return *f.probeEvidence, nil
 	}
 	return profilePrimaryEvidence{f.state.primary, f.state.tokenID, f.state.modifiedID}, nil
 }
 func (f *profileQueryKernelFixture) current(uintptr) (uintptr, error) {
+	f.currentCalls++
 	if f.onCurrent != nil {
 		f.onCurrent()
 	}
-	return 77, f.currentErr
+	return uintptr(76 + f.currentCalls), f.currentErr
+}
+
+func TestProfileQueryRejectsTokenReplacementDuringObservation(t *testing.T) {
+	_, q := providerFixture()
+	k := &profileQueryKernelFixture{state: q.snapshot, lateEvidence: &profilePrimaryEvidence{projection: q.snapshot.primary, tokenID: 99, modifiedID: 9}}
+	x, err := newProfileQuery(11, 12, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err = x.inspect(ctx); err == nil {
+		t.Fatal("token replaced after first current query was accepted")
+	}
+	if err = x.close(ctx); err != nil || k.closes != 2 {
+		t.Fatalf("both probe owners not reclaimed: %v %d", err, k.closes)
+	}
+}
+
+func TestProfileQueryFatalCannotReviveOnCleanCaller(t *testing.T) {
+	_, q := providerFixture()
+	k := &profileQueryKernelFixture{state: q.snapshot, subjectErr: ErrFatal}
+	x, err := newProfileQuery(11, 12, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err = x.inspect(ctx); !errors.Is(err, ErrFatal) {
+		t.Fatal(err)
+	}
+	k.subjectErr = nil
+	if err = x.close(ctx); !errors.Is(err, ErrFatal) {
+		t.Fatalf("fatal query returned healthy: %v", err)
+	}
 }
 func (f *profileQueryKernelFixture) close(uintptr) error { f.closes++; return f.closeErr }
 

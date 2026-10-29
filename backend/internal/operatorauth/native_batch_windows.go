@@ -12,34 +12,39 @@ import (
 
 // Service 登録後の Start から全回収まで、caller は同じ固定 worker に留まる。
 // 保護 Factory は service 自身だけを証明し、controller 認証へ流用しない。
-func startNativeBatch(ctx context.Context, s nativeBatchSpec, factory *bootstrapauth.Factory, owner batchOwner) (*nativeBatch, error) {
-	b, err := prepareNativeBatch(s, factory, owner)
+func startNativeBatch(ctx context.Context, s nativeBatchSpec, factory *bootstrapauth.Factory, servicePrimaryToken uintptr, owner batchOwner) (*nativeBatch, error) {
+	b, err := prepareNativeBatch(s, factory, servicePrimaryToken, owner)
 	if err != nil {
 		return nil, err
 	}
 	return b, b.Start(ctx)
 }
 
-// prepare は保護 Factory と借用 primary token を pure 保持するだけ。
+// prepare は保護 Factory と Service 自身の借用 primary token を pure 保持するだけ。
+// helper 起動用 s.launch.primaryToken は service 認証へ補完しない。
 // scope は Service 登録後の Start admission 内で worker 自身が取得する。
-func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, owner batchOwner) (*nativeBatch, error) {
+func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servicePrimaryToken uintptr, owner batchOwner) (*nativeBatch, error) {
 	if factory == nil || s.producer == nil {
 		return nil, ErrUnconfigured
 	}
 	thread := &nativeThread{}
+	scope, err := newBatchScope(servicePrimaryToken, batchScopeOps{
+		threadID: windows.GetCurrentThreadId,
+		clean:    thread.clean,
+		verify: func(c context.Context, token uintptr) (batchServiceScope, error) {
+			thread.owner = windows.GetCurrentThreadId()
+			p, e := factory.VerifyService(c, token)
+			if p == nil {
+				return nil, e
+			}
+			return p, e
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 	return prepareBatch(s, owner, nativeBatchOps{
-		scope: &batchScope{token: s.launch.primaryToken, ops: batchScopeOps{
-			threadID: windows.GetCurrentThreadId,
-			clean:    thread.clean,
-			verify: func(c context.Context, token uintptr) (batchServiceScope, error) {
-				thread.owner = windows.GetCurrentThreadId()
-				p, e := factory.VerifyService(c, token)
-				if p == nil {
-					return nil, e
-				}
-				return p, e
-			},
-		}},
+		scope:  scope,
 		parent: func(context.Context) error { return nil },
 		clean:  func() error { return nil },
 		newProfile: func(c context.Context) (batchProfile, error) {

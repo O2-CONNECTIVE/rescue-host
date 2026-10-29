@@ -1,8 +1,11 @@
 # 登録後に固定 worker が取得する service scope
 
-`prepareNativeBatch` は保護された `bootstrapauth.Factory` と借用 primary token を保持し、thread 照会・token 照会・pipe 作成・起動を行わない。
+`prepareNativeBatch` は保護された `bootstrapauth.Factory` と明示入力の借用 `servicePrimaryToken` を保持し、thread 照会・token 照会・pipe 作成・起動を行わない。
 Service が同じ Batch と canonical Owner を登録した後、`Start` の admission 内で認証 worker 自身が `VerifyService` を呼ぶ。
-借用 token は `nativeBatchSpec.launch.primaryToken` の同じ参照で、Batch は close しない。
+借用 `servicePrimaryToken` は Service 自身の既存 primary token であり、helper 起動用の `nativeBatchSpec.launch.primaryToken` から補完しない。
+前者は `VerifyService` へ、後者は helper の `CreateProcessAsUser` へ渡す別入力である。
+`newBatchScope` は service token の handle 値を pure validation し、未指定・無効なら prepare を拒否する。
+Batch はどちらの借用 token も close しない。
 Factory の供給元は保護配置であり、UI・env・argv・観測した SID から組み立てる公開入口は追加しない。
 
 Service の認証交換は既存の `runtime.LockOSThread` で worker を固定する。

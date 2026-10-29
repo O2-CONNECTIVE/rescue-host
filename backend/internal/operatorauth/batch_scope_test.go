@@ -29,18 +29,27 @@ func (s *memoryServiceScope) Close(context.Context) error {
 func scopedBatchFixture(t *testing.T) (*nativeBatch, *memoryServiceScope, *[]string) {
 	t.Helper()
 	s, owner, ops, events, _, _ := batchFixture(t)
+	const servicePrimaryToken = uintptr(71)
+	if servicePrimaryToken == s.launch.primaryToken {
+		t.Fatal("fixture mixed service and helper subjects")
+	}
 	proof := &memoryServiceScope{events: events}
-	ops.scope = &batchScope{token: s.launch.primaryToken, ops: batchScopeOps{
+	var err error
+	ops.scope, err = newBatchScope(servicePrimaryToken, batchScopeOps{
 		threadID: func() uint32 { return 7 },
 		clean:    func() error { return nil },
 		verify: func(_ context.Context, token uintptr) (batchServiceScope, error) {
-			if token != s.launch.primaryToken {
-				t.Fatal("borrowed token replaced")
+			if token != servicePrimaryToken {
+				t.Error("service scope received helper-launch token instead of service token")
+				return nil, ErrDenied
 			}
 			*events = append(*events, "verify-scope")
 			return proof, nil
 		},
-	}}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	b, err := prepareBatch(s, owner, ops)
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +97,22 @@ func TestBatchScopePreStartCloseDoesNotQueryThread(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*events, []string{"close-original-read"}) {
 		t.Fatal(*events)
+	}
+}
+
+func TestBatchScopeRejectsInvalidServiceTokenWithoutNativeQueries(t *testing.T) {
+	ops := batchScopeOps{
+		verify: func(context.Context, uintptr) (batchServiceScope, error) {
+			t.Fatal("invalid service token queried")
+			return nil, ErrDenied
+		},
+		threadID: func() uint32 { t.Fatal("pure scope preparation queried thread"); return 0 },
+		clean:    func() error { t.Fatal("pure scope preparation queried token"); return ErrFatal },
+	}
+	for _, token := range []uintptr{0, ^uintptr(0), ^uintptr(0) - 1} {
+		if scope, err := newBatchScope(token, ops); scope != nil || !errors.Is(err, ErrUnconfigured) {
+			t.Errorf("invalid service token accepted: %x %v", token, err)
+		}
 	}
 }
 

@@ -35,6 +35,7 @@ type protectedProfileProvider struct {
 	policy                 profileProviderPolicy
 	query                  profileCandidateQuery
 	baseline               profileCandidateSnapshot
+	request                context.Context
 	used, prepared, closed bool
 }
 
@@ -58,6 +59,7 @@ func (p *protectedProfileProvider) prepare(ctx context.Context) (profilePipeMate
 		return profilePipeMaterial{}, ErrDenied
 	}
 	p.used = true
+	p.request = ctx
 	actual, err := p.query.inspect(ctx)
 	if err != nil || actual.pid == 0 || actual.creation == 0 || actual.tokenID == 0 || actual.modifiedID == 0 || actual.imagePath != p.policy.imagePath || actual.primary != p.policy.primary || !reportContextValid(ctx) {
 		return profilePipeMaterial{}, errors.Join(ErrDenied, err)
@@ -72,7 +74,8 @@ func (p *protectedProfileProvider) recheck(ctx context.Context) error {
 		return ErrDenied
 	}
 	defer p.mu.Unlock()
-	if p.closed || !reportContextValid(ctx) {
+	if p.closed || !reportContextValid(ctx) || p.used && !reportContextValid(p.request) {
+		p.prepared = false
 		return ErrDenied
 	}
 	if !p.used {

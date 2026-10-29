@@ -184,7 +184,7 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	b.profile = profile
 	b.mu.Unlock()
 	if e != nil || profile == nil {
-		return ErrUnconfigured
+		return errors.Join(ErrUnconfigured, b.retainScopeFailure(e))
 	}
 	if e = b.parent(ctx); e != nil {
 		return e
@@ -410,7 +410,7 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 	}
 	if p, ok := b.spec.producer.(*protectedProfileProvider); ok {
 		if e := p.close(ctx); e != nil {
-			return e
+			return b.retainScopeFailure(e)
 		}
 	}
 	if b.ops.scope != nil {
