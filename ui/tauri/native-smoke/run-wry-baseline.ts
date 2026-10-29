@@ -33,7 +33,7 @@ try {
   observation.phase('origin-check');
   let document: unknown;
   try {
-    document = await driver.execute("return {href:location.href,uri:document.documentURI,origin:location.origin,marker:document.querySelector('#wry-creation-contrast')?.textContent??null,tauri:typeof window.__TAURI__};");
+    document = await driver.execute("const marker = document.querySelector('#wry-creation-contrast'); return {href:location.href,uri:document.documentURI,origin:location.origin,marker:marker?.textContent??null,markerPresent:marker!==null,tauri:typeof window.__TAURI__,readyState:document.readyState};");
   } catch (error) {
     // 応答自体がない場合は原エラーを保ち、各項目をunknownにする。
     try { await writeFile(path.join(output, 'baseline-document-report.json'), JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...inspectBaselineDocument(null) })); }

@@ -9,5 +9,10 @@ export function inspectBaselineDocument(value: unknown) {
   };
   const result = { href: field('href', 'about:blank'), uri: field('uri', 'about:blank'), origin: field('origin', 'null'),
     marker: field('marker', 'Wry creation contrast', true), tauri: field('tauri', 'undefined') };
-  return { ...result, accepted: Object.values(result).every(x => x === 'match') };
+  const markerDetail = input.markerPresent === false && input.marker === null ? 'absent'
+    : input.markerPresent === true && result.marker === 'match' ? 'match'
+      : input.markerPresent === true && typeof input.marker === 'string' ? 'text-mismatch' : 'unknown';
+  const readyState = input.readyState === 'loading' || input.readyState === 'interactive' || input.readyState === 'complete'
+    ? input.readyState : 'unknown';
+  return { ...result, accepted: Object.values(result).every(x => x === 'match'), markerDetail, readyState };
 }
