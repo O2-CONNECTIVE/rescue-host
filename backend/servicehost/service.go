@@ -57,6 +57,7 @@ type Service struct {
 	workload                                  *serviceWorkloadReclaim
 	plane                                     servicePlane
 	control                                   *serviceControlReadiness
+	preview                                   *servicePreview
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
 	innerCleanupConfirmed, outerConfirmed     bool
@@ -101,11 +102,21 @@ func NewService(c ServiceConfig) (*Service, error) {
 
 // 試験ではこのprivate OS factory seamだけを差し替える。公開constructorはnativeだけを選ぶ。
 func newService(c ServiceConfig, prepare servicePrepare) (*Service, error) {
-	if c.Provisioning == nil || c.Launcher == nil || c.Budgets.Startup <= 0 || c.Budgets.Cleanup <= 0 || c.Budgets.Observe <= 0 || prepare == nil {
+	if c.Provisioning == nil || c.Launcher == nil || prepare == nil {
+		return nil, ErrProvisioningUnconfigured
+	}
+	return allocateService(c, prepare)
+}
+
+// Shared ownership allocation has no activation dependency. Only the explicit
+// query-only preview constructor may omit legacy approval/launch providers.
+func allocateService(c ServiceConfig, prepare servicePrepare) (*Service, error) {
+	if c.Budgets.Startup <= 0 || c.Budgets.Cleanup <= 0 || c.Budgets.Observe <= 0 {
 		return nil, ErrProvisioningUnconfigured
 	}
 	return &Service{cfg: c, prepare: prepare, approvalThread: serviceThreadOperations{runtime.LockOSThread, runtime.UnlockOSThread}, done: make(chan struct{}), retries: make(chan serviceCleanupRequest), repeatStop: make(chan struct{}, 1), outerConfirmed: true, outerGate: make(chan struct{}, 1), state: StartPending}, nil
 }
+
 func (s *Service) Snapshot() ServiceSnapshot {
 	if s == nil {
 		return ServiceSnapshot{}
@@ -152,6 +163,7 @@ func (s *Service) stopFor(cause error) bool {
 		s.stopCause = serviceFailure(cause)
 	}
 	s.stopping = true
+	s.invalidatePreviewLocked()
 	var unusedDone chan struct{}
 	if !s.started && s.done != nil {
 		s.used = true
@@ -224,7 +236,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 		return ErrProvisioningUnconfigured
 	}
 	s.mu.Lock()
-	if s.done == nil || s.prepare == nil {
+	if s.done == nil || s.prepare == nil && s.control == nil {
 		s.mu.Unlock()
 		return ErrProvisioningUnconfigured
 	}

@@ -10,8 +10,8 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 )
 
-// native認証providerと保護profileの供給は未接続。private constructorを
-// 外部入力や自己申告boolから呼ぶ公開factoryは提供しない。
+// 認証済みReadだけを同ownerのdispatchへ渡す。nonce/digest/previewの
+// 一致やconstructorの成功を、operator認証や承認の証拠にしない。
 type serviceDispatchProfile struct {
 	ChannelNonce string
 	RequestLimit uint64
@@ -19,7 +19,7 @@ type serviceDispatchProfile struct {
 type authenticatedReadTicket struct{ marker byte }
 
 // exact readの単回capability。nonce/digest一致自体を認証の根拠にはしない。
-// 生成は同owner adapterの責務。concrete Batchの供給元は未接続のまま。
+// 生成は実Collectorを消費する同owner adapterの責務。表示候補から生成しない。
 type authenticatedServiceRead struct {
 	owner  *serviceDispatcher
 	frame  [32]byte
@@ -54,7 +54,7 @@ func newServiceDispatcher(s *Service, p serviceDispatchProfile, v serviceReadVer
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.used || s.started || s.stopping || s.dispatch != nil || s.prepare == nil || s.done == nil {
+	if s.used || s.started || s.stopping || s.dispatch != nil || (s.prepare == nil && s.control == nil) || s.done == nil {
 		return nil, ErrProvisioningRejected
 	}
 	d := &serviceDispatcher{service: s, profile: p, verifier: v, ids: make(map[string]struct{}), reads: make(map[*authenticatedReadTicket]struct{})}
@@ -137,6 +137,15 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 			response.Snapshot = &servicecontrol.UntrustedSnapshot{ServicePhase: string(phase), LaunchPhase: "none"}
 			if stopping {
 				response.Snapshot.LaunchPhase = "quiescing"
+			}
+		} else if request.Command == servicecontrol.PrepareIntent {
+			intent, code := s.preparePreviewIntent(ctx, d)
+			if code != "" {
+				response.Result = "error"
+				response.Error = &servicecontrol.UntrustedServiceError{Code: code}
+			} else {
+				response.Result = "intent-prepared"
+				response.Intent = intent
 			}
 		} else if request.Command == servicecontrol.RevokeAllAndQuiesce {
 			receipt, err := s.dispatchQuiesce(d)

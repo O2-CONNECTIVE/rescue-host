@@ -9,11 +9,17 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/servicehost"
 )
 
+// private scope seam。製品では既存bootstrapauth.PreparedServiceだけを保持する。
+type preparedServiceScope interface {
+	Recheck(context.Context) error
+	Close(context.Context) error
+}
+
 // Prepared は固定rootとservice imageの同じ元threadでの保持証拠を所有する。
 // 設定の読取成功を、launch tokenやoperator承認へ変換しない。
 type Prepared struct {
 	loaded   *Loaded
-	scope    *bootstrapauth.PreparedService
+	scope    preparedServiceScope
 	record   Record
 	accepted atomic.Bool
 	poisoned atomic.Bool

@@ -101,4 +101,20 @@ STOP_PENDING後の追加Stop配送には依存せず、同じownerが回収だ�
 Fatalはstickyで、元threadを他の仕事へ再利用せず参照を保持する。新しいthreadで認証し直して回収済みにしない。
 個々のcleanupは有限contextを持つが、未確認や戻らないnative APIがある場合のRun全体の終了期限は保証しない。
 実際のSCM、OS保護、過去に漏出したhandle/書込みmappingの不存在、将来の独自thread SD、監督hang/OS sleep/Job最後handleをsnapshotやpure試験で証明したとは扱わない。
-operator認証のRevertToSelf失敗時policy、process-wide終了、応答/dispatch、configDigest/receiptのproducerはこの差分へ接続しない。
+operator認証のRevertToSelf失敗時policy、process-wide終了、承認/起動dispatch、receiptのproducerはこの差分へ接続しない。
+
+
+## 保持Recordからprepare-intentの表示候補へ
+
+同じ元threadの `Prepared.ComposePreviewService` は、保持query-only tokenとscopeを再照合し、同じRecordから表示専用descriptorを解決して実 `servicehost.NewPreviewService` へ渡す。
+configDigestは照合済みexact bytesのSHA-256、policyDigestは既存 `backend.PolicyDigest`、keySetDigestは同じraw Ed25519鍵から既存 `runbackend.KeySetDigest` で計算する。
+表示fingerprintも同じ鍵から生成し、重複を除いて整列する。
+絶対hard deadlineは構成時点とRecordのMaximumDurationから固定し、再prepareで延長しない。
+LeaseDurationは既存の上限制約として保持し、wireへ独自fieldを追加しない。
+表示intentのTTLと要求・起動回数予算は保護呼出側の `PreviewLimits` で明示し、Recordの別予算や環境変数から補完しない。
+
+descriptorは構成時の表示snapshotであり、毎要求のfile再認証、認証済みoperator、承認、grantを表すcapabilityではない。
+認証/sequenceを通ったprepare-intentの表示までを扱い、ConfirmApprovalと実起動は未構成拒否を維持する。
+既存ComposeServiceの承認/launcher検査にpreviewへのfallbackを追加しない。
+nativeExecutionStage.Initializeは引き続き既存ComposeServiceを使用し、今回のComposePreviewServiceを実行fileへ接続していない。
+実行fileの既定Anchor、正規operator入力、実Windowsの保護設定と承認sourceは未接続のままであり、このsource/fake試験を実機の接続成立と扱わない。
