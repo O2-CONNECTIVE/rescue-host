@@ -19,6 +19,7 @@ type serviceReservation struct {
 	owner                       *Service
 	issuer                      *ephemeral.Issuer
 	intent                      *serviceOwnerIntent
+	request                     context.Context // original finite request; immutable
 	requestDone                 <-chan struct{}
 	worker                      context.Context
 	cancel                      context.CancelFunc
@@ -56,7 +57,7 @@ func (s *Service) reserveOwnerIntentLocked(ctx context.Context, intent *serviceO
 	}
 	intent.burned = true
 	worker, cancel := context.WithCancel(context.Background())
-	r := &serviceReservation{owner: s, issuer: s.issuer, intent: intent, requestDone: requestDone, worker: worker, cancel: cancel, done: make(chan struct{})}
+	r := &serviceReservation{owner: s, issuer: s.issuer, intent: intent, request: ctx, requestDone: requestDone, worker: worker, cancel: cancel, done: make(chan struct{})}
 	s.reservation = r
 	return r, nil
 }
@@ -85,6 +86,11 @@ func (s *Service) consumeOwnerReservation(r *serviceReservation) (serviceReserva
 }
 func (s *Service) consumeOwnerReservationLocked(r *serviceReservation) (serviceReservationWork, error) {
 	if r == nil || r.owner != s || s.reservation != r || r.issuer != s.issuer || !s.authWriter.OpenLocked() || s.stopping || r.canceled || r.claimed || r.finished {
+		return serviceReservationWork{}, ErrProvisioningRejected
+	}
+	// Cancellation delivery may lag its actual deadline. Claim only within the
+	// same original finite request, rather than relying on Done notification alone.
+	if !authBudget(r.request) {
 		return serviceReservationWork{}, ErrProvisioningRejected
 	}
 	select {

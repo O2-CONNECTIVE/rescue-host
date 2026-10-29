@@ -118,9 +118,8 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		s.mu.Unlock()
 		return "SERVICE_STALE_CONTEXT", nil
 	}
-	r.runtimeSource = p.runtime
-	if r.runtimeSource != nil {
-		r.runtimeOwner = r.runtimeSource.owner
+	source := p.runtime // static owner reference; no acquisition responsibility yet
+	if source != nil {
 		if s.ownerIntent != nil || s.reservation != nil {
 			r.finished = true
 			s.mu.Unlock()
@@ -137,6 +136,10 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 			s.stopFor(err)
 			return "", ErrRuntimeUnconfirmed
 		}
+		// Take per-confirm actor responsibility only with a real claimed work
+		// ticket. This remains before Record/Acquire, under the same stop gate.
+		r.runtimeSource = source
+		r.runtimeOwner = source.owner
 	}
 	resolver := p.resolver
 	s.mu.Unlock()
