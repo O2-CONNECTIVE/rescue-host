@@ -61,13 +61,20 @@ func Run(ctx context.Context, input io.ReadCloser, output io.WriteCloser, limits
 		}
 	}()
 	defer func() {
-		close(stop)
-		closePipes()
-		<-stopped
+		// 正常EOFは全Service所有者のbarrier後にする。取消watcherはその間も
+		// pending I/Oを解除できるが、その先行pipe Closeを正常終了へ昇格しない。
 		cleanup, cancel := context.WithTimeout(context.Background(), limits.CleanupTimeout)
-		defer cancel()
-		if err := service.Close(cleanup); err != nil || cleanup.Err() != nil || closeError {
+		err := service.Close(cleanup)
+		expired := cleanup.Err() != nil
+		cancel()
+		close(stop)
+		<-stopped
+		closePipes()
+		if err != nil || expired || closeError {
 			result = ErrCleanup
+		}
+		if result == nil && ctx.Err() != nil {
+			result = ctx.Err()
 		}
 	}()
 	reader := bufio.NewReaderSize(input, 4096)
