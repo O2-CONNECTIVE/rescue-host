@@ -28,11 +28,14 @@ type PreviewServiceConfig struct {
 	Preview                   PreviewDescriptor
 }
 type servicePreview struct {
-	descriptor PreviewDescriptor
-	ttl        time.Duration
-	intent     *previewIntent // Service.mu; distinct from workload serviceOwnerIntent
-	seen       map[string]struct{}
-	resolver   PreviewConfirmationResolver // fixed with the outer owner before use
+	descriptor   PreviewDescriptor
+	ttl          time.Duration
+	intent       *previewIntent // Service.mu; distinct from workload serviceOwnerIntent
+	seen         map[string]struct{}
+	resolver     PreviewConfirmationResolver // fixed with the outer owner before use
+	runtime      *confirmationRuntimeSource  // private OS seam; product composition leaves nil
+	excludedSIDs []string
+	grant        *confirmedGrant
 }
 type previewIntent struct {
 	owner        *Service
@@ -67,6 +70,7 @@ func NewPreviewService(c PreviewServiceConfig) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	preview.excludedSIDs = []string{c.Ready.Profile.Keys.ProcessUserSID, c.Ready.Profile.Keys.ServiceSID, c.Ready.Profile.Keys.OperatorSID, c.Ready.Profile.Keys.GuestSID}
 	service.preview = preview
 	service.serviceName = c.Ready.Profile.ServiceName
 	if err := bindServiceControl(service, factories, serviceDispatchProfile{ChannelNonce: nonce, RequestLimit: c.RequestLimit}, c.LaunchLimit); err != nil {

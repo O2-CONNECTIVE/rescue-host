@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは205実装、Windowsでは225実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは207実装、Windowsでは227実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -144,3 +144,7 @@ unit/raceの各レイヤの成功を実native認証と元threadを通したWindo
 
 [固定配置から無効guest準備へのadapter](guest-staging-adapter.md)は、guestaccountのstaging.go/staging_borrow.go/staging_native.go/staging_profile.go/staging_query.goと対象OSのstaging_native_other.goまたはstaging_native_windows.goだけを追加登録します。
 bootstrapauth/prepared_lease.goは同じPreparedServiceのprofileと借用gateを保持する共通実装です。正規manifest/control検査lease producer・実guest token/resume前gateは未実装で、source/fakeやcrosscompileを実配置・実account・実SSHの成功へ広げません。
+
+
+承認確認から同issuerのbinding発行へ進む共通実装は、servicehost/confirmed_grant.goとconfirmed_grant_snapshot.goだけを追加登録します。
+private OS seamをfakeへ置換した実confirm/codec/issuer経路であり、製品runtime providerは未登録です。static staging結果だけをruntime証跡へ昇格せず、Launch/Authority/Host.Run/実SSHは開始しません。

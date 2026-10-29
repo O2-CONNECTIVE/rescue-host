@@ -105,8 +105,9 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 	phase, stopping := s.state, s.stopping
 	unprojected := s.ownerIntent != nil || s.reservation != nil
 	owner := issuer.Snapshot()
+	confirmed := s.confirmedGrantSnapshotLocked(d, owner)
 	s.mu.Unlock()
-	if owner.Generation != 0 || owner.InstanceEpoch == ([32]byte{}) {
+	if owner.InstanceEpoch == ([32]byte{}) || owner.Generation != 0 && (!d.hello || confirmed == nil || request.Command != servicecontrol.Status && request.Command != servicecontrol.RevokeAllAndQuiesce) {
 		return d.rejectLocked()
 	}
 	boot := hex.EncodeToString(owner.InstanceEpoch[:])
@@ -128,7 +129,10 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 			return d.rejectLocked()
 		}
 		response.Type = "response"
-		if request.Command == servicecontrol.Status && unprojected {
+		if request.Command == servicecontrol.Status && confirmed != nil {
+			response.Result = "snapshot"
+			response.Snapshot = confirmed
+		} else if request.Command == servicecontrol.Status && unprojected {
 			// 所有ticketを承認ID/binding/launchPhaseへ合成するproducerは未接続。
 			response.Result = "error"
 			response.Error = &servicecontrol.UntrustedServiceError{Code: "SERVICE_NOT_READY"}
@@ -152,8 +156,13 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 			if err != nil {
 				return nil, err
 			}
-			response.Result = "error"
-			response.Error = &servicecontrol.UntrustedServiceError{Code: code}
+			if code == "" {
+				response.Result = "approval-accepted"
+				response.Approval = &servicecontrol.UntrustedApproval{ApprovalRequestID: request.RequestID}
+			} else {
+				response.Result = "error"
+				response.Error = &servicecontrol.UntrustedServiceError{Code: code}
+			}
 		} else if request.Command == servicecontrol.RevokeAllAndQuiesce {
 			receipt, err := s.dispatchQuiesce(d)
 			if err != nil || !receipt.matches(d) {
