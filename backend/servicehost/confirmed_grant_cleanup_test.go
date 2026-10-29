@@ -20,7 +20,7 @@ func (m *runtimeCleanupModel) CloseOwned(ctx context.Context, owner *confirmatio
 	return m.close(ctx, owner)
 }
 
-func TestConfirmedGrantGuestOwnerJoinsAfterAuthAndBeforePlaneOrWorkloadAck(t *testing.T) {
+func TestConfirmedGrantGuestOwnerJoinsAfterGrantBeforeWorkloadAuthAndPlane(t *testing.T) {
 	var s *Service
 	s, a, outer := confirmationFixture(t, func(_ context.Context, ticket PreviewConfirmationTicket) error {
 		_, err := ticket.PreviewFor(s)
@@ -37,13 +37,11 @@ func TestConfirmedGrantGuestOwnerJoinsAfterAuthAndBeforePlaneOrWorkloadAck(t *te
 			t.Error("cleanup lost owner or preceded canonical revocation")
 		}
 		s.mu.Lock()
-		worker := s.auth.active
+		grantFinished := s.preview.intent.confirmation.finished && s.reservation.finished
 		confirmed, _ := s.authWriter.WorkloadLocked()
 		s.mu.Unlock()
-		select {
-		case <-worker.ownerDone:
-		default:
-			t.Error("guest owner cleanup preceded auth worker join")
+		if !grantFinished {
+			t.Error("guest owner cleanup preceded actual grant processing return")
 		}
 		if confirmed {
 			t.Error("whole-workload ack preceded guest resource cleanup")
@@ -72,6 +70,14 @@ func TestConfirmedGrantGuestOwnerJoinsAfterAuthAndBeforePlaneOrWorkloadAck(t *te
 			default:
 			}
 			return ErrRuntimeUnconfirmed
+		}
+		s.mu.Lock()
+		active := s.auth.active
+		s.mu.Unlock()
+		select {
+		case <-active.ownerDone:
+		default:
+			t.Error("Plane closed before actual auth worker join")
 		}
 		return nil
 	}

@@ -19,6 +19,8 @@ import (
 // Only package memory fixtures currently construct a source or runtime proof.
 type confirmationRuntimeKernel interface {
 	Acquire(context.Context, PreviewConfirmationTicket) (*confirmationRuntimeProof, error)
+	// CloseOwned joins this actor's guest/query/lease work only. It must not
+	// await auth workers, Owner.AwaitWorkload, Plane.Close or outer finalization.
 	CloseOwned(context.Context, *confirmationEvidenceOwner) error
 }
 type confirmationRuntimeSource struct {

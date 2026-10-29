@@ -31,17 +31,10 @@ func (s *Service) hasConfirmationRuntimeLocked() bool {
 	return s.preview != nil && s.preview.intent != nil && s.preview.intent.confirmation != nil && s.preview.intent.confirmation.runtimeSource != nil
 }
 
-func (s *Service) consumedConfirmationHelperLocked(request *serviceAuthRequest) bool {
-	if !s.hasConfirmationRuntimeLocked() || !request.batchConsumed || s.reservation == nil {
-		return false
-	}
-	r := s.preview.intent.confirmation
-	return r.request == request && r.service == s && r.issuer == request.issuer && r.owner == request.owner && r.work.reservation == s.reservation && r.work.ticket != nil && r.work.ticket == s.reservation.ticket && s.reservation.claimed
-}
-
-// The SCM owner calls the already registered resource owner's RPC only after
-// all grant/auth work joins. This releases guest inspection leases before Plane
-// shutdown; the outer root/token scope still waits for its separate finalizer.
+// The SCM owner joins grant/reservation/Host work before this RPC, then publishes
+// whole-workload completion before joining auth workers that may await it.
+// CloseOwned must join only its own guest/query/lease resources; it must not wait
+// for auth join, Owner.AwaitWorkload, Plane.Close, or outer finalization.
 func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 	if !authBudget(ctx) {
 		return ErrRuntimeUnconfirmed
@@ -56,14 +49,6 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 	if !s.stopping || r.service != s || r.issuer != s.issuer || r.owner != s.authOwner || !r.finished || s.reservation == nil || s.reservation != r.work.reservation || !s.reservation.finished || !s.workload.sameWorkloadLocked(s) || !s.workload.hostJoined || source != s.preview.runtime || owner == nil || owner != source.owner || source.kernel == nil {
 		s.mu.Unlock()
 		return ErrRuntimeUnconfirmed
-	}
-	if s.auth != nil && s.auth.active != nil {
-		select {
-		case <-s.auth.active.ownerDone:
-		default:
-			s.mu.Unlock()
-			return ErrRuntimeUnconfirmed
-		}
 	}
 	if r.runtimeCleanupFatal != nil {
 		err := r.runtimeCleanupFatal
@@ -84,6 +69,12 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 			if authFatal(err) {
 				s.mu.Lock()
 				r.runtimeCleanupFatal = err
+				// Fatal is a retained failure, never workload success. Wake helper
+				// cleanup waiting on this same owner so the original auth worker
+				// can retire without awaiting a success ack that cannot be issued.
+				if s.preview.intent.confirmation == r && s.preview.runtime == source && r.runtimeOwner == owner && s.workload.sameWorkloadLocked(s) {
+					_ = s.authWriter.FatalWorkloadLocked(err)
+				}
 				s.mu.Unlock()
 			}
 			return err

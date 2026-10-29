@@ -9,7 +9,7 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 )
 
-func TestConfirmedGrantHelperCompletionIsReusedOnlyAfterItsExactConsume(t *testing.T) {
+func TestConfirmedGrantFailedRequestsKeepBatchCloseBeforeAndAfterConsume(t *testing.T) {
 	for _, kind := range []string{"grant-consumed", "legacy-consumed", "before-consume"} {
 		t.Run(kind, func(t *testing.T) {
 			s, a, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return ErrRuntimeUnconfirmed })
@@ -49,12 +49,8 @@ func TestConfirmedGrantHelperCompletionIsReusedOnlyAfterItsExactConsume(t *testi
 			if err := s.Close(ctx); err != nil {
 				t.Fatal(err)
 			}
-			want := 1
-			if kind == "grant-consumed" {
-				want = 0
-			}
-			if closes != want || consumed != (kind != "before-consume") {
-				t.Fatal("wrong helper lifecycle acknowledgement reused", closes, consumed)
+			if closes < 1 || consumed != (kind != "before-consume") {
+				t.Fatal("failed request omitted its original Batch.Close", closes, consumed)
 			}
 		})
 	}
