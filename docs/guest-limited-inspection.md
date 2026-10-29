@@ -53,3 +53,11 @@ ownerの暗黙WRITE_DAC、秘密key読取、process memory読取、token複製�
 正規の固定manifest/保持handle producer、実WindowsでのACL成立、実行時token/handle gate、sshd設定・動的guest SIDの配線は未接続です。
 純粋fake試験とWindows cross compileの成功を実アカウント作成・保護supervisor成立・実SSH失効の成功へ読み替えません。
 この文書とsource検査はOS設定、資格情報生成、実通信を許可しません。
+
+## 一次資料
+
+- [USER_INFO_4](https://learn.microsoft.com/en-us/windows/win32/api/lmaccess/ns-lmaccess-user_info_4)
+- [NetLocalGroupEnum](https://learn.microsoft.com/en-us/windows/win32/api/lmaccess/nf-lmaccess-netlocalgroupenum)と[raw member SIDの取得](https://learn.microsoft.com/en-us/windows/win32/api/lmaccess/nf-lmaccess-netlocalgroupgetmembers)
+- [LsaEnumerateAccountRights](https://learn.microsoft.com/en-us/windows/win32/api/ntsecapi/nf-ntsecapi-lsaenumerateaccountrights)
+- [対象別のaccess mask](https://learn.microsoft.com/en-us/windows/win32/secauthz/access-rights-and-access-masks)
+- [Windows OpenSSHのS4U実装](https://github.com/PowerShell/openssh-portable/blob/latestw_all/contrib/win32/win32compat/win32_usertoken_utils.c)（参照branchは可変であり、配布artifactの固定・照合を代替しない）
