@@ -137,6 +137,8 @@ request/responseは既存rescue-host-service/1 codecを使い、同じboot/chann
 nonceやframe hashの一致自体は認証ではない。native read capabilityの生成とprotected profileの供給は未接続で、製品入口は変えない。
 
 `auth_dispatch.go`のprivate adapterは、同じService/issuerへ取得前のBatchとCollectorを登録してから単回Startし、同Collectorのproof消費後だけ既存dispatcherへ渡す。
+Batchは準備時のissuer参照を不変に保持し、adapterへの変換時とServiceの登録lock内で同じ実issuerを照合する。不一致では起動枠・既存登録・callerの所有を変更しない。
+この参照照合は、privateな失効・回収callbackが同issuerを操作する証明ではない。callbackを生成する正規factoryとの構造的な束縛は未接続である。
 累積起動枠は失敗でも戻さず、実write完了を応答の受付と分ける。
 停止は失効を先行し、回収未確認なら元の専用worker/threadを保持する。Service側は有限な回収要求とackだけを待ち、別threadへnative回収を移さない。
 次要求は回収とworker終了の両ack後だけ受け付ける。fatalは固定分類を保持し、未確認回収を成功へ変換しない。
