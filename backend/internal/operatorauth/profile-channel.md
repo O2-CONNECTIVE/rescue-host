@@ -1,0 +1,5 @@
+# helper profileの内部frame案
+
+Serviceから同一launchのhelperへ一度だけ渡す内部JSONL。16KiB以内、UTF-8、末尾LF一つ、実EOFを配送層が確認してからdecodeする。JSON objectは全階層で重複・未知field拒否、型厳密。version `1`、type `helper-profile`。フィールド `launchId` は64桁lowercase hexの相関値で認証根拠にしない。`operator` は user、authentication（uint64 decimal string）、session/integrity/kind/level（uint32 decimal string）、restricted/appContainer（boolean）。`guestUser` は非空の固定guest SID。数値文字列はcanonicalな10進数。token projection自体は保護された正規operator token producerから固定し、観測対象payloadから作らない。operator/guest一致拒否、authentication/integrity非zero、kind=2、level=1または2、restricted/appContainer=false。callerが別途保持したlaunchIdと完全一致し、旧launchを拒否する。opaque識別子やframeの自己申告は認証でもprovisioningでもない。
+
+reader/writerの同期workerは開始前取消と開始直後取消をstickyに扱い、専用threadを実returnと取消側handshakeまで維持。cancel成功/NOT_FOUNDはjoinではない。親はreader複製close後にchildをresumeしてからwriterを進める。thread/handle/bufferの未確認回収は同じownerに残し、再承認せず有限予算で回収する。
