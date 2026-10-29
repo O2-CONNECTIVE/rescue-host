@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('callback済みでもGetMessage戻り未観測なら待機境界を失わない', () => {
+  const trace = fixture(['webview-enter', 'environment-reused', 'controller-api-start',
+    'controller-api-return', 'controller-callback']);
+  const report = classifyWryStartup({ ...trace, pumps: { ...trace.pumps,
+    controller: { entered: true, phase: 'get-message', iterations: 1, getCalls: 1,
+      getReturns: 0, dispatchCalls: 0, dispatchReturns: 0, lastUs: 350, invalid: false }
+  } });
+  assert.equal(report.phase, 'controller-wait-return-not-observed');
+  assert.equal(report.pumpHint, 'controller-get-message-return-not-observed');
+});
+
 void test('callback未観測でもdispatch入口後のreturn未観測を区別する', () => {
   const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
     'environment-callback', 'environment-wait-return', 'controller-api-start', 'controller-api-return']);
