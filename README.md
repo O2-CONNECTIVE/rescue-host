@@ -40,11 +40,11 @@ PCや監督サービスの再起動後は許可をすべて失効させ、再承
 GUI評価版の実機起動と表示は利用者から確認済みです。
 固定guest設定の保護Root読取と要求単位の検査leaseは[#147](https://github.com/O2-CONNECTIVE/rescue-host/pull/147)、確認から同issuerの単回発行・status・revokeまでのsource/fake経路は[#148](https://github.com/O2-CONNECTIVE/rescue-host/pull/148)で統合しました。
 同Endpointの検査leaseを入力分離前に保持するAPIは[#149](https://github.com/O2-CONNECTIVE/rescue-host/pull/149)で統合しました。
-main `d4cb12009cdd80786b26ca18c666a84e6b1f3f3e` のGo・Python・日本語検査は全7ジョブ成功しています。
+main `3b4a3ac75c1307071ad6c94f15f6a35330729d53` の[Go 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40969758285)・[Python 3OS](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40969758341)・[日本語検査](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40969758270)は全7ジョブ成功しています。
 発行経路の正例はprivate OS seamを置換したfixtureで、製品runtime providerは未登録、実LaunchとSSHは未接続です。
-未起動guestの準備は、明示入口から元ownerと実stager factoryへのsource配線を追加しました。正規認証policy producerは未構成で、実Windowsの製品入口は拒否を維持します。
+未起動guestの準備は、[#150](https://github.com/O2-CONNECTIVE/rescue-host/pull/150)で明示入口から元ownerと実stager factoryへのsource配線を追加しました。固定SID policyは保持RootからServiceへ供給済みですが、専用helperのtoken・同一launch証拠・保護sourceは未構成で、実Windowsの製品入口は取得前の拒否を維持します。
 承認主体は[方式B](docs/adr/0002-operator-sid-policy.md)を採用しました。指定Windowsユーザーの再ログイン後も新規承認資格はありますが、既存許可や接続を引き継ぎません。
-認証coreは固定SIDと実message主体を分離し、専用helper資源の未構成拒否を維持します。保持RootからServiceへの供給と、同一channelでのAuthId完全一致・別ログオンへの移譲拒否をsource/fakeで検証しました。
+[#151](https://github.com/O2-CONNECTIVE/rescue-host/pull/151)の認証coreは固定SIDと実message主体を分離し、専用helper資源の未構成拒否を維持します。[#152](https://github.com/O2-CONNECTIVE/rescue-host/pull/152)で保持RootからServiceへの供給と、同一channelでのAuthId完全一致・別ログオンへの移譲拒否をsource/fakeで検証しました。
 このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。
