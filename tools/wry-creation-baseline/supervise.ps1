@@ -1,6 +1,6 @@
 param([Parameter(Mandatory)][string]$ToolsDirectory, [Parameter(Mandatory)][string]$OutputDirectory,
     [Parameter(Mandatory)][string]$ApplicationPath, [Parameter(Mandatory)][string]$BuildManifest,
-    [Parameter(Mandatory)][ValidateSet('with-html', 'load-html')][string]$Mode,
+    [Parameter(Mandatory)][ValidateSet('with-html', 'load-html', 'blank-script')][string]$Mode,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')][string]$RunId)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

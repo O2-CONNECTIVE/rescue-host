@@ -28,11 +28,13 @@ try {
   const m = manifest as Record<string, unknown>, s = summary as Record<string, unknown>;
   if (m.schema !== 1 || m.kind !== 'direct-wry-controller-contrast' || m.featureTreeMatched !== true || m.distribution !== false
     || s.schema !== 1 || s.purpose !== 'diagnostic-only' || s.runId !== o.runId || s.sourceCommit !== m.sourceCommit || s.exeSha256 !== m.exeSha256) throw new Error();
+  if (s.firstMode !== undefined && s.firstMode !== 'with-html' && s.firstMode !== 'blank-script') throw new Error();
+  if (s.firstMode === 'blank-script' && (s.second !== 'not-started' || s.secondCleanup !== 'not-started')) throw new Error();
   const expected = { sourceCommit: m.sourceCommit, exeSha256: m.exeSha256, runId: s.runId };
   let first: unknown = null, second: unknown = null;
   if (s.cleanup === 'confirmed') first = await read(path.join(root, 'baseline-a-evidence/native-result.json'));
   if (s.secondCleanup === 'confirmed') second = await read(path.join(root, 'baseline-b-evidence/native-result.json'));
-  const result = await cleanupBaselineArms(root, expected, first, second);
+  const result = await cleanupBaselineArms(root, expected, first, second, s.firstMode === 'blank-script' ? 'blank-script' : 'with-html');
   if (s.second === 'not-started' && await absent(path.join(root, 'baseline-tools-b')) && await absent(path.join(root, 'baseline-b-evidence'))) result.second = 'not-started';
   const shared = await cleanupBaselineShared(root, result);
   let rootResult = 'unconfirmed';

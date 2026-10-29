@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
-import { runSequential } from './baseline-sequential.ts';
+import { runSequential, runPositiveControl } from './baseline-sequential.ts';
 import { executeOwnedProcess } from './baseline-process.ts';
 import { copyBaselineTools } from './baseline-tools-copy.ts';
 
@@ -20,7 +20,7 @@ async function invoke(supervisor: string, tools: string, output: string, exe: st
 let summaryPath: string | undefined;
 try {
   const { values: v } = parseArgs({ options: { toolsA: { type: 'string' }, toolsB: { type: 'string' }, outputA: { type: 'string' },
-    outputB: { type: 'string' }, exe: { type: 'string' }, manifest: { type: 'string' }, summary: { type: 'string' }, supervisor: { type: 'string' }, config: { type: 'string' } } });
+    outputB: { type: 'string' }, exe: { type: 'string' }, manifest: { type: 'string' }, summary: { type: 'string' }, supervisor: { type: 'string' }, config: { type: 'string' }, positive: { type: 'boolean', default: false } } });
   if (process.platform !== 'win32' || !v.toolsA || !v.toolsB || !v.outputA || !v.outputB || !v.exe || !v.manifest || !v.summary || !v.supervisor || !v.config) throw new Error();
   const runId = process.env.BASELINE_RUN_ID, parent = process.env.RUNNER_TEMP;
   if (!runId || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(runId) || !parent) throw new Error();
@@ -46,21 +46,25 @@ try {
     || typeof m.exeSha256 !== 'string' || await digest(v.exe) !== m.exeSha256
     || typeof c.tauriDriverVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(c.tauriDriverVersion)) throw new Error();
   const expected = { sourceCommit: m.sourceCommit, exeSha256: m.exeSha256, runId };
-  const result = await runSequential(async () => {
-    const outcome = await invoke(v.supervisor!, v.toolsA!, v.outputA!, v.exe!, v.manifest!, 'with-html', runId);
+  const firstMode = v.positive ? 'blank-script' : 'with-html';
+  const first = async () => {
+    const outcome = await invoke(v.supervisor!, v.toolsA!, v.outputA!, v.exe!, v.manifest!, firstMode, runId);
     let report: unknown = null;
     try { report = JSON.parse((await bounded(path.join(v.outputA!, 'native-result.json'), 65536)).toString('utf8')) as unknown; } catch { /* 欠測は後続停止。 */ }
     return { outcome, report };
-  }, async () => {
+  };
+  const second = async () => {
     await copyBaselineTools(v.toolsA!, v.toolsB!, c.tauriDriverVersion as string);
     const outcome = await invoke(v.supervisor!, v.toolsB!, v.outputB!, v.exe!, v.manifest!, 'load-html', runId);
     let report: unknown = null;
     try { report = JSON.parse((await bounded(path.join(v.outputB!, 'native-result.json'), 65536)).toString('utf8')) as unknown; } catch { /* 欠測は未確認。 */ }
     return { outcome, report };
-  }, expected);
-  await writeFile(v.summary, JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...expected, ...result }), { flag: 'wx' });
+  };
+  const result = v.positive ? await runPositiveControl(first, expected) : await runSequential(first, second, expected);
+  await writeFile(v.summary, JSON.stringify({ schema: 1, purpose: 'diagnostic-only', ...expected, firstMode, ...result }), { flag: 'wx' });
   console.log('BASELINE_SEQUENTIAL_RECORDED');
-  process.exitCode = result.first === 'passed' && result.second === 'passed' && result.secondCleanup === 'confirmed' ? 0 : 1;
+  process.exitCode = result.first === 'passed' && result.cleanup === 'confirmed'
+    && (v.positive ? result.second === 'not-started' : result.second === 'passed' && result.secondCleanup === 'confirmed') ? 0 : 1;
 } catch {
   if (summaryPath) {
     try { await writeFile(summaryPath, JSON.stringify({ schema: 1, purpose: 'diagnostic-only', outcome: 'incomplete' }), { flag: 'wx' }); }

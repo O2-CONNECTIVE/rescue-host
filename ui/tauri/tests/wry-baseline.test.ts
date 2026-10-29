@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { decideBaseline } from '../native-smoke/baseline-decision.ts';
 const collection = { schema: 1, kind: 'direct-wry-controller-contrast', productNativePass: false, fixedInputsVerified: true,
+  mode: 'with-html', runId: '12345678-1234-4234-8234-123456789abc',
   wryStartupFileClosed: true, sessionSucceeded: true, normalCloseVerified: true, driverStableThroughClose: true, forcedApp: false, forcedChildren: 0,
   ownerSetRecorded: true, observedChildren: 6, observedChildrenExited: true, appExited: true,
   driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
@@ -10,6 +11,11 @@ const wry = { diagnostic: 'complete', startup: { phase: 'webview-exit-guard-ok-o
 const session = { schema: 1, kind: 'direct-wry-controller-contrast', productNativePass: false,
   sessionOutcome: 'ok', failurePhase: 'complete',
   sessionCreated: true, documentChecked: true, browserVersion: '131.0.2903.86' };
+void test('blank正例の成功はHTML対照成功と区別する', () => {
+  const result = decideBaseline({ ...collection, mode: 'blank-script' }, wry, session);
+  assert.equal(result.contrastPassed, false);
+  assert.equal(result.outcome, 'positive-control-pass');
+});
 void test('直接Wryのsession・退出・通常closeは対照成功だけを返す', () => {
   const r = decideBaseline(collection, wry, session);
   assert.equal(r.contrastPassed, true);

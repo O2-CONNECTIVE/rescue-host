@@ -167,7 +167,7 @@ jobs:
           python -I -m unittest discover -s scripts/tests -p test_wry_baseline.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Push-Location ui/tauri
-          try { node --test tests/baseline-document.test.ts tests/baseline-navigation.test.ts tests/baseline-navigation-pairs.test.ts tests/baseline-sequential.test.ts tests/baseline-process.test.ts tests/baseline-tools-copy.test.ts tests/baseline-cleanup.test.ts tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
+          try { node --test tests/baseline-document.test.ts tests/baseline-blank-script.test.ts tests/baseline-navigation.test.ts tests/baseline-navigation-pairs.test.ts tests/baseline-sequential.test.ts tests/baseline-process.test.ts tests/baseline-tools-copy.test.ts tests/baseline-cleanup.test.ts tests/wry-baseline.test.ts tests/wry-baseline-cli.test.ts tests/wry-startup-files.test.ts; $code = $LASTEXITCODE } finally { Pop-Location }
           if ($code -ne 0) { exit $code }
           ./.github/tests/driver-trace-contract.ps1
       - name: Record fixed source and existing runtime only
@@ -248,7 +248,8 @@ jobs:
             if (-not (Test-Path "$out/native-result.json" -PathType Leaf)) { if ($arm.Name -eq 'a') { $result = 1 }; continue }
             node ui/tauri/native-smoke/inspect-wry-startup.ts --directory "$env:BASELINE_ROOT/$($arm.Tools)/baseline-trace" --provenance "$env:BASELINE_ROOT/wry-provenance.json" --exe $exe --source $env:STARTUP_SOURCE --collection "$out/native-result.json" > "$out/wry-startup-report.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
-            node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory $out --source $env:STARTUP_SOURCE --exe $exe --build "$env:BASELINE_ROOT/baseline-build.json" > "$out/contrast-decision.json"
+            $mode = if ($arm.Name -eq 'a') { 'with-html' } else { 'load-html' }
+            node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory $out --source $env:STARTUP_SOURCE --exe $exe --build "$env:BASELINE_ROOT/baseline-build.json" --mode $mode --runId $env:BASELINE_RUN_ID > "$out/contrast-decision.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
           }
           exit $result

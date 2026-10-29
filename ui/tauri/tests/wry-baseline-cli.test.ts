@@ -15,6 +15,7 @@ void test('対照CLIはsource/EXEを結び、改変と生の秘密fieldを返さ
     await writeFile(build, JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast', sourceCommit,
       exeSha256, featureTreeMatched: true, distribution: false }));
     const collection = { schema: 1, kind: 'direct-wry-controller-contrast', productNativePass: false, sourceCommit, exeSha256,
+      mode: 'with-html', runId: '12345678-1234-4234-8234-123456789abc',
       fixedInputsVerified: true, wryStartupFileClosed: true, sessionSucceeded: true, normalCloseVerified: true,
       driverStableThroughClose: true, forcedApp: false, forcedChildren: 0, ownerSetRecorded: true, observedChildren: 6,
       observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0, secret: 'PRIVATE_FIXTURE' };
@@ -24,11 +25,18 @@ void test('対照CLIはsource/EXEを結び、改変と生の秘密fieldを返さ
         events: [{ stage: 'controller-callback' }, { stage: 'controller-wait-return' }, { stage: 'webview-exit-ok' }] } }));
     await writeFile(path.join(folder, 'baseline-session.json'), JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast',
       productNativePass: false, sessionCreated: true, sessionOutcome: 'ok', failurePhase: 'complete', documentChecked: true, browserVersion: '131.0.2903.86' }));
-    const invoke = () => spawnSync(process.execPath, ['native-smoke/inspect-wry-baseline.ts', '--directory', folder,
-      '--exe', exe, '--build', build, '--source', sourceCommit], { cwd: new URL('..', import.meta.url), encoding: 'utf8', timeout: 5000 });
+    const invoke = (mode = 'with-html', runId = '12345678-1234-4234-8234-123456789abc') => spawnSync(process.execPath, ['native-smoke/inspect-wry-baseline.ts', '--directory', folder,
+      '--exe', exe, '--build', build, '--source', sourceCommit, '--mode', mode, '--runId', runId], { cwd: new URL('..', import.meta.url), encoding: 'utf8', timeout: 5000 });
     const good = invoke(); assert.equal(good.status, 0); assert.equal(good.stderr, '');
     const report = JSON.parse(good.stdout) as { outcome: string; productNativePass: boolean };
     assert.equal(report.outcome, 'contrast-pass'); assert.equal(report.productNativePass, false);
+    assert.equal(invoke('blank-script').status, 1);
+    assert.equal(invoke('with-html', '12345678-1234-4234-8234-123456789abd').status, 1);
+    await writeFile(path.join(folder, 'native-result.json'), JSON.stringify({ ...collection, mode: 'blank-script' }));
+    const positive = invoke('blank-script'); assert.equal(positive.status, 0);
+    const positiveReport = JSON.parse(positive.stdout) as { outcome: string; contrastPassed: boolean; positiveControlPassed: boolean };
+    assert.equal(positiveReport.outcome, 'positive-control-pass'); assert.equal(positiveReport.contrastPassed, false);
+    assert.equal(positiveReport.positiveControlPassed, true); assert.equal(invoke().status, 1);
     assert.equal(good.stdout.includes('PRIVATE_FIXTURE'), false); assert.equal(good.stdout.includes(folder), false);
     await writeFile(path.join(folder, 'native-result.json'), JSON.stringify({ ...collection, sourceCommit: 'b'.repeat(40) }));
     assert.equal(invoke().status, 1);

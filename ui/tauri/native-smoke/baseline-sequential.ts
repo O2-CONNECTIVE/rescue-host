@@ -1,5 +1,5 @@
 // 成功/失敗と別に、先行armが所有した資源の終了確認だけを後続条件とする。
-export function ownedCleanupConfirmed(value: unknown, expected: unknown, mode: 'with-html' | 'load-html'): boolean {
+export function ownedCleanupConfirmed(value: unknown, expected: unknown, mode: 'with-html' | 'load-html' | 'blank-script'): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   if (!expected || typeof expected !== 'object' || Array.isArray(expected)) return false;
   const v = value as Record<string, unknown>;
@@ -18,6 +18,12 @@ export function mayStartSecond(value: unknown, expected: unknown): boolean { ret
 type Outcome = 'passed' | 'failed' | 'timeout' | 'error';
 type First = { outcome: Outcome; report: unknown };
 type Second = { outcome: Outcome; report: unknown };
+export async function runPositiveControl(first: () => Promise<First>, expected: unknown) {
+  let a: First;
+  try { a = await first(); } catch { a = { outcome: 'error', report: null }; }
+  const clean = (a.outcome === 'passed' || a.outcome === 'failed') && ownedCleanupConfirmed(a.report, expected, 'blank-script');
+  return { first: a.outcome, second: 'not-started', cleanup: clean ? 'confirmed' : 'unconfirmed', secondCleanup: 'not-started' };
+}
 export async function runSequential(first: () => Promise<First>, second: () => Promise<Second>, expected: unknown) {
   let a: First;
   try { a = await first(); } catch { a = { outcome: 'error', report: null }; }

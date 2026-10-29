@@ -1,10 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mayStartSecond, ownedCleanupConfirmed, runSequential } from '../native-smoke/baseline-sequential.ts';
+import { mayStartSecond, ownedCleanupConfirmed, runSequential, runPositiveControl } from '../native-smoke/baseline-sequential.ts';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+
+void test('正例は一回だけ起動し未確認終了をcleanup成功にしない', async () => {
+  const expected = { sourceCommit: 'a'.repeat(40), exeSha256: 'b'.repeat(64), runId: '12345678-1234-4234-8234-123456789abc' };
+  const report = { schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true, mode: 'blank-script', ...expected,
+    ownerSetRecorded: true, observedChildren: 7, observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 };
+  let calls = 0;
+  const run = () => { calls++; return Promise.resolve({ outcome: 'failed' as const, report }); };
+  assert.deepEqual(await runPositiveControl(run, expected), { first: 'failed', second: 'not-started', cleanup: 'confirmed', secondCleanup: 'not-started' });
+  assert.equal(calls, 1);
+  assert.equal((await runPositiveControl(() => Promise.resolve({ outcome: 'timeout', report }), expected)).cleanup, 'unconfirmed');
+  assert.equal((await runPositiveControl(() => Promise.resolve({ outcome: 'failed', report: { ...report, mode: 'with-html' } }), expected)).cleanup, 'unconfirmed');
+});
 
 void test('先行armの合否と独立して所有資源の終了確認が揃う場合だけ後続を開始する', () => {
   const expected = { sourceCommit: 'a'.repeat(40), exeSha256: 'b'.repeat(64), runId: '12345678-1234-4234-8234-123456789abc' };

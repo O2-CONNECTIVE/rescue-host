@@ -6,6 +6,8 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
   const incomplete = { ...base, diagnostic: 'incomplete', outcome: 'inconclusive', nextAction: 'repair-observation' };
   if (!object(collection) || collection.schema !== 1 || collection.kind !== 'direct-wry-controller-contrast'
     || collection.productNativePass !== false || collection.fixedInputsVerified !== true
+    || typeof collection.mode !== 'string' || !['with-html', 'load-html', 'blank-script'].includes(collection.mode)
+    || typeof collection.runId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(collection.runId)
     || collection.wryStartupFileClosed !== true || !object(wry) || wry.diagnostic !== 'complete'
     || !object(wry.startup) || !Array.isArray(wry.startup.events) || !object(session) || session.schema !== 1
     || session.kind !== 'direct-wry-controller-contrast' || session.productNativePass !== false
@@ -21,7 +23,7 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     && Number.isSafeInteger(collection.observedChildren) && Number(collection.observedChildren) > 0
     && collection.observedChildrenExited === true && collection.appExited === true
     && collection.driversExited === true && collection.listenersAbsent === true;
-  const result = { ...base, diagnostic: 'complete', cleanupVerified };
+  const result = { ...base, diagnostic: 'complete', cleanupVerified, mode: collection.mode, runId: collection.runId };
   const stages = wry.startup.events.filter(object).map(e => e.stage);
   const exited = wry.startup.phase === 'webview-exit-guard-ok-observed' && stages.includes('controller-callback')
     && stages.includes('controller-wait-return') && stages.includes('webview-exit-ok');
@@ -29,6 +31,7 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     && session.kind === 'direct-wry-controller-contrast' && session.productNativePass === false
     && session.sessionCreated === true && session.documentChecked === true && session.browserVersion === '131.0.2903.86'
     && collection.normalCloseVerified === true && collection.driverStableThroughClose === true && collection.forcedApp === false && collection.forcedChildren === 0 && cleanupVerified) {
+    if (collection.mode === 'blank-script') return { ...result, positiveControlPassed: true, outcome: 'positive-control-pass', nextAction: 'inspect-navigation-fixture' };
     return { ...result, contrastPassed: true, outcome: 'contrast-pass', nextAction: 'compare-context-settings' };
   }
   if (object(session) && session.sessionCreated === true && session.browserVersion !== '131.0.2903.86') {
