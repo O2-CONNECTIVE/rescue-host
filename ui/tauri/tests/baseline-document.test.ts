@@ -23,6 +23,8 @@ void test('同一応答の要素不在と文字列不一致と読込状態を匿
   const unknown = inspectBaselineDocument({ ...base, marker: 4, readyState: 'PRIVATE_FIXTURE' });
   assert.equal(unknown.markerDetail, 'unknown');
   assert.equal(unknown.readyState, 'unknown');
+  assert.equal(inspectBaselineDocument({ ...base, marker: 'PRIVATE_FIXTURE', markerPresent: false }).markerDetail, 'unknown');
+  assert.equal(inspectBaselineDocument({ ...base, marker: null, markerPresent: true }).markerDetail, 'unknown');
 });
 
 void test('同じ応答の各項目を固定値との一致だけに変換する', () => {
