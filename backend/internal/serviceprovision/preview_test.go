@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -62,12 +63,17 @@ func TestProtectedRecordResolvesExistingPolicyKeysAndFrozenMaximum(t *testing.T)
 	if err = json.Unmarshal(raw, &fixture); err != nil {
 		t.Fatal(err)
 	}
-	if hex.EncodeToString(descriptor.ConfigDigest[:]) != fixture.ConfigDigest || hex.EncodeToString(descriptor.PolicyDigest[:]) != fixture.PolicyDigest || hex.EncodeToString(descriptor.KeySetDigest[:]) != fixture.KeySetDigest || descriptor.PolicyMode != fixture.PolicyMode || len(descriptor.AllowedKeyFingerprints) != 1 || descriptor.AllowedKeyFingerprints[0] != fixture.AllowedKeyFingerprints[0] || descriptor.LeaseCeiling != time.Second || scope.rechecks != 1 {
+	maximum, maxErr := strconv.ParseInt(fixture.MaximumDurationNs, 10, 64)
+	lease, leaseErr := strconv.ParseInt(fixture.LeaseCeilingNs, 10, 64)
+	if maxErr != nil || leaseErr != nil || maximum <= 0 || lease <= 0 {
+		t.Fatal("shared duration vector invalid")
+	}
+	if hex.EncodeToString(descriptor.ConfigDigest[:]) != fixture.ConfigDigest || hex.EncodeToString(descriptor.PolicyDigest[:]) != fixture.PolicyDigest || hex.EncodeToString(descriptor.KeySetDigest[:]) != fixture.KeySetDigest || descriptor.PolicyMode != fixture.PolicyMode || len(descriptor.AllowedKeyFingerprints) != 1 || descriptor.AllowedKeyFingerprints[0] != fixture.AllowedKeyFingerprints[0] || descriptor.LeaseCeiling != time.Duration(lease) || scope.rechecks != 1 {
 		t.Fatal("protected record resolution differs from shared vector")
 	}
 	now := time.Date(2026, 1, 1, 0, 0, 0, 123456789, time.UTC)
 	fixed, _, err := resolvePreviewRecord([]byte(validJSON), Subject{ProcessUserSID: rootUserSID, ServiceSID: rootServiceSID, ServiceName: "SyntheticService"}, now)
-	if err != nil || !fixed.HardDeadline.Equal(now.Add(20*time.Second)) {
+	if err != nil || !fixed.HardDeadline.Equal(now.Add(time.Duration(maximum))) {
 		t.Fatal("maximum deadline was not frozen at resolution", err)
 	}
 	descriptor.AllowedKeyFingerprints[0] = "caller changed"
