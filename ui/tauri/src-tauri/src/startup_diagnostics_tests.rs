@@ -30,6 +30,11 @@ fn fixed_stage_publication_preserves_partial_and_finished_windows() {
         assert_eq!(value["dropped"], json!(0));
         assert_eq!(value["sealed"], json!(true));
         assert_eq!(value["inFlight"], json!(0));
+        assert_eq!(value["variant"], json!("host-startup-stage-2"));
+        assert!(
+            value["windowEndUs"].as_u64().unwrap()
+                >= events.last().unwrap()["elapsedUs"].as_u64().unwrap()
+        );
         assert_eq!(events[0]["stage"], json!("setup-enter"));
         for (index, event) in events.iter().enumerate() {
             assert_eq!(event["seq"], json!(index + 1));
