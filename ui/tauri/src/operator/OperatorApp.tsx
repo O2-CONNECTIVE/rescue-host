@@ -37,6 +37,7 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
   function closeWindow() { focusAfterAction.current = 'tray-heading'; setDetailsOpen(false); controller.current?.minimizeToTray(); }
   const view = status[state.phase];
   const StatusIcon = view.icon;
+  const title = state.phase === 'failed' && state.termination === 'not_started' ? '承認されませんでした（モック）' : view.title;
   const description = state.phase === 'failed' && state.termination === 'not_started' ? '承認されませんでした。入力を確認してやり直せます。'
     : state.phase === 'unconfirmed' && !state.validSession ? '新しい接続は始められません。接続先へ終了状況を確認してください。'
     : state.phase === 'unconfirmed' && state.checkingStatus ? '同じ接続の状態を確認しています。終了はまだ未確認です。' : view.text;
@@ -45,7 +46,7 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
       <p className="operator-prototype-label">操作プロトタイプ・実接続なし</p></div><h1>サポート接続を準備する</h1></header>
     <section className={`status${view.role ? ` status--${view.role}` : ''}`} role="status" aria-live="polite" aria-atomic="true">
       <span className={`status__icon${state.phase === 'waiting' || state.phase === 'connecting' ? ' icon-spin' : ''}`}><StatusIcon className="icon" aria-hidden="true" focusable="false" /></span>
-      <div className="status__content"><h2 id="operator-status-title" tabIndex={-1}>{view.title}</h2><p id="operator-state-description">{description}</p></div></section>
+      <div className="status__content"><h2 id="operator-status-title" tabIndex={-1}>{title}</h2><p id="operator-state-description">{description}</p></div></section>
     <section aria-label="接続の操作">{state.visibility === 'tray' ? <Card><h2 id="tray-heading" tabIndex={-1}>トレイ格納中（モック）</h2>
       <p>接続状態を維持したまま、ウィンドウだけを隠す体験です。OSのトレイには格納していません。</p>
       <Button onClick={() => { focusAfterAction.current = state.sample ? 'review-heading' : 'sample-input'; controller.current?.restoreWindow(); }}>ウィンドウを戻す（モック）</Button>
