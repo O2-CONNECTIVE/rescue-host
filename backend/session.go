@@ -187,8 +187,45 @@ func (s *Session) Ready(id Identity) error {
 func (s *Session) Activate(id Identity) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.accepted != nil {
+		return ErrNotAccepted
+	}
 	if err := s.authority.Transition(id, lease.Ready, lease.Active); err != nil {
 		return err
+	}
+	close(s.activated)
+	return nil
+}
+
+// ActivateForStart は受理開始と開始確定を同じ Session の lock 下で行う。
+// 確定点前の取消や期限到達は失効し、確定後は呼出側が成功として扱う。
+func (s *Session) ActivateForStart(ctx context.Context, id Identity, hardDeadline time.Time) error {
+	if s == nil || s.authority == nil || ctx == nil || hardDeadline.IsZero() {
+		return ErrInvalidConfig
+	}
+	requestDeadline, ok := ctx.Deadline()
+	if !ok {
+		return ErrInvalidConfig
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.accepted != nil {
+		sourceDeadline, ok := s.accepted.ctx.Deadline()
+		if !ok || hardDeadline.After(sourceDeadline) || s.accepted.ctx.Err() != nil {
+			_ = s.authority.Revoke(id)
+			return ErrNotAccepted
+		}
+	}
+	if s.closing || ctx.Err() != nil || !time.Now().Before(requestDeadline) || !time.Now().Before(hardDeadline) {
+		_ = s.authority.Revoke(id)
+		return ErrNotAccepted
+	}
+	if err := s.authority.Transition(id, lease.Ready, lease.Active); err != nil {
+		return err
+	}
+	if ctx.Err() != nil || !time.Now().Before(requestDeadline) || !time.Now().Before(hardDeadline) || (s.accepted != nil && s.accepted.ctx.Err() != nil) {
+		_ = s.authority.Revoke(id)
+		return ErrNotAccepted
 	}
 	close(s.activated)
 	return nil

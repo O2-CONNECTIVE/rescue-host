@@ -93,6 +93,7 @@ func NewPrepared(s *backend.Session, grant supervisor.ProvisionedGrant, closeTim
 
 // Start は既定constructorでは拒否する。保護bootstrapで準備した同じSessionだけを
 // Ready→Activateへ進め、失敗/取消後の再試行や復活は許可しない。
+// Sessionの確定点以降は開始成功とし、応答失敗時の停止・回収は別に確認する。
 func (c *Coordinator) Start(ctx context.Context, id backend.Identity) error {
 	if c == nil {
 		return ErrUnavailable
@@ -117,9 +118,9 @@ func (c *Coordinator) Start(ctx context.Context, id backend.Identity) error {
 	c.started = true
 	active, ok := c.session.(interface {
 		Ready(backend.Identity) error
-		Activate(backend.Identity) error
+		ActivateForStart(context.Context, backend.Identity, time.Time) error
 	})
-	if !ok || !time.Now().Before(c.deadline) || ctx.Err() != nil || active.Ready(id) != nil || !time.Now().Before(c.deadline) || ctx.Err() != nil || active.Activate(id) != nil || !time.Now().Before(c.deadline) || ctx.Err() != nil {
+	if !ok || !time.Now().Before(c.deadline) || ctx.Err() != nil || active.Ready(id) != nil || active.ActivateForStart(ctx, id, c.deadline) != nil {
 		_ = c.session.Revoke(id)
 		return ErrUnavailable
 	}

@@ -52,10 +52,129 @@ func acceptedTestSession(t *testing.T) (*Session, Config) {
 	return s, c
 }
 
+func acceptedActivate(s *Session, id Identity) error {
+	deadline := time.Now().Add(time.Second)
+	if s.accepted != nil {
+		deadline, _ = s.accepted.ctx.Deadline()
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	return s.ActivateForStart(ctx, id, deadline)
+}
+
 func TestAcceptedTransportRejectsUninitializedSession(t *testing.T) {
 	source := newAcceptedMemorySource()
 	if err := (&Session{}).AttachAcceptedSource(source, time.Now().Add(time.Second), time.Second); !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("uninitialized session: got %v, want ErrInvalidConfig", err)
+	}
+}
+
+func TestAcceptedTransportRejectsDirectActivation(t *testing.T) {
+	s, c := acceptedTestSession(t)
+	source := newAcceptedMemorySource()
+	if err := s.AttachAcceptedSource(source, time.Now().Add(time.Second), time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(c.Identity); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Activate(c.Identity); err == nil {
+		t.Fatal("attached source bypassed coordinated start")
+	}
+	select {
+	case <-source.entered:
+		t.Fatal("source accepted before coordinated start")
+	default:
+	}
+}
+
+type cancelDuringStart struct {
+	context.Context
+	cancel context.CancelFunc
+	once   sync.Once
+}
+
+func (c *cancelDuringStart) Err() error {
+	err := c.Context.Err()
+	if err == nil {
+		c.once.Do(c.cancel)
+	}
+	return err
+}
+
+func TestAcceptedTransportCanceledAtStartDoesNotAccept(t *testing.T) {
+	s, config := acceptedTestSession(t)
+	source := newAcceptedMemorySource()
+	deadline := time.Now().Add(time.Second)
+	if err := s.AttachAcceptedSource(source, deadline, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(config.Identity); err != nil {
+		t.Fatal(err)
+	}
+	base, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	ctx := &cancelDuringStart{Context: base, cancel: cancel}
+	if err := s.ActivateForStart(ctx, config.Identity, deadline); err == nil {
+		t.Fatal("canceled start succeeded")
+	}
+	if state := s.Snapshot().State; state == "active" {
+		t.Fatal("canceled start left authority active")
+	}
+	select {
+	case <-source.entered:
+		t.Fatal("canceled start accepted a connection")
+	default:
+	}
+}
+
+func TestAcceptedTransportRejectsStartDeadlineBeyondSource(t *testing.T) {
+	s, config := acceptedTestSession(t)
+	source := newAcceptedMemorySource()
+	sourceDeadline := time.Now().Add(time.Second)
+	if err := s.AttachAcceptedSource(source, sourceDeadline, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(config.Identity); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), sourceDeadline.Add(time.Second))
+	defer cancel()
+	if err := s.ActivateForStart(ctx, config.Identity, sourceDeadline.Add(time.Second)); err == nil {
+		t.Fatal("start exceeded the source deadline")
+	}
+	select {
+	case <-source.entered:
+		t.Fatal("source accepted beyond its approved deadline")
+	default:
+	}
+}
+
+type delayedDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c delayedDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func TestAcceptedTransportRejectsElapsedRequestDeadlineBeforeTimerSignal(t *testing.T) {
+	s, config := acceptedTestSession(t)
+	source := newAcceptedMemorySource()
+	deadline := time.Now().Add(time.Second)
+	if err := s.AttachAcceptedSource(source, deadline, time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Ready(config.Identity); err != nil {
+		t.Fatal(err)
+	}
+	ctx := delayedDeadlineContext{Context: context.Background(), deadline: time.Now().Add(-time.Second)}
+	if err := s.ActivateForStart(ctx, config.Identity, deadline); err == nil {
+		t.Fatal("elapsed request deadline was accepted")
+	}
+	select {
+	case <-source.entered:
+		t.Fatal("source accepted after request deadline")
+	default:
 	}
 }
 
@@ -74,7 +193,7 @@ func TestAcceptedTransportWaitsForActualSessionActivation(t *testing.T) {
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -126,7 +245,7 @@ func TestAcceptedTransportPostTransferSentinelCannotImplyCallerOwnership(t *test
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	conn := newAcceptedMemoryConn()
@@ -155,7 +274,7 @@ func TestAcceptedTransportDeliversRepeatedConnectionsToSameSessionBeforeHandshak
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	for n := 0; n < 2; n++ {
@@ -197,7 +316,7 @@ func TestAcceptedTransportCapacityIncludesTransferredClosePending(t *testing.T) 
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	gate := make(chan struct{})
@@ -264,7 +383,7 @@ func TestAcceptedTransportLateAcceptCompletionKeepsPartialConnectionOwned(t *tes
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -323,7 +442,7 @@ func TestAcceptedTransportFailedRejectedCloseRetainsUntilSameOwnerRetry(t *testi
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -359,7 +478,7 @@ func TestAcceptedTransportFailedSourceCloseNeverTerminatesRawSession(t *testing.
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	<-source.entered
@@ -390,7 +509,7 @@ func TestAcceptedTransportDuplicateOrLateAttachLeavesCallerOwnership(t *testing.
 				}
 			}
 			if stage == "active" {
-				if err := s.Activate(c.Identity); err != nil {
+				if err := acceptedActivate(s, c.Identity); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -433,7 +552,7 @@ func TestAcceptedTransportHardDeadlineClosesSourceIndependentlyOfPendingAccept(t
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -498,7 +617,7 @@ func TestAcceptedTransportLateNilAfterOwnCleanupBudgetNeedsFreshConfirmation(t *
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	outer, end := context.WithTimeout(context.Background(), time.Second)
@@ -547,7 +666,7 @@ func TestAcceptedTransportReservedCapacityAlsoBoundsDirectServe(t *testing.T) {
 	if err := s.Ready(c.Identity); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.Activate(c.Identity); err != nil {
+	if err := acceptedActivate(s, c.Identity); err != nil {
 		t.Fatal(err)
 	}
 	select {
