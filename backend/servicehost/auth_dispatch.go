@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"errors"
-	"runtime"
 	"sync"
 	"time"
 
@@ -28,6 +27,7 @@ type serviceAuthAdapter struct {
 // Production operations always wrap a concrete prepared Batch and its exact
 // Collector. Only package tests replace this private operation seam.
 type serviceAuthBatchOps struct {
+	concrete  *operatorauth.Batch
 	issuer    *ephemeral.Issuer
 	owner     *serviceauthowner.Owner
 	collector *operatorauth.Collector
@@ -51,23 +51,27 @@ func nativeServiceAuthBatch(batch *operatorauth.Batch, issuer *ephemeral.Issuer,
 		return serviceAuthBatchOps{}, ErrProvisioningUnconfigured
 	}
 	collector := batch.Collector()
-	return serviceAuthBatchOps{issuer: issuer, owner: owner, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
+	return serviceAuthBatchOps{concrete: batch, issuer: issuer, owner: owner, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
 }
 
 type serviceAuthRequest struct {
-	adapter                  *serviceAuthAdapter
-	issuer                   *ephemeral.Issuer
-	batch                    serviceAuthBatchOps
-	request, worker          context.Context
-	cancel                   context.CancelFunc
-	done                     chan struct{}
-	ownerDone                chan struct{}
-	cleanup                  chan serviceCleanupRequest
-	fatal                    error
-	finished, armed, cleaned bool // Service.mu
-	digest                   [32]byte
-	ticket                   *authenticatedReadTicket
-	closeGate                sync.Mutex
+	adapter                                              *serviceAuthAdapter
+	issuer                                               *ephemeral.Issuer
+	owner                                                *serviceauthowner.Owner
+	endpointExchange                                     bool // ownership path, never a readiness permit
+	endpoint                                             *serviceAuthEndpoint
+	ownerRunning, finalizing, batchConsumed, batchClosed bool // Service.mu
+	batch                                                serviceAuthBatchOps
+	request, worker                                      context.Context
+	cancel                                               context.CancelFunc
+	done                                                 chan struct{}
+	ownerDone                                            chan struct{}
+	cleanup                                              chan serviceCleanupRequest
+	fatal                                                error
+	finished, armed, cleaned                             bool // Service.mu
+	digest                                               [32]byte
+	ticket                                               *authenticatedReadTicket
+	closeGate                                            sync.Mutex
 }
 
 func newServiceAuthAdapter(s *Service, profile serviceDispatchProfile, launchLimit uint64) (*serviceAuthAdapter, error) {
@@ -89,13 +93,13 @@ func newServiceAuthAdapter(s *Service, profile serviceDispatchProfile, launchLim
 // A non-nil request is the ownership handoff. Rejection leaves the prepared
 // Batch with its caller, which must retain/close it; it has never been started.
 func (a *serviceAuthAdapter) register(ctx context.Context, batch serviceAuthBatchOps) (*serviceAuthRequest, error) {
-	if a == nil || a.service == nil || !authBudget(ctx) || batch.collector == nil || batch.start == nil || batch.collect == nil || batch.consume == nil || batch.close == nil {
+	if a == nil || a.service == nil || !authBudget(ctx) || !authBatchOperationsValid(batch) {
 		return nil, ErrProvisioningRejected
 	}
 	s := a.service
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.auth != a || s.dispatch != a.dispatch || s.state != Running || s.stopping || s.issuer == nil || !s.authWriter.OpenLocked() || !s.authWriter.MatchesLocked(batch.owner, batch.issuer) || batch.owner != s.authOwner || batch.issuer != s.issuer || a.attempts >= a.limit || !a.previousAcknowledgedLocked() {
+	if !a.canReserveLocked(ctx) || !a.matchesBatchLocked(batch) {
 		return nil, ErrProvisioningRejected
 	}
 	if _, seen := a.seen[batch.collector]; seen {
@@ -104,17 +108,19 @@ func (a *serviceAuthAdapter) register(ctx context.Context, batch serviceAuthBatc
 	if !authBudget(ctx) {
 		return nil, ErrProvisioningRejected
 	}
-	worker, cancel := context.WithCancel(ctx)
-	r := &serviceAuthRequest{adapter: a, issuer: s.issuer, batch: batch, request: ctx, worker: worker, cancel: cancel, done: make(chan struct{}), ownerDone: make(chan struct{}), cleanup: make(chan serviceCleanupRequest)}
-	a.attempts++
-	a.seen[batch.collector] = struct{}{}
-	a.active = r
+	r := a.reserveLocked(ctx)
+	a.retainBatchLocked(r, batch)
 	return r, nil
 }
 
 func (a *serviceAuthAdapter) previousAcknowledgedLocked() bool {
 	if a.active == nil {
 		return true
+	}
+	// Fresh SCM witness and Native SoleInput provenance are not connected yet.
+	// Endpoint cleanup alone must never authorize another physical exchange.
+	if a.active.endpointExchange {
+		return false
 	}
 	if !a.active.finished {
 		return false
@@ -149,53 +155,16 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 	if err != nil {
 		return err
 	}
-	// This caller is the dedicated owner. Its scope must already belong to this
-	// goroutine/thread; preparation cannot migrate a ServiceScope here. Retain
-	// this thread through every unknown cleanup and never unlock it after fatal.
-	// The caller must then end its dedicated goroutine, never return it to a
-	// reusable request pool. The unconfigured native factory must enforce that
-	// scope/thread lifetime before it can call this currently private path.
-	runtime.LockOSThread()
-	defer func() {
-		if recover() != nil {
-			result = ErrRuntimeUnconfirmed
-		}
-		if result != nil {
-			a.service.stopFor(result)
-		}
-		if result == nil {
-			a.service.mu.Lock()
-			r.cleaned = true
-			a.service.mu.Unlock()
-			r.finish()
-		} else if !authFatal(result) {
-			cleanup, cancel := context.WithTimeout(context.Background(), a.service.cfg.Budgets.Cleanup)
-			closeErr := r.close(cleanup)
-			cancel()
-			if closeErr == nil {
-				r.finish()
-			} else {
-				result = errors.Join(result, closeErr)
-				if !authFatal(closeErr) {
-					result = errors.Join(result, r.awaitCleanup())
-				}
-			}
-		}
-		a.service.mu.Lock()
-		if authFatal(result) {
-			r.fatal = authFailure(result, ErrRuntimeUnconfirmed)
-		}
-		fatal := r.fatal
-		a.service.mu.Unlock()
-		if fatal != nil {
-			a.service.stopFor(fatal)
-		}
-		r.cancel()
-		if !authFatal(result) {
-			runtime.UnlockOSThread()
-		}
-		close(r.ownerDone)
-	}()
+	return r.runOwner(func() error { return r.exchangeBody(write) })
+}
+
+func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) error) error {
+	// Typed SoleInput/Batch source matching and fresh SCM witness are not wired.
+	// Merely attaching an input pointer must not open the Endpoint Start path.
+	if r.endpointExchange {
+		return ErrProvisioningUnconfigured
+	}
+	a, batch := r.adapter, r.batch
 	if err := batch.start(r.worker); err != nil {
 		return authFailure(err, ErrProvisioningRejected)
 	}
@@ -222,6 +191,7 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 		s.mu.Unlock()
 		return authFailure(err, ErrProvisioningRejected)
 	}
+	r.batchConsumed = true
 	r.digest = sha256.Sum256(frame)
 	r.ticket = &authenticatedReadTicket{marker: 1}
 	r.armed = true
@@ -280,19 +250,7 @@ func (r *serviceAuthRequest) close(ctx context.Context) (result error) {
 			result = ErrRuntimeUnconfirmed
 		}
 	}()
-	r.adapter.service.mu.Lock()
-	cleaned := r.cleaned
-	r.adapter.service.mu.Unlock()
-	if cleaned {
-		return nil
-	}
-	if err := r.batch.close(ctx); err != nil || !authBudget(ctx) {
-		return authFailure(err, ErrRuntimeUnconfirmed)
-	}
-	r.adapter.service.mu.Lock()
-	r.cleaned = true
-	r.adapter.service.mu.Unlock()
-	return nil
+	return r.closeOwned(ctx)
 }
 
 // Only the original exchange worker invokes Batch.Close. SCM may request a
