@@ -158,3 +158,94 @@ func TestReportExpiredCleanupRetainsUnclosedHandles(t *testing.T) {
 		t.Fatal("same owner failed to recover retained handles")
 	}
 }
+
+type panicOpenReport struct{ reportFake }
+
+func (*panicOpenReport) open(string) (uintptr, error) { panic("synthetic open fault") }
+func TestReportAcquisitionPanicReturnsPartialOwner(t *testing.T) {
+	k := &panicOpenReport{}
+	var p *reportPair
+	var err error
+	func() {
+		defer func() {
+			if recover() != nil {
+				err = ErrUnconfirmed
+			}
+		}()
+		p, err = newReportPair(reportContext(t), reportSetup(), k)
+	}()
+	if p == nil || !errors.Is(err, ErrUnconfirmed) {
+		t.Fatalf("partial owner lost: pair=%v err=%v", p, err)
+	}
+	if err = p.close(reportContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	if len(k.closed) != 1 || k.closed[0] != 11 {
+		t.Fatal("partial reader not reclaimed", k.closed)
+	}
+}
+
+type blockingReportOp struct {
+	once             sync.Once
+	entered, release chan struct{}
+}
+
+func (o *blockingReportOp) poll() (bool, uint32, error) {
+	o.once.Do(func() { close(o.entered); <-o.release })
+	return true, 0, errReportBrokenPipe
+}
+func (*blockingReportOp) cancel() error    { return nil }
+func (*blockingReportOp) releaseOp() error { return nil }
+
+type blockingReportOperation struct{ op *blockingReportOp }
+
+func (o blockingReportOperation) poll() (bool, uint32, error) { return o.op.poll() }
+func (o blockingReportOperation) cancel() error               { return o.op.cancel() }
+func (o blockingReportOperation) release() error              { return o.op.releaseOp() }
+
+type blockingReportKernel struct {
+	reportFake
+	op *blockingReportOp
+}
+
+func (k *blockingReportKernel) start(kind reportKind, h uintptr, b []byte) (reportOperation, error) {
+	if kind == reportRead {
+		return blockingReportOperation{k.op}, nil
+	}
+	return k.reportFake.start(kind, h, b)
+}
+func TestReportCloseDoesNotWaitPastDeadlineBehindPoll(t *testing.T) {
+	k := &blockingReportKernel{op: &blockingReportOp{entered: make(chan struct{}), release: make(chan struct{})}}
+	p, err := newReportPair(reportContext(t), reportSetup(), k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = p.releaseWriter(reportContext(t)); err != nil {
+		t.Fatal(err)
+	}
+	readCtx := reportContext(t)
+	drained := make(chan struct{})
+	go func() { _, _ = p.drain(readCtx); close(drained) }()
+	<-k.op.entered
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- p.close(ctx) }()
+	blocked := false
+	select {
+	case err = <-done:
+	case <-time.After(100 * time.Millisecond):
+		blocked = true
+	}
+	close(k.op.release)
+	if blocked {
+		err = <-done
+	}
+	<-drained
+	if blocked || !errors.Is(err, ErrUnconfirmed) {
+		t.Fatalf("bounded Close blocked=%v error=%v", blocked, err)
+	}
+	if err = p.close(reportContext(t)); err != nil {
+		t.Fatal(err)
+	}
+}

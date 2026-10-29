@@ -16,7 +16,10 @@ type reportOwnedIO struct {
 }
 
 func (o *reportOwnedIO) step(cancel bool) (bool, uint32, error) {
-	o.mu.Lock()
+	// 他callerの停止中pollに、cleanup callerを無期限に並ばせない。
+	if !o.mu.TryLock() {
+		return false, 0, ErrUnconfirmed
+	}
 	defer o.mu.Unlock()
 	if cancel && !o.done && !o.cancelled {
 		o.cancelled = true

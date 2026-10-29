@@ -383,3 +383,36 @@ func TestHelperTerminateRejectsContendedOwnerImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHelperLaunchPanicRetainsPartialOwner(t *testing.T) {
+	ctx, cancel, s, k := launchFixture()
+	defer cancel()
+	k.after = func(step string) {
+		if step == "inspect" {
+			panic("synthetic query fault")
+		}
+	}
+	var child *helperChild
+	var err error
+	func() {
+		defer func() {
+			if recover() != nil {
+				err = ErrUnconfirmed
+			}
+		}()
+		child, err = startHelper(ctx, s, k)
+	}()
+	if child == nil || !errors.Is(err, ErrUnconfirmed) {
+		t.Fatalf("partial owner lost: child=%v err=%v", child, err)
+	}
+	if child.process != 12 || child.thread != 13 || child.job != 11 || child.image != 10 {
+		t.Fatal("partial references lost")
+	}
+	k.after = nil
+	if err = child.terminate(); err != nil {
+		t.Fatal(err)
+	}
+	if err = child.close(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

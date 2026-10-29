@@ -70,11 +70,18 @@ func (s nativeLaunchSpec) valid() bool {
 
 // startHelper returns a suspended, assigned child. The outer owner must release
 // its report writer and unwanted read copies before calling resume.
-func startHelper(ctx context.Context, s nativeLaunchSpec, k helperLaunchKernel) (*helperChild, error) {
+func startHelper(ctx context.Context, s nativeLaunchSpec, k helperLaunchKernel) (child *helperChild, result error) {
 	if !finite(ctx) || !s.valid() || k == nil {
 		return nil, ErrDenied
 	}
 	c := &helperChild{kernel: k, spec: s}
+	// 取得後のpanicでも元の参照を外側ownerへ返す。回収済みとは扱わない。
+	defer func() {
+		if recover() != nil {
+			child = c
+			result = ErrUnconfirmed
+		}
+	}()
 	fail := func(err error) (*helperChild, error) {
 		cleanup, cancel := context.WithTimeout(context.Background(), s.cleanup)
 		defer cancel()

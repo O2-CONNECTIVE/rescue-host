@@ -40,7 +40,9 @@ func (o *reportOwner) run(ctx context.Context, kind reportKind, h uintptr, b []b
 }
 func (o *reportOwner) unresolved() bool {
 	for _, op := range o.pending {
-		op.mu.Lock()
+		if !op.mu.TryLock() {
+			return true
+		}
 		done := op.released
 		op.mu.Unlock()
 		if !done {

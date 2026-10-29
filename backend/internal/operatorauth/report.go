@@ -94,6 +94,10 @@ func newReportPair(ctx context.Context, s reportConfig, k reportKernel) (p *repo
 	}
 	p = &reportPair{o: reportOwner{api: k, budget: s.cleanup}}
 	defer func() {
+		if recover() != nil {
+			err = ErrUnconfirmed
+			return
+		}
 		if err != nil {
 			if e := p.close(ctx); e != nil {
 				err = errors.Join(err, e)
