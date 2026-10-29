@@ -2,6 +2,25 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('登録のエラー帰還とpumpの終端が矛盾する証跡を拒否する', () => {
+  const trace = returnedScriptFixture();
+  assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts, result: 'error' } }).phase,
+    'diagnostic-incomplete');
+});
+
+function returnedScriptFixture() {
+  const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
+    'environment-callback', 'environment-wait-return', 'controller-api-start',
+    'controller-api-return', 'controller-callback', 'controller-wait-return', 'init-enter']);
+  return { ...trace, windowEndUs: 2000,
+    scripts: { calls: 1, apiReturns: 1, callbacks: 1, sends: 1, returns: 1, pumpOrdinal: 1,
+      startedUs: 920, apiStartUs: 930, apiReturnUs: 1000, callbackUs: 1100, sentUs: 1110,
+      returnUs: 1400, result: 'ok', callbackOk: true, invalid: false },
+    pumps: { ...trace.pumps, script: { entered: true, phase: 'receiver-ready', iterations: 1,
+      getCalls: 0, getReturns: 0, dispatchCalls: 0, dispatchReturns: 0, lastUs: 1300, invalid: false } }
+  };
+}
+
 void test('不正な登録結果objectを文字列化せず不完全として拒否する', () => {
   const trace = fixture(['webview-enter']);
   assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts,
