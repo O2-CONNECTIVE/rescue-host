@@ -2,8 +2,15 @@
 
 package operatorauth
 
-import "github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+import (
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
+)
 
 func prepareNativeEndpointProfileBatch(nativeBatchSpec, *bootstrapauth.Factory, uintptr, batchOwner, profileProviderPolicy) (*nativeBatch, error) {
+	return nil, ErrUnconfigured
+}
+
+func prepareNativeSoleInputProfileBatch(nativeBatchSpec, *serviceready.SoleInput, *bootstrapauth.Factory, uintptr, batchOwner, profileProviderPolicy) (*nativeBatch, error) {
 	return nil, ErrUnconfigured
 }

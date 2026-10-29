@@ -44,9 +44,10 @@ func prepareNativeBatch(s nativeBatchSpec, factory *bootstrapauth.Factory, servi
 		return nil, err
 	}
 	return prepareBatch(s, owner, nativeBatchOps{
-		scope:  scope,
-		parent: func(context.Context) error { return nil },
-		clean:  func() error { return nil },
+		scope:         scope,
+		moveSoleInput: moveNativeSoleInput,
+		parent:        func(context.Context) error { return nil },
+		clean:         func() error { return nil },
 		newProfile: func(c context.Context) (batchProfile, error) {
 			p, e := newNativeProfilePipe(c, s.producer)
 			if p == nil {
