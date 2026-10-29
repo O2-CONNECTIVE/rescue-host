@@ -52,7 +52,7 @@ PRODUCT_FILES = {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
         'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go',
-        'helper_entry.go', 'helper_entry_owner.go'},
+        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go'},
 }
 
 
