@@ -78,3 +78,12 @@ void test('不整合counter・過大counter・旧版・未知pump情報から局
   }
   assert.equal(classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-1' }).phase, 'diagnostic-incomplete');
 });
+
+void test('callback入口より古いreceiver-ready時刻を両scopeで拒否する', () => {
+  const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return', 'environment-callback',
+    'environment-wait-return', 'controller-api-start', 'controller-api-return', 'controller-callback', 'controller-wait-return']);
+  for (const [scope, lastUs] of [['environment', 299], ['controller', 699]] as const) {
+    const report = classifyWryStartup({ ...trace, pumps: { ...trace.pumps, [scope]: { ...trace.pumps[scope], lastUs } } });
+    assert.equal(report.phase, 'diagnostic-incomplete'); assert.equal(report.pumps, null);
+  }
+});
