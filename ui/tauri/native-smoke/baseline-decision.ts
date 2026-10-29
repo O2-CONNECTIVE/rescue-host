@@ -7,7 +7,9 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
   if (!object(collection) || collection.schema !== 1 || collection.kind !== 'direct-wry-controller-contrast'
     || collection.productNativePass !== false || collection.fixedInputsVerified !== true
     || collection.wryStartupFileClosed !== true || !object(wry) || wry.diagnostic !== 'complete'
-    || !object(wry.startup) || !Array.isArray(wry.startup.events)) return incomplete;
+    || !object(wry.startup) || !Array.isArray(wry.startup.events) || !object(session) || session.schema !== 1
+    || session.kind !== 'direct-wry-controller-contrast' || session.productNativePass !== false
+    || collection.sessionSucceeded !== session.sessionCreated) return incomplete;
   const cleanupVerified = collection.cleanupFailures === 0 && collection.ownerSetRecorded === true
     && Number.isSafeInteger(collection.observedChildren) && Number(collection.observedChildren) > 0
     && collection.observedChildrenExited === true && collection.appExited === true
@@ -37,6 +39,6 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     && collection.sessionTimedOut === true && object(session) && session.sessionCreated === false && session.sessionOutcome === 'timeout') {
     return { ...result, outcome: 'controller-callback-unobserved', nextAction };
   }
-  return { ...result, outcome: exited && collection.sessionSucceeded === false ? 'session-after-wry-exit' : 'other-boundary',
+  return { ...result, outcome: exited && collection.sessionSucceeded === false && collection.sessionTimedOut === true && session.sessionOutcome === 'timeout' ? 'session-after-wry-exit' : 'other-boundary',
     nextAction: cleanupVerified ? 'inspect-next-boundary' : 'repair-ownership-observation' };
 }

@@ -36,8 +36,8 @@ void test('callback未観測と退出後timeoutを分離し、原因確定とし
   assert.equal(pending.outcome, 'controller-callback-unobserved');
   assert.equal(pending.rootCauseProven, false);
   assert.equal(pending.contrastPassed, false);
-  assert.equal(decideBaseline(failed, wry, null).outcome, 'session-after-wry-exit');
-  assert.equal(decideBaseline({ ...failed, ownerSetRecorded: false }, wry, null).nextAction, 'repair-ownership-observation');
+  assert.equal(decideBaseline(failed, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout' }).outcome, 'session-after-wry-exit');
+  assert.equal(decideBaseline({ ...failed, ownerSetRecorded: false }, wry, { ...session, sessionCreated: false, documentChecked: false, sessionOutcome: 'timeout' }).nextAction, 'repair-ownership-observation');
 });
 void test('POST成功後のdocument失敗をsession timeoutと混同しない', () => {
   assert.equal(decideBaseline({ ...collection, sessionSucceeded: true, normalCloseVerified: false }, wry,
