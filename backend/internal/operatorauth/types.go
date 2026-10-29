@@ -5,6 +5,8 @@ package operatorauth
 import (
 	"context"
 	"errors"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 	"sync"
 	"time"
 )
@@ -24,7 +26,11 @@ type tokenProjection struct {
 }
 
 // token値は将来の保護profileから固定する。SIDだけでlevel等を補完しない。
-type helperProfile struct{ operator, guest tokenProjection }
+type helperProfile struct {
+	operator, guest tokenProjection
+	sid             SIDPolicy
+	launchID        string
+}
 type threadKernel interface {
 	lock()
 	unlock()
@@ -64,6 +70,7 @@ func finite(ctx context.Context) bool {
 
 // Readは将来のnative factoryだけが作る単回消費権で、wireやSID文字列からは作れない。
 type Read struct {
+	subject  tokenProjection
 	owner    *Collector
 	request  context.Context
 	frame    []byte
@@ -89,6 +96,10 @@ type collectorOps struct {
 // Collectorはhelperと別processの健康なSupervisor側に置く。
 // opsは将来の保持launch/同Serviceからだけ構成し、一般callerの注入口を提供しない。
 type Collector struct {
+	sidPolicy                                                       SIDPolicy
+	launchID                                                        string
+	authOwner                                                       *serviceauthowner.Owner
+	authIssuer                                                      *ephemeral.Issuer
 	activeCancel                                                    context.CancelFunc
 	request                                                         context.Context // prepared Batchの元要求。nilは既存standalone owner用。
 	mu                                                              sync.Mutex

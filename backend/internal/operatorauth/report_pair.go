@@ -3,7 +3,6 @@ package operatorauth
 import (
 	"context"
 	"errors"
-	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 )
 
 func (p *reportPair) childWriter() uintptr {
@@ -55,7 +54,7 @@ func (p *reportPair) drain(ctx context.Context) (reportResult, error) {
 	p.o.busy++
 	h := p.o.read
 	p.o.mu.Unlock()
-	b := make([]byte, servicecontrol.FrameBytes)
+	b := make([]byte, authenticatedReportBytes)
 	n, e := p.o.run(ctx, reportRead, h, b)
 	if e != nil || n == 0 || n > uint32(len(b)) || b[n-1] != '\n' {
 		return reportResult{}, errors.Join(errReportFraming, e)

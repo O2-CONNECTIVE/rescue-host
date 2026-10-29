@@ -56,10 +56,17 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		return nil, ErrDenied
 	}
 	report, e := c.ops.drain(ctx)
-	if e != nil || !report.eof || len(report.frame) == 0 || len(report.frame) > servicecontrol.FrameBytes || !c.live(ctx) {
+	if e != nil || !report.eof || len(report.frame) == 0 || len(report.frame) > c.reportLimit() || !c.live(ctx) {
 		return nil, ErrDenied
 	}
 	frame := append([]byte(nil), report.frame...)
+	var subject tokenProjection
+	if c.sidPolicy != (SIDPolicy{}) {
+		frame, subject, e = decodeAuthenticatedReport(frame, c.launchID, c.sidPolicy)
+		if e != nil {
+			return nil, ErrDenied
+		}
+	}
 	if _, e = servicecontrol.DecodeUntrustedFrame(frame); e != nil {
 		return nil, ErrDenied
 	}
@@ -91,7 +98,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		return nil, ErrDenied
 	}
 	deadline, _ := ctx.Deadline()
-	proof = &Read{owner: c, request: ctx, frame: frame, deadline: deadline}
+	proof = &Read{subject: subject, owner: c, request: ctx, frame: frame, deadline: deadline}
 	c.proof = proof
 	return proof, nil
 }
@@ -101,7 +108,16 @@ func (c *Collector) live(ctx context.Context) bool {
 	defer c.mu.Unlock()
 	return !c.failed && !c.closed && reportContextValid(ctx) && (c.request == nil || reportContextValid(c.request))
 }
+func (c *Collector) reportLimit() int {
+	if c.sidPolicy != (SIDPolicy{}) {
+		return authenticatedReportBytes
+	}
+	return servicecontrol.FrameBytes
+}
 func (c *Collector) valid() bool {
+	if c.sidPolicy != (SIDPolicy{}) && (!c.sidPolicy.valid() || !profileLaunchID(c.launchID) || c.authOwner == nil || !c.authOwner.MatchesIssuer(c.authIssuer)) {
+		return false
+	}
 	o := c.ops
 	return c.cleanup > 0 && o.check != nil && o.drain != nil && o.terminate != nil && o.wait != nil && o.closeIO != nil && o.closeProcess != nil && o.revoke != nil && o.reclaim != nil
 }
@@ -123,7 +139,7 @@ func (c *Collector) Consume(ctx context.Context, r *Read) ([]byte, error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if r.owner != c || c.proof != r || r.used {
+	if r.owner != c || c.proof != r || r.used || c.sidPolicy != (SIDPolicy{}) {
 		return nil, ErrDenied
 	}
 	r.used = true

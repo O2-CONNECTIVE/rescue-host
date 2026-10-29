@@ -29,7 +29,7 @@ func (winReportKernel) create(name, descriptor string) (uintptr, error) {
 	h, err := windows.CreateNamedPipe(path,
 		windows.PIPE_ACCESS_INBOUND|windows.FILE_FLAG_OVERLAPPED|windows.FILE_FLAG_FIRST_PIPE_INSTANCE,
 		windows.PIPE_TYPE_MESSAGE|windows.PIPE_READMODE_MESSAGE|windows.PIPE_WAIT|windows.PIPE_REJECT_REMOTE_CLIENTS,
-		1, 0, 16384, 0, &sa)
+		1, 0, authenticatedReportBytes, 0, &sa)
 	runtime.KeepAlive(sd)
 	// Return partial acquisition to the owner even when the API reports failure.
 	return uintptr(h), err

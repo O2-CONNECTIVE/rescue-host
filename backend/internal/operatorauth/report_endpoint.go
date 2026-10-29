@@ -82,7 +82,7 @@ func (e *messageEndpoint) write(ctx context.Context, b []byte) error {
 	if err != nil {
 		return err
 	}
-	if len(b) == 0 || len(b) > servicecontrol.FrameBytes || b[len(b)-1] != '\n' {
+	if len(b) == 0 || len(b) > authenticatedReportBytes || b[len(b)-1] != '\n' {
 		e.o.mu.Lock()
 		e.o.busy--
 		e.o.mu.Unlock()
