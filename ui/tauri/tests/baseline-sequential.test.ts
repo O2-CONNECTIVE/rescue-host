@@ -34,3 +34,18 @@ void test('開始gate CLIは欠落や秘密を含む入力を露出せず拒否�
     assert.equal((run.stdout + run.stderr).includes('PRIVATE_FIXTURE'), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+void test('開始gate CLIは同一run・manifest・確認済cleanupだけを受け入れる（後付け回帰）', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'sequential-bound-'));
+  try {
+    const sourceCommit = 'a'.repeat(40), exeSha256 = 'b'.repeat(64), runId = '12345678-1234-4234-8234-123456789abc';
+    const manifest = path.join(dir, 'manifest.json'), input = path.join(dir, 'result.json');
+    writeFileSync(manifest, JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast', featureTreeMatched: true, distribution: false, sourceCommit, exeSha256 }));
+    writeFileSync(input, JSON.stringify({ schema: 1, kind: 'direct-wry-controller-contrast', fixedInputsVerified: true,
+      mode: 'with-html', sourceCommit, exeSha256, runId, ownerSetRecorded: true, observedChildren: 7,
+      observedChildrenExited: true, appExited: true, driversExited: true, listenersAbsent: true, cleanupFailures: 0 }));
+    const run = (id: string) => spawnSync(process.execPath, ['native-smoke/check-baseline-cleanup.ts', input, manifest, id], { encoding: 'utf8' });
+    assert.equal(run(runId).stdout.trim(), 'BASELINE_CLEANUP_CONFIRMED');
+    assert.equal(run('12345678-1234-4234-8234-123456789abd').stdout.trim(), 'BASELINE_CLEANUP_UNCONFIRMED');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
