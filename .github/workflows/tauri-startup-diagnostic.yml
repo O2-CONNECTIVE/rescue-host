@@ -150,6 +150,10 @@ jobs:
     if: always()
     runs-on: windows-2022
     timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        contrast: [sequential, positive]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
@@ -236,7 +240,9 @@ jobs:
       - name: Sequential isolated 15 second sessions and owned cleanup
         timeout-minutes: 7
         run: |
-          node ui/tauri/native-smoke/run-baseline-sequential.ts --toolsA "$env:BASELINE_ROOT/baseline-tools" --toolsB "$env:BASELINE_ROOT/baseline-tools-b" --outputA "$env:BASELINE_ROOT/baseline-a-evidence" --outputB "$env:BASELINE_ROOT/baseline-b-evidence" --exe "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe" --manifest "$env:BASELINE_ROOT/baseline-build.json" --summary "$env:BASELINE_ROOT/baseline-sequential.json" --supervisor "$env:GITHUB_WORKSPACE/tools/wry-creation-baseline/supervise.ps1" --config "$env:GITHUB_WORKSPACE/ui/tauri/native-smoke/tools.json"
+          $positive = @()
+          if ('${{ matrix.contrast }}' -eq 'positive') { $positive = @('--positive') }
+          node ui/tauri/native-smoke/run-baseline-sequential.ts @positive --toolsA "$env:BASELINE_ROOT/baseline-tools" --toolsB "$env:BASELINE_ROOT/baseline-tools-b" --outputA "$env:BASELINE_ROOT/baseline-a-evidence" --outputB "$env:BASELINE_ROOT/baseline-b-evidence" --exe "$env:CARGO_TARGET_DIR/release/rescue-wry-creation-baseline.exe" --manifest "$env:BASELINE_ROOT/baseline-build.json" --summary "$env:BASELINE_ROOT/baseline-sequential.json" --supervisor "$env:GITHUB_WORKSPACE/tools/wry-creation-baseline/supervise.ps1" --config "$env:GITHUB_WORKSPACE/ui/tauri/native-smoke/tools.json"
           exit $LASTEXITCODE
       - name: Validate Wry stage and independent contrast decision
         if: always()
@@ -249,6 +255,7 @@ jobs:
             node ui/tauri/native-smoke/inspect-wry-startup.ts --directory "$env:BASELINE_ROOT/$($arm.Tools)/baseline-trace" --provenance "$env:BASELINE_ROOT/wry-provenance.json" --exe $exe --source $env:STARTUP_SOURCE --collection "$out/native-result.json" > "$out/wry-startup-report.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
             $mode = if ($arm.Name -eq 'a') { 'with-html' } else { 'load-html' }
+            if ('${{ matrix.contrast }}' -eq 'positive' -and $arm.Name -eq 'a') { $mode = 'blank-script' }
             node ui/tauri/native-smoke/inspect-wry-baseline.ts --directory $out --source $env:STARTUP_SOURCE --exe $exe --build "$env:BASELINE_ROOT/baseline-build.json" --mode $mode --runId $env:BASELINE_RUN_ID > "$out/contrast-decision.json"
             if ($LASTEXITCODE -ne 0) { $result = 1 }
           }
@@ -277,7 +284,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
         with:
-          name: direct-wry-contrast-evidence
+          name: direct-wry-contrast-${{ matrix.contrast }}-evidence
           path: |
             ${{ env.BASELINE_ROOT }}/baseline-a-evidence/*.json
             ${{ env.BASELINE_ROOT }}/baseline-b-evidence/*.json
@@ -296,7 +303,7 @@ jobs:
         if: ${{ always() && steps.save_contrast_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
-          name: direct-wry-contrast-cleanup
+          name: direct-wry-contrast-${{ matrix.contrast }}-cleanup
           path: ${{ runner.temp }}/baseline-cleanup-${{ env.BASELINE_RUN_ID }}.json
           if-no-files-found: error
           retention-days: 7
