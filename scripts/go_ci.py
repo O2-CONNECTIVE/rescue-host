@@ -49,7 +49,8 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol': {'request.go', 'strict.go', 'response.go', 'response_fields.go', 'response_preview.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth': {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
-        'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go'},
+        'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
+        'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go'},
 }
 
 
@@ -131,11 +132,11 @@ SERVICE_PROVISION_FILES = {
 
 
 OPERATOR_AUTH_FILES = {
-    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go'},
-    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go'},
+    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go'},
+    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go'},
     'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go', 'native_batch_windows.go',
                 'native_launch_binding_windows.go', 'native_launch_image_windows.go', 'native_launch_windows.go',
-                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go'},
+                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go', 'profile_sync_windows.go', 'profile_pipe_windows.go', 'profile_receiver_windows.go'},
 }
 
 
