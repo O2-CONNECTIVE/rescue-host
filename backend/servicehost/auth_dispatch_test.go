@@ -581,3 +581,70 @@ func TestServiceAuthNewAdmissionWaitsForBothCleanupAndWorkerAcknowledgement(t *t
 		t.Fatal("acknowledged owner kept channel blocked")
 	}
 }
+
+func TestServiceAuthWriterFatalSurvivesSimultaneousBudgetFailure(t *testing.T) {
+	for _, sentinel := range []error{operatorauth.ErrFatal, bootstrapauth.ErrFatal} {
+		for _, budget := range []string{"cancel", "deadline"} {
+			t.Run(sentinel.Error()+"/"+budget, func(t *testing.T) {
+				s, a := authUnstartedMemoryOwner(t)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				var request context.Context = ctx
+				deadline := time.Now().Add(25 * time.Millisecond)
+				if budget == "deadline" {
+					request = authDelayedDeadline{Context: context.Background(), deadline: deadline}
+				}
+				batch := fixtureAuthBatch(dispatchHello)
+				var closes atomic.Int32
+				batch.close = func(context.Context) error { closes.Add(1); return nil }
+				result := make(chan error, 1)
+				go func() {
+					result <- a.exchangeOps(request, batch, func(context.Context, []byte) error {
+						if budget == "cancel" {
+							cancel()
+						} else {
+							<-time.After(time.Until(deadline) + time.Millisecond)
+						}
+						return errors.Join(sentinel, errors.New("private-writer-error-text"))
+					})
+				}()
+				var err error
+				select {
+				case err = <-result:
+				case <-time.After(time.Second):
+					t.Fatal("fatal writer failed to retire")
+				}
+				if !errors.Is(err, sentinel) {
+					t.Fatal("budget failure overwrote writer fatal", err)
+				}
+				if strings.Contains(err.Error(), "private-writer-error-text") {
+					t.Fatal("writer detail escaped")
+				}
+				if closes.Load() != 0 {
+					t.Fatal("fatal writer performed native cleanup")
+				}
+				s.mu.Lock()
+				r := a.active
+				cause := s.stopCause
+				cleaned, finished := r.cleaned, r.finished
+				s.mu.Unlock()
+				if !errors.Is(cause, sentinel) {
+					t.Fatal("Service lost writer fatal")
+				}
+				if cleaned || finished {
+					t.Fatal("fatal writer fabricated resource acknowledgement")
+				}
+				select {
+				case <-r.done:
+					t.Fatal("unconfirmed resources reported done")
+				default:
+				}
+				select {
+				case <-r.ownerDone:
+				default:
+					t.Fatal("fatal worker retirement not acknowledged")
+				}
+			})
+		}
+	}
+}

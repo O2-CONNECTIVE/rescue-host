@@ -51,19 +51,19 @@ func nativeServiceAuthBatch(batch *operatorauth.Batch) (serviceAuthBatchOps, err
 }
 
 type serviceAuthRequest struct {
-	adapter                           *serviceAuthAdapter
-	issuer                            *ephemeral.Issuer
-	batch                             serviceAuthBatchOps
-	request, worker                   context.Context
-	cancel                            context.CancelFunc
-	done                              chan struct{}
-	ownerDone                         chan struct{}
-	cleanup                           chan serviceCleanupRequest
-	fatal                             error
-	running, finished, armed, cleaned bool // Service.mu
-	digest                            [32]byte
-	ticket                            *authenticatedReadTicket
-	closeGate                         sync.Mutex
+	adapter                  *serviceAuthAdapter
+	issuer                   *ephemeral.Issuer
+	batch                    serviceAuthBatchOps
+	request, worker          context.Context
+	cancel                   context.CancelFunc
+	done                     chan struct{}
+	ownerDone                chan struct{}
+	cleanup                  chan serviceCleanupRequest
+	fatal                    error
+	finished, armed, cleaned bool // Service.mu
+	digest                   [32]byte
+	ticket                   *authenticatedReadTicket
+	closeGate                sync.Mutex
 }
 
 func newServiceAuthAdapter(s *Service, profile serviceDispatchProfile, launchLimit uint64) (*serviceAuthAdapter, error) {
@@ -101,7 +101,7 @@ func (a *serviceAuthAdapter) register(ctx context.Context, batch serviceAuthBatc
 		return nil, ErrProvisioningRejected
 	}
 	worker, cancel := context.WithCancel(ctx)
-	r := &serviceAuthRequest{adapter: a, issuer: s.issuer, batch: batch, request: ctx, worker: worker, cancel: cancel, done: make(chan struct{}), ownerDone: make(chan struct{}), cleanup: make(chan serviceCleanupRequest), running: true}
+	r := &serviceAuthRequest{adapter: a, issuer: s.issuer, batch: batch, request: ctx, worker: worker, cancel: cancel, done: make(chan struct{}), ownerDone: make(chan struct{}), cleanup: make(chan serviceCleanupRequest)}
 	a.attempts++
 	a.seen[batch.collector] = struct{}{}
 	a.active = r
@@ -172,7 +172,6 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 			}
 		}
 		a.service.mu.Lock()
-		r.running = false
 		if authFatal(result) {
 			r.fatal = authFailure(result, ErrRuntimeUnconfirmed)
 		}
@@ -223,7 +222,7 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 	}
 	writeErr := write(r.request, append([]byte(nil), reply.frame...))
 	if !authBudget(r.request) {
-		writeErr = ErrRuntimeUnconfirmed
+		writeErr = authFailure(writeErr, ErrRuntimeUnconfirmed)
 	}
 	if err = a.dispatch.complete(reply, writeErr); err != nil {
 		return authFailure(errors.Join(writeErr, err), ErrRuntimeUnconfirmed)
