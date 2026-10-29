@@ -42,13 +42,13 @@ func (f *FixedLayout) MatchesService(name, userSID, serviceSID, operatorSID stri
 	return f != nil && f.configured && name == f.profile.serviceName && userSID == f.user && serviceSID == f.profile.serviceSID && operatorSID == f.operator
 }
 
-// IncludesConfiguration はconfigurationのpathと期待file IDを照合する。volumeは外側で照合する。
-func (f *FixedLayout) IncludesConfiguration(path string, id [16]byte) bool {
+// IncludesConfigurationはconfigurationのpathと同じvolume/file IDを照合する。
+func (f *FixedLayout) IncludesConfiguration(path string, volume uint64, id [16]byte) bool {
 	if f == nil || !f.configured {
 		return false
 	}
 	v, ok := f.profile.file(path)
-	return ok && v.role == roleConfiguration && v.identity.fileID == id
+	return ok && v.role == roleConfiguration && v.identity.volume == volume && v.identity.fileID == id
 }
 
 // IncludesArtifact は固定artifact roleへの包含だけを返す。実hash検査の代わりにならない。

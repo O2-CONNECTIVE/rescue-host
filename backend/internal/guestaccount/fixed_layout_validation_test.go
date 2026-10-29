@@ -102,7 +102,7 @@ func TestFixedLayoutExactByteLimitCanonicalUint64AndZeroValueLookups(t *testing.
 		}
 	}
 	for _, empty := range []*FixedLayout{nil, {}} {
-		if empty.MatchesService("", "", "", "") || empty.IncludesArtifact("") || empty.IncludesHostKey("") || empty.IncludesConfiguration("", [16]byte{}) || empty.Digest() != ([32]byte{}) {
+		if empty.MatchesService("", "", "", "") || empty.IncludesArtifact("") || empty.IncludesHostKey("") || empty.IncludesConfiguration("", 0, [16]byte{}) || empty.Digest() != ([32]byte{}) {
 			t.Fatal("zero layout became configured")
 		}
 	}

@@ -85,7 +85,7 @@ func TestFixedGuestConfigurationUsesProtectedPairAndExactServiceTargets(t *testi
 	}
 }
 func TestFixedGuestConfigurationRejectsDifferentRootSubjectOrProtectedRole(t *testing.T) {
-	for _, kind := range []string{"root", "subject", "host-key", "service-image", "base-file-id", "digest"} {
+	for _, kind := range []string{"root", "subject", "host-key", "service-image", "base-file-id", "volume", "digest"} {
 		t.Run(kind, func(t *testing.T) {
 			p, root, k, data := guestConfigurationFixture(t)
 			switch kind {
@@ -102,6 +102,9 @@ func TestFixedGuestConfigurationRejectsDifferentRootSubjectOrProtectedRole(t *te
 				setGuestFixtureData(k, root.anchor, data)
 			case "base-file-id":
 				data = []byte(strings.ReplaceAll(string(data), `03000000000000000000000000000000`, `33000000000000000000000000000000`))
+				setGuestFixtureData(k, root.anchor, data)
+			case "volume":
+				data = []byte(strings.ReplaceAll(string(data), `"volume":"7"`, `"volume":"9"`))
 				setGuestFixtureData(k, root.anchor, data)
 			case "digest":
 				k.files[root.anchor.DigestPath].data = []byte(fmt.Sprintf("%064d\n", 0))

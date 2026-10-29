@@ -36,7 +36,7 @@ func TestFixedLayoutDecodesFixedManifestAndExposesOnlyBoundLookups(t *testing.T)
 	if !f.MatchesService(c.serviceName, p.binding.service, c.serviceSID, p.binding.operator) || f.MatchesService("other", p.binding.service, c.serviceSID, p.binding.operator) {
 		t.Fatal("service tuple not exactly matched")
 	}
-	if !f.IncludesConfiguration(`c:\rescue\CONFIG.bin`, c.files[4].identity.fileID) || f.IncludesConfiguration(c.files[4].path, [16]byte{99}) || f.IncludesConfiguration(c.files[5].path, c.files[5].identity.fileID) {
+	if !f.IncludesConfiguration(`c:\rescue\CONFIG.bin`, c.files[4].identity.volume, c.files[4].identity.fileID) || f.IncludesConfiguration(c.files[4].path, c.files[4].identity.volume, [16]byte{99}) || f.IncludesConfiguration(c.files[5].path, c.files[5].identity.volume, c.files[5].identity.fileID) {
 		t.Fatal("configuration path/identity/role not bound")
 	}
 	if !f.IncludesArtifact(c.native.image.Path) || f.IncludesArtifact(c.files[4].path) || !f.IncludesHostKey(c.files[5].path) || f.IncludesHostKey(c.files[4].path) {

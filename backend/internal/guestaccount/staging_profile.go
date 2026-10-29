@@ -53,7 +53,7 @@ func stagingUnits(s string) int {
 }
 
 func stagingFiles(c stagingProfile) bool {
-	// service/process/token/既存control pipeの4対象を含め、inspector上限32以内。
+	// service/process/tokenとjournal借用を含め、inspector上限32以内の既存予算を維持。
 	if len(c.files) == 0 || len(c.files) > 28 || !stagingPath(c.journalRoot, true) || !stagingPath(c.native.image.Path, false) || !stagingPath(c.native.manifest.Path, false) || !stagingPath(c.native.assembly.Path, false) {
 		return false
 	}

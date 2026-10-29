@@ -23,7 +23,6 @@ type inspectionNativeWork struct {
 	ctx                              context.Context
 	thread                           uint32
 	pins                             runtime.Pinner
-	active                           bool
 	raw                              bool
 	anchored                         bool
 	anchor                           [56]byte
@@ -114,9 +113,7 @@ func (w *inspectionNativeWork) call(fn func() error) error {
 	if !w.raw && !serviceWitnessLive(w.ctx) {
 		return ErrDenied
 	}
-	w.active = true
 	err := fn()
-	w.active = false
 	if windows.GetCurrentThreadId() != w.thread || errors.Is(err, ErrFatal) {
 		return ErrFatal
 	}

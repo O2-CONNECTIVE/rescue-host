@@ -117,7 +117,7 @@ func (p *Prepared) loadFixedGuest(ctx context.Context, root *Root) (owner *Guest
 	// 任意roleの件数だけではなく、実際の両record/digestと固定image/keyを要求する。
 	for _, loaded := range []*Loaded{p.loaded, g.loaded} {
 		for _, held := range loaded.held {
-			if held.leaf && !g.layout.IncludesConfiguration(held.path, held.before.id) {
+			if held.leaf && !g.layout.IncludesConfiguration(held.path, held.before.volume, held.before.id) {
 				return g, g.reject(ErrRecord)
 			}
 		}
