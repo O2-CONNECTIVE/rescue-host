@@ -13,6 +13,26 @@ void test('登録のエラー帰還とpumpの終端が矛盾する証跡を拒�
     'diagnostic-incomplete');
 });
 
+// 実装後回帰。公開分類のerror/順序/序数境界で、実OS errorの注入ではない。
+void test('正当なerror終端とcallback先行を保ち、別操作や途中pumpを拒否する', () => {
+  const trace = returnedScriptFixture();
+  const failed = { ...trace.scripts, result: 'error' };
+  for (const phase of ['quit', 'os-error']) {
+    const pump = { ...trace.pumps.script, phase, getCalls: 1, getReturns: 1 };
+    assert.equal(classifyWryStartup({ ...trace, scripts: failed, pumps: { ...trace.pumps, script: pump } }).phase,
+      'script-error-return-observed');
+  }
+  assert.equal(classifyWryStartup({ ...trace, scripts: { ...failed, callbackOk: false } }).phase,
+    'script-error-return-observed');
+  const waiting = { ...trace.pumps.script, phase: 'get-message', getCalls: 1, getReturns: 0, lastUs: 1010 };
+  assert.equal(classifyWryStartup({ ...trace, scripts: failed, pumps: { ...trace.pumps, script: waiting } }).phase,
+    'diagnostic-incomplete');
+  assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts, pumpOrdinal: 2 } }).phase,
+    'diagnostic-incomplete');
+  assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts, callbackUs: 960, sentUs: 970 } }).phase,
+    'script-latest-returned-next-boundary-unobserved');
+});
+
 function returnedScriptFixture() {
   const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
     'environment-callback', 'environment-wait-return', 'controller-api-start',

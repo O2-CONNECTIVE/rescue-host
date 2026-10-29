@@ -32,10 +32,11 @@ export function readPumps(input: unknown, end: number) {
   const script = read(input.script, end);
   return environment && controller && script ? { environment, controller, script } : null;
 }
-export function controllerPumpHint(pump: Pump): string {
-  if (!pump.entered) return 'controller-pump-entry-not-observed';
-  return { 'not-entered': 'controller-pump-entry-not-observed', 'receiver-check': 'controller-receiver-check-last-observed',
-    'get-message': 'controller-get-message-return-not-observed', translate: 'controller-translate-return-not-observed',
-    dispatch: 'controller-dispatch-return-not-observed', 'receiver-ready': 'controller-receiver-ready',
-    quit: 'controller-quit-observed', 'os-error': 'controller-get-message-error-observed' }[pump.phase];
+export function pumpHint(scope: 'controller' | 'script', pump: Pump): string {
+  const suffix = !pump.entered ? 'pump-entry-not-observed' : {
+    'not-entered': 'pump-entry-not-observed', 'receiver-check': 'receiver-check-last-observed',
+    'get-message': 'get-message-return-not-observed', translate: 'translate-return-not-observed',
+    dispatch: 'dispatch-return-not-observed', 'receiver-ready': 'receiver-ready',
+    quit: 'quit-observed', 'os-error': 'get-message-error-observed' }[pump.phase];
+  return `${scope}-${suffix}`;
 }

@@ -66,10 +66,10 @@ export function classifyWryStartup(input: unknown) {
   else if (seen.has('init-return')) phase = 'post-init-webview-exit-not-observed';
   else if (seen.has('init-enter')) phase = scriptPhase(scripts);
   const hint = phase.startsWith('script-') && scripts.calls > 0 && scripts.result === 'pending'
-    ? controllerPumpHint(pumps.script).replace('controller-', 'script-') : null;
+    ? pumpHint('script', pumps.script) : null;
   return { schema: 1, purpose: 'diagnostic-hints-only', phase, events, windowEndUs: input.windowEndUs, pumps, scripts,
     pumpHint: ['controller-callback-not-observed', 'controller-wait-return-not-observed'].includes(phase)
-      ? controllerPumpHint(pumps.controller) : hint };
+      ? pumpHint('controller', pumps.controller) : hint };
 }
-import { readPumps, controllerPumpHint } from './wry-pump-state.ts';
+import { readPumps, pumpHint } from './wry-pump-state.ts';
 import { readScripts, scriptPhase } from './wry-script-state.ts';
