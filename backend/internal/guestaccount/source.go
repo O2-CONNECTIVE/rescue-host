@@ -46,8 +46,9 @@ type accountSnapshot struct {
 	seal     *seal
 	binding  binding
 	presence presence
-	// completeは直接/間接effective groups、privileges、logon rights、
-	// 保護対象write accessを全取得したproducerだけが設定する。nil一覧は拒否。
+	// completeは無効staging accountの支持された静的group閉包、権限と
+	// 保持済み保護対象を全取得したproducerだけが設定する。nil一覧は拒否。
+	// 未来の実token/継承handle/runtime対象は含まず、有効化前の別gateが必須。
 	complete, disabled, administrator, protectedWrites bool
 	groups, privileges, logonRights                    []string
 }

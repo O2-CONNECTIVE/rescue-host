@@ -10,6 +10,7 @@ type accountDiagnostic struct {
 	binding   binding
 	name, sid string
 	flags     uint32
+	snapshot  accountSnapshot
 }
 
 // accountQueryScopeFatalを返したcallはOS threadをunlockしていない。
@@ -30,9 +31,13 @@ type accountQueryPrincipal struct {
 	tokenID, authenticationID, modifiedID uint64
 }
 type accountQueryObservation struct {
-	kind        accountQueryKind
-	name, sid   string
-	flags, role uint32
+	kind            accountQueryKind
+	name, sid       string
+	flags, role     uint32
+	primary         uint32
+	priv, authFlags uint32
+	rights          []string
+	groups          []permissionGroup
 }
 type accountQueryKind uint8
 
@@ -40,6 +45,9 @@ const (
 	accountQueryRole accountQueryKind = iota + 1
 	accountQueryDomain
 	accountQueryUser
+	accountQueryUser4
+	accountQueryRights
+	accountQueryGroups
 )
 
 type accountQueryMemory interface {
@@ -57,14 +65,16 @@ type accountQueryKernel interface {
 	user23(string) (accountQueryMemory, error)
 }
 type accountQuery struct {
-	self    *accountQuery
-	mu      sync.Mutex
-	plan    Plan
-	binding binding
-	seal    *seal
-	kernel  accountQueryKernel
-	pending []accountQueryMemory
-	fatal   bool
+	self       *accountQuery
+	mu         sync.Mutex
+	plan       Plan
+	binding    binding
+	seal       *seal
+	kernel     accountQueryKernel
+	pending    []accountQueryMemory
+	fatal      bool
+	standalone bool
+	permission *permissionInspection
 }
 
 func newAccountQuery(p Plan, b binding, s *seal, k accountQueryKernel) (*accountQuery, error) {
@@ -87,11 +97,14 @@ func newAccountCreationQuery(p Plan, s *seal, k accountQueryKernel) (*accountQue
 }
 func (q *accountQuery) valid() bool { return q != nil && q.self == q && q.kernel != nil }
 
-// inspectは完全な権限producer未設定を必ず返す。診断をcoreの完了へ昇格しない。
+// 既定queryは診断のみ。固定された限定inspectorの証拠はquery全回収後に返す。
 func (q *accountQuery) inspect(ctx context.Context, b binding) (accountSnapshot, error) {
 	d, err := q.query(ctx, b)
 	if err != nil {
 		return accountSnapshot{}, err
+	}
+	if q.permission != nil {
+		return d.snapshot, nil
 	}
 	return accountSnapshot{seal: q.seal, binding: d.binding, presence: exact, disabled: d.flags&2 != 0, complete: false}, ErrUnconfigured
 }

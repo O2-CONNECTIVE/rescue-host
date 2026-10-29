@@ -101,7 +101,7 @@ func (q *accountQuery) readChecked(ctx context.Context, b binding, creation bool
 	scopeGuard = guard
 	role, err := q.read(ctx, accountQueryRole, guard)
 	// DSROLE_MACHINE_ROLE 0..3だけを許可。4/5はDC、未知値も拒否。
-	if err != nil || role.role > 3 {
+	if err != nil || role.role > 3 || q.standalone && role.role != 0 && role.role != 2 {
 		return diagnostic, ErrDenied
 	}
 	domain, err := q.read(ctx, accountQueryDomain, guard)
@@ -109,10 +109,17 @@ func (q *accountQuery) readChecked(ctx context.Context, b binding, creation bool
 		return diagnostic, ErrDenied
 	}
 	var user accountQueryObservation
+	var snapshot accountSnapshot
 	if !creation {
 		user, err = q.read(ctx, accountQueryUser, guard)
 		if err != nil || user.name != b.name || user.sid != b.sid || !finite(ctx) || !guard() {
 			return diagnostic, ErrDenied
+		}
+		if q.permission != nil {
+			snapshot, err = q.permission.observe(ctx, q, b, user.flags, guard)
+			if err != nil {
+				return diagnostic, err
+			}
 		}
 	}
 	afterRole, err := q.read(ctx, accountQueryRole, guard)
@@ -123,7 +130,7 @@ func (q *accountQuery) readChecked(ctx context.Context, b binding, creation bool
 	if err != nil || afterDomain.sid != domain.sid || !finite(ctx) || !guard() {
 		return diagnostic, ErrDenied
 	}
-	return accountDiagnostic{binding: b, name: user.name, sid: user.sid, flags: user.flags}, nil
+	return accountDiagnostic{binding: b, name: user.name, sid: user.sid, flags: user.flags, snapshot: snapshot}, nil
 }
 func (q *accountQuery) finalCheck(guard func() bool) (ok bool) {
 	defer func() {
