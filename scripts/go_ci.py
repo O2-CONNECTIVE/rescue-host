@@ -42,7 +42,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth': {
         'auth.go', 'image.go', 'kernel.go', 'profile.go', 'validation.go', 'prepared_service.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready': {
-        'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go', 'service_witness.go'},
+        'config.go', 'operation.go', 'plane.go', 'security.go', 'preflight.go', 'service_witness.go', 'endpoint.go', 'endpoint_input.go', 'endpoint_operation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceprovision': {
         'compose.go', 'errors.go', 'record.go', 'record_decode.go', 'record_strict.go',
         'record_validate.go', 'root.go', 'root_doc.go', 'root_io.go', 'root_validate.go', 'service.go',
@@ -53,7 +53,7 @@ PRODUCT_FILES = {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
         'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go',
-        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go'},
+        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go', 'endpoint_candidate.go'},
 }
 
 
@@ -120,7 +120,7 @@ SCM_READY_FILES = {
         'servicehost': {'scm_ready_other.go'},
     },
     'windows': {
-        'internal/serviceready': {'native_windows.go', 'connect_windows.go', 'listener_windows.go'},
+        'internal/serviceready': {'native_windows.go', 'connect_windows.go', 'listener_windows.go', 'endpoint_windows.go', 'endpoint_io_windows.go'},
         'servicehost': {'scm_ready_windows.go'},
     },
 }
@@ -135,11 +135,11 @@ SERVICE_PROVISION_FILES = {
 
 
 OPERATOR_AUTH_FILES = {
-    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go'},
-    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go'},
+    'linux': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go', 'endpoint_profile_other.go'},
+    'darwin': {'native_other.go', 'native_batch_other.go', 'native_launch_other.go', 'native_report_other.go', 'profile_sync_other.go', 'profile_pipe_other.go', 'profile_receiver_other.go', 'helper_entry_other.go', 'profile_query_other.go', 'endpoint_profile_other.go'},
     'windows': {'native_windows.go', 'native_token_windows.go', 'native_process_windows.go', 'native_batch_windows.go',
                 'native_launch_binding_windows.go', 'native_launch_image_windows.go', 'native_launch_windows.go',
-                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go', 'profile_sync_windows.go', 'profile_pipe_windows.go', 'profile_receiver_windows.go', 'helper_entry_windows.go', 'profile_query_windows.go'},
+                'native_report_operation_windows.go', 'native_report_principal_windows.go', 'native_report_windows.go', 'profile_sync_windows.go', 'profile_pipe_windows.go', 'profile_receiver_windows.go', 'helper_entry_windows.go', 'profile_query_windows.go', 'endpoint_candidate_windows.go', 'endpoint_profile_windows.go'},
 }
 
 

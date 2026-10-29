@@ -2,7 +2,7 @@
 
 `serviceready`は、固定serviceの自主体・配置・OS objectの保護と、service所有listenerのkernel準備を保持する。
 operator命令、operatorに対するserver認証、承認codec、session、grant、SSH接続を提供しない。
-listenerが接続済みでも、payloadを一切読み書きせず、命令受理や認可の成功と呼ばない。
+既存のPlaneはlistenerが接続済みでもpayloadを一切読み書きせず、命令受理や認可の成功と呼ばない。
 
 `NewNative(Config)`は静的検証とdeep copyだけを行う。
 Profile、既存PrimaryToken、Endpoint、ServiceCommandLine、service/processの明示SecurityPolicy、CleanupTimeoutが必須である。
@@ -64,6 +64,21 @@ sole-reader移譲中はhelperが読取端点を所有し、SCMのservice再照�
 次要求の受理には、同じ交換の認証済み読取消費・応答書込みの実完了・worker終了・端点閉鎖の確認と、fresh service再照会・同一issuer/Ownerの有効性が必要である。
 現在は端点のwrite/close所有APIが未接続であり、状態boolや任意callbackでこれらの確認を生成しない。
 既存のlistener込み`Prepare`/`ConfirmRunning`/`Recheck`契約は維持する。
+
+`PrepareEndpoint(ctx)`は、当workerのquery-only prefixと1回の物理pipeを所有する独立APIである。
+`AwaitConnected`はconnectの実終端とOVERLAPPED/event解放を確認してからduplexを再照会する。
+`Split`は非継承read `0x120089`とwriter `FILE_WRITE_DATA (0x2)`を複製し、実権限照合と元duplex閉鎖後にだけ`SoleInput`を返す。
+writerへread/query権を足して既存listener検査を成立させず、writerを旧`inspectListener`へ渡さない。
+`SoleInput.Move`は同thread・単回の破壊的所有移動であり、借用getterでも認証でもない。
+返却handleはerror併返時も受取側が直ちに保持・回収する。移動後はEndpointが同じreaderを閉じない。
+`WriteResponse`はMove完了後の単回・16 KiB以内の物理書込みだけを扱い、全byte転送・実終端・解放が揃ってからopaqueな`WriteReceipt`を返す。
+これはclient受領証明ではなく、partial writeを残りの再送で成功へ変えない。
+`CloseEndpoint`は当Endpointのoperation/query参照/残存handleだけを有限回収し、unknownなら同じ所有者を保持する。
+回収後の`EndpointClosed`は移動先Batch/helperのreader閉鎖・認証・`Collect`/`Consume`を証明しない。
+`MatchesCompletion`は同じEndpointの実writeとclose receiptに限定し、失敗後の再回収でclosedとなっても正常turnoverへ昇格しない。
+Ownerの原子的admission、same-profile ServiceScope、正規provider、Batch/Serviceとの結合は未配線で、このAPI自体に登録済み・認可済みの保証はない。
+各物理取得の前後で実期限と保持queryを再検査するが、inline OS API自体の非returnは解決していない。
+memory試験とWindows両arch compileは、実pipe/権限/実機保護の動作確認ではない。製品gate閉鎖を維持する。
 
 listenerは非継承、DUPLEX、OVERLAPPED、FIRST_INSTANCE、REJECT_REMOTE_CLIENTS、MESSAGE/READMODE_MESSAGE/WAIT、単一instanceで作る。
 ownerはProfileのProcessUserSID、protected DACLはGuest DENY0x1f01ff、Service ALLOW0x1f01ff、Operator ALLOW0x120183の順序とする。

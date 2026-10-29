@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される25package、Linux/macOSでは136実装、Windowsでは150実装ファイルを照合します。
+通常buildに選択される25package、Linux/macOSでは141実装、Windowsでは158実装ファイルを照合します。
 追加の未接続CLI、coordinator、所有pipe入口も相対ファイル名を明示し、fixtureや将来のpackageを無差別に許可しません。
 supervisorの追加はauthority.goの純粋grant判定だけで、service登録・IPC・timer・実OS保護を提供しません。
 ephemeralの追加はissuer.goのmemory-onlyな単回発行だけです。durable store、実OSの承認口、サービス起動や実通信は追加しません。
@@ -61,8 +61,8 @@ bootstrapはcodec.go/launch.go/native_receiver.go/strict.go/types.go/validate.go
 bootstrapioはio.goとnative_other.go/native_windows.goの対象別1件、
 bootstrapauthはauth.go/image.go/kernel.go/profile.go/validation.go/prepared_service.goと、非Windowsのnative_other.go、Windowsのnative_windows.go/image_windows.goを厳密選択します。
 childstdioはoperation.go/pipes.go/streams.goと、非Windowsのnative_other.goまたはWindowsのnative_windows.goを厳密選択します。
-servicereadyはconfig.go/operation.go/plane.go/security.go/preflight.go/service_witness.goと、非Windowsのnative_other.go、
-Windowsのnative_windows.go/connect_windows.go/listener_windows.goを厳密選択します。
+servicereadyはconfig.go/operation.go/plane.go/security.go/preflight.go/service_witness.go/endpoint.go/endpoint_input.go/endpoint_operation.goと、非Windowsのnative_other.go、
+Windowsのnative_windows.go/connect_windows.go/listener_windows.go/endpoint_windows.go/endpoint_io_windows.goを厳密選択します。
 cmd/rescue-backendはmain.go/native.goの2件です。通常buildに試験用adapterを混ぜません。
 serviceprovisionはcompose.go/errors.go/record.go/record_decode.go/record_strict.go/record_validate.go/root.go/root_doc.go/root_io.go/root_validate.go/service.goと、
 共通のexecution.go/execution_native.go/execution_owner.go/launch.go/launch_security.go、
@@ -109,8 +109,10 @@ reservation.goはprivateな所有順序だけを扱います。同じServiceのs
 
 delivery.goは既存の保護された承認sourceから同じHostを登録し、実Host.Run workerの終了と保持Host.Closeを分けて確認する共通実装です。controlled経路からlegacy承認へのfallback、認証・policy生成、transportや製品接続の有効化は追加しません。
 
-operatorauthは共通collector.go/controller.go/helper.go/types.goの4件と、Linux/macOSではnative_other.go、Windowsではnative_windows.go/native_token_windows.go/native_process_windows.goだけを許可します。
-単回read/auth/復帰/reportと独立owner回収のsource境界で、native launcher/report I/O、server認証producer、同Service adapter、実機保護は未接続・未実証です。
+operatorauthの共通・OS別実装は[検証入口](../scripts/go_ci.py)のPRODUCT_FILESとOPERATOR_AUTH_FILESを正本として限定照合します。
+単回read/auth/復帰/report、launcher/report I/O、同Service adapterのsourceを含みますが、正規policy/認証供給・実transportの結合と実機保護は未接続・未実証です。
 作者のローカル全module loopback bind試験はsandbox拒否のまま再実行せず、対象memory試験の保存結果と明示的に許可された既存CIの最終head結果を区別して確認します。
 
 operatorauthのprofile照会は共通batch_scope.go/profile_provider.go/profile_query.goと、対象OSのprofile_query_other.goまたはprofile_query_windows.goの1件だけを追加します。正規policy/query leaseの供給や実Windows保護の検証を意味しません。
+
+候補取得は共通endpoint_candidate.goと、非Windowsのendpoint_profile_other.go、Windowsのendpoint_candidate_windows.go/endpoint_profile_windows.goだけを追加します。正規AuthenticationId供給やSoleInputとの結合を実装済みと扱いません。
