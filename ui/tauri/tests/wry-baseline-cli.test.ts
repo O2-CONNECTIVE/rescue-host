@@ -30,6 +30,9 @@ void test('対照CLIはsource/EXEを結び、改変と生の秘密fieldを返さ
     const report = JSON.parse(good.stdout) as { outcome: string; productNativePass: boolean };
     assert.equal(report.outcome, 'contrast-pass'); assert.equal(report.productNativePass, false);
     assert.equal(good.stdout.includes('PRIVATE_FIXTURE'), false); assert.equal(good.stdout.includes(folder), false);
+    await writeFile(path.join(folder, 'native-result.json'), JSON.stringify({ ...collection, sourceCommit: 'b'.repeat(40) }));
+    assert.equal(invoke().status, 1);
+    await writeFile(path.join(folder, 'native-result.json'), JSON.stringify(collection));
     await writeFile(exe, 'CHANGED'); const changed = invoke(); assert.equal(changed.status, 1);
     assert.equal((JSON.parse(changed.stdout) as { outcome: string }).outcome, 'rejected');
     assert.equal(changed.stdout.includes(folder), false); assert.equal(changed.stderr, '');
