@@ -6,16 +6,19 @@ import (
 	"sync"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
-// inputは保護serviceから所有移譲する唯一のread handle。元のduplex等の
-// readableな複製を外側が残す場合、このconstructorを呼んではならない。
+// raw input は従来の所有移譲済み read。新 typed 経路は具体 SoleInput だけを
+// pure 保持し、Start 後の Move 実 return を b.input に保持する。両入力は排他。
 type nativeBatchSpec struct {
-	input    uintptr
-	launch   nativeLaunchSpec
-	report   reportConfig
-	producer profilePipeProducer
+	input      uintptr
+	launch     nativeLaunchSpec
+	report     reportConfig
+	producer   profilePipeProducer
+	soleInput  *serviceready.SoleInput
+	inputLease *endpointCandidateLease
 }
 type batchOwner struct {
 	issuer *ephemeral.Issuer
@@ -43,6 +46,7 @@ type batchChild interface {
 }
 type nativeBatchOps struct {
 	scope         *batchScope
+	moveSoleInput func(context.Context, *serviceready.SoleInput) (uintptr, error)
 	parent        func(context.Context) error
 	clean         func() error
 	newReport     func(context.Context, reportConfig) (batchReport, error)
@@ -78,14 +82,18 @@ type nativeBatch struct {
 
 func (s nativeBatchSpec) valid() bool {
 	l := s.launch
-	return helperHandle(s.input) && s.input != l.primaryToken && l.operatorRead == 0 && l.reportWrite == 0 && l.profileRead == 0 &&
+	inputValid := helperHandle(s.input) && s.input != l.primaryToken && s.soleInput == nil && s.inputLease == nil
+	if s.soleInput != nil {
+		inputValid = s.input == 0 && s.inputLease != nil
+	}
+	return inputValid && l.operatorRead == 0 && l.reportWrite == 0 && l.profileRead == 0 &&
 		localHelperImage(l.imagePath) && l.imageSHA256 != ([32]byte{}) && profileLaunchID(l.launchID) && l.maxImageBytes > 0 && l.maxImageBytes <= 1<<30 &&
 		helperHandle(l.primaryToken) && l.cleanup > 0 && l.processSDDL != "" && l.threadSDDL != "" && l.helperUserSID == s.report.helperSID && s.report.valid()
 }
 
 // prepareBatch only validates and constructs the retained owner. It performs no native I/O.
 func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nativeBatch, error) {
-	if !s.valid() || owner.issuer == nil || !owner.owner.MatchesIssuer(owner.issuer) || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
+	if !s.valid() || s.soleInput != nil && ops.moveSoleInput == nil || owner.issuer == nil || !owner.owner.MatchesIssuer(owner.issuer) || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
 		return nil, ErrUnconfigured
 	}
 	b := &nativeBatch{issuer: owner.issuer, ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), owner: owner.owner}
@@ -184,10 +192,21 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	if e := b.parent(ctx); e != nil {
 		return e
 	}
+	if s.soleInput != nil {
+		if e := b.moveInput(ctx); e != nil {
+			return e
+		}
+		if e := b.parent(ctx); e != nil {
+			return e
+		}
+	}
 	profile, e := ops.newProfile(ctx)
 	b.mu.Lock()
 	b.profile = profile
 	b.mu.Unlock()
+	if alias := b.checkMovedPipeAliases(profile, nil); alias != nil {
+		return errors.Join(alias, b.retainScopeFailure(e))
+	}
 	if e != nil || profile == nil {
 		return errors.Join(ErrUnconfigured, b.retainScopeFailure(e))
 	}
@@ -198,6 +217,9 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	b.mu.Lock()
 	b.report = p
 	b.mu.Unlock()
+	if alias := b.checkMovedPipeAliases(profile, p); alias != nil {
+		return errors.Join(alias, b.retainScopeFailure(e))
+	}
 	if e != nil || p == nil {
 		return ErrDenied
 	}
@@ -222,7 +244,7 @@ func (b *nativeBatch) Start(ctx context.Context) (err error) {
 	if !profileLaunchID(l.launchID) || profile.launchID() != l.launchID {
 		return ErrDenied
 	}
-	if !helperHandle(l.profileRead) || l.profileRead == s.input || l.profileRead == b.readCopy || l.profileRead == l.reportWrite || l.profileRead == l.primaryToken {
+	if !helperHandle(l.profileRead) || l.profileRead == b.input || l.profileRead == b.readCopy || l.profileRead == l.reportWrite || l.profileRead == l.primaryToken {
 		return ErrDenied
 	}
 	c, e := ops.start(ctx, l)
@@ -313,6 +335,9 @@ func (b *nativeBatch) cleanupGuard() error {
 	}
 	if e != nil {
 		return e
+	}
+	if uncertain && b.spec.soleInput != nil {
+		return ErrUnconfirmed
 	}
 	if b.ops.scope != nil {
 		if uncertain {

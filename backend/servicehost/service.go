@@ -56,6 +56,7 @@ type Service struct {
 	delivery                                  *serviceHostDelivery
 	workload                                  *serviceWorkloadReclaim
 	plane                                     servicePlane
+	control                                   *serviceControlReadiness
 	cancel                                    context.CancelFunc
 	used, started, stopping, cleanupConfirmed bool
 	innerCleanupConfirmed, outerConfirmed     bool
@@ -343,8 +344,12 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 						closeErr = errors.Join(closeErr, ErrRuntimeUnconfirmed)
 					}
 				}
-				if closeErr == nil && plane != nil {
-					closeErr = errors.Join(closeErr, plane.Close(cleanup))
+				if closeErr == nil {
+					if s.control != nil {
+						closeErr = errors.Join(closeErr, s.control.closeOnOwner(cleanup))
+					} else if plane != nil {
+						closeErr = errors.Join(closeErr, plane.Close(cleanup))
+					}
 				}
 				closeErr = errors.Join(closeErr, issuer.Close())
 			}
@@ -403,19 +408,34 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 		end()
 		return err
 	}
-	plane, err = s.prepare(startup)
-	s.mu.Lock()
-	s.plane = plane
-	s.mu.Unlock()
-	if err != nil || plane == nil || startup.Err() != nil {
+	if s.control != nil {
+		err = s.control.prepareOnOwner(startup)
+	} else {
+		plane, err = s.prepare(startup)
+		s.mu.Lock()
+		s.plane = plane
+		s.mu.Unlock()
+		if plane == nil && err == nil {
+			err = ErrProvisioningUnconfigured
+		}
+	}
+	if err != nil || startup.Err() != nil {
 		end()
 		return serviceFailure(err)
 	}
 	if err = publish(startup, Running); err == nil {
-		err = plane.ConfirmRunning(startup)
+		if s.control != nil {
+			err = s.control.confirmOnOwner(startup)
+		} else {
+			err = plane.ConfirmRunning(startup)
+		}
 	}
 	if err == nil {
-		err = plane.Recheck(startup)
+		if s.control != nil {
+			err = s.control.recheckOnOwner(startup)
+		} else {
+			err = plane.Recheck(startup)
+		}
 	}
 	startupErr := startup.Err()
 	end()
@@ -457,6 +477,10 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	observe := time.NewTicker(cfg.Budgets.Observe)
 	defer observe.Stop()
 	var hostDone <-chan error
+	var readiness <-chan serviceControlReadinessRequest
+	if s.control != nil {
+		readiness = s.control.requests
+	}
 	for {
 		select {
 		case <-root.Done():
@@ -471,9 +495,18 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			report, finish := context.WithTimeout(root, cfg.Budgets.Observe)
 			_ = publish(report, Running)
 			finish()
+		case request := <-readiness:
+			if err := s.handleControlReadiness(request); err != nil {
+				return serviceFailure(err)
+			}
 		case <-observe.C:
 			check, finish := context.WithTimeout(root, cfg.Budgets.Startup)
-			err := plane.Recheck(check)
+			var err error
+			if s.control != nil {
+				err = s.control.recheckOnOwner(check)
+			} else {
+				err = plane.Recheck(check)
+			}
 			finish()
 			if err != nil {
 				return serviceFailure(err)

@@ -71,6 +71,7 @@ type serviceAuthRequest struct {
 	finished, armed, cleaned                             bool // Service.mu
 	digest                                               [32]byte
 	ticket                                               *authenticatedReadTicket
+	reply                                                *serviceDispatchReply
 	closeGate                                            sync.Mutex
 }
 
@@ -165,6 +166,9 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 		return ErrProvisioningUnconfigured
 	}
 	a, batch := r.adapter, r.batch
+	if err := r.observeControl(r.worker, controlBeforeAcquire); err != nil {
+		return err
+	}
 	if err := batch.start(r.worker); err != nil {
 		return authFailure(err, ErrProvisioningRejected)
 	}
@@ -196,11 +200,17 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 	r.ticket = &authenticatedReadTicket{marker: 1}
 	r.armed = true
 	s.mu.Unlock()
+	if err := r.observeControl(r.worker, controlBeforeDispatch); err != nil {
+		return err
+	}
 	reply, err := a.dispatch.begin(r.request, frame)
 	if err != nil {
 		return ErrProvisioningRejected
 	}
-	writeErr := write(r.request, append([]byte(nil), reply.frame...))
+	s.mu.Lock()
+	r.reply = reply
+	s.mu.Unlock()
+	writeErr := r.writeDispatchReply(reply, write)
 	if !authBudget(r.request) {
 		writeErr = authFailure(writeErr, ErrRuntimeUnconfirmed)
 	}

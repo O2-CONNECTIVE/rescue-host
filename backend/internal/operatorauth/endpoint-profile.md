@@ -3,6 +3,8 @@
 ## 接続済みsource
 
 private `prepareNativeEndpointProfileBatch` は同じ spec の入力と launch 相関へ候補leaseとproviderを構成し、既存 `prepareNativeBatch` へ渡す。
+これは所有移譲済み raw input の従来契約である。
+新しい [typed SoleInput factory](sole-input-batch.md) は raw input との併用を拒否し、具体 source を pure 保持して登録後の Start 内で Move する。
 prepare段階にOS照会はなく、登録後の固定workerの `Start` から取得する。
 Service adapterや公開入口へのfactory登録は行わない。
 
