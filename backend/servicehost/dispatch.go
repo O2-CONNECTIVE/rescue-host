@@ -97,7 +97,7 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 	}
 	s := d.service
 	s.mu.Lock()
-	if s.dispatch != d || s.issuer == nil || (!d.hello && (s.state != Running || s.stopping)) || (d.hello && s.issuer != d.issuer) {
+	if s.dispatch != d || s.issuer == nil || (!d.hello && (s.state != Running || s.stopping || !s.authWriter.OpenLocked())) || (d.hello && s.issuer != d.issuer) {
 		s.mu.Unlock()
 		return d.rejectLocked()
 	}

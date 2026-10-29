@@ -41,7 +41,7 @@ func (s *Service) reserveOwnerIntent(ctx context.Context, intent *serviceOwnerIn
 	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.stopping || s.state != Running || s.dispatch == nil || s.issuer == nil || intent == nil || intent.owner != s || intent.issuer != s.issuer || s.ownerIntent != intent || intent.burned || s.reservation != nil {
+	if !s.authWriter.OpenLocked() || s.stopping || s.state != Running || s.dispatch == nil || s.issuer == nil || intent == nil || intent.owner != s || intent.issuer != s.issuer || s.ownerIntent != intent || intent.burned || s.reservation != nil {
 		return nil, ErrProvisioningRejected
 	}
 	now := time.Now()
@@ -80,7 +80,7 @@ func (s *Service) consumeOwnerReservation(r *serviceReservation) (serviceReserva
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if r == nil || r.owner != s || s.reservation != r || r.issuer != s.issuer || s.stopping || r.canceled || r.claimed || r.finished {
+	if r == nil || r.owner != s || s.reservation != r || r.issuer != s.issuer || !s.authWriter.OpenLocked() || s.stopping || r.canceled || r.claimed || r.finished {
 		return serviceReservationWork{}, ErrProvisioningRejected
 	}
 	select {

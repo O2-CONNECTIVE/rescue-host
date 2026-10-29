@@ -6,14 +6,6 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
-type workloadReclaimState uint8
-
-const (
-	workloadReclaimPending workloadReclaimState = iota
-	workloadReclaimConfirmed
-	workloadReclaimFatal
-)
-
 // serviceWorkloadReclaimは同じServiceのworkloadだけの記録。認証helper、
 // listener、inner/outer回収proofを含まず、wireや外部factoryへ公開しない。
 // 全fieldはowner.muで保護する。停止後に固定した所有参照は捨てない。
@@ -24,9 +16,6 @@ type serviceWorkloadReclaim struct {
 	delivery    *serviceHostDelivery
 	host        *Host
 	captured    bool
-	state       workloadReclaimState
-	fatal       error
-	changed     chan struct{}
 }
 
 func (r *serviceWorkloadReclaim) sameOwnerLocked(s *Service, issuer *ephemeral.Issuer) bool {
@@ -58,14 +47,10 @@ func (s *Service) reclaimWorkload(ctx context.Context) error {
 		s.mu.Unlock()
 		return ErrRuntimeUnconfirmed
 	}
-	if r.state == workloadReclaimFatal {
-		err := r.fatal
+	confirmed, fatal := s.authWriter.WorkloadLocked()
+	if fatal != nil || confirmed {
 		s.mu.Unlock()
-		return err
-	}
-	if r.state == workloadReclaimConfirmed {
-		s.mu.Unlock()
-		return nil
+		return fatal
 	}
 	host := r.host
 	s.mu.Unlock()
@@ -92,49 +77,35 @@ func (s *Service) reclaimWorkload(ctx context.Context) error {
 		err = serviceFailure(err)
 	}
 	if err == nil {
-		r.state = workloadReclaimConfirmed
+		if s.authWriter.ConfirmWorkloadLocked() != nil {
+			err = ErrRuntimeUnconfirmed
+		}
 	} else {
 		err = serviceFailure(err)
 		if fatalServiceThread(err) {
-			r.state, r.fatal = workloadReclaimFatal, err
+			_ = s.authWriter.FatalWorkloadLocked(err)
 		}
 	}
-	close(r.changed)
-	r.changed = make(chan struct{})
+	s.authWriter.NotifyPendingLocked()
 	return err
 }
 
-// 将来のnative batchのcallbackはこの有限memory待機だけを使う。
-// Service.Close、SCM再試行、auth join、plane.Closeをここから呼ばない。
-// Host nilや取消だけで完了せず、同じ所有物のjoin/回収記録を待つ。
+// Compatibility fixture boundary. Production Batch awaits its concrete Owner
+// directly. Validation of actual retained resources remains with SCM above.
 func (s *Service) awaitWorkloadReclaim(ctx context.Context, issuer *ephemeral.Issuer) error {
 	if s == nil {
 		return ErrRuntimeUnconfirmed
 	}
-	for authBudget(ctx) {
-		s.mu.Lock()
-		r := s.workload
-		if !r.sameOwnerLocked(s, issuer) {
-			s.mu.Unlock()
-			return ErrRuntimeUnconfirmed
-		}
-		if r.captured && !r.sameWorkloadLocked(s) {
-			s.mu.Unlock()
-			return ErrRuntimeUnconfirmed
-		}
-		state, fatal, changed := r.state, r.fatal, r.changed
+	s.mu.Lock()
+	r := s.workload
+	if !r.sameOwnerLocked(s, issuer) || (r.captured && !r.sameWorkloadLocked(s)) || !s.authWriter.MatchesLocked(s.authOwner, issuer) {
 		s.mu.Unlock()
-		if state == workloadReclaimConfirmed {
-			return nil
-		}
-		if state == workloadReclaimFatal {
-			return fatal
-		}
-		select {
-		case <-changed:
-		case <-ctx.Done():
-			return ErrRuntimeUnconfirmed
-		}
+		return ErrRuntimeUnconfirmed
 	}
-	return ErrRuntimeUnconfirmed
+	owner := s.authOwner
+	s.mu.Unlock()
+	if err := owner.AwaitWorkload(ctx); err != nil {
+		return serviceFailure(err)
+	}
+	return nil
 }

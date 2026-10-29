@@ -559,3 +559,83 @@ func TestIssuerCloseDoesNotResetOrReuseItsEpoch(t *testing.T) {
 		t.Fatalf("close changed epoch or retained permission: %+v", after)
 	}
 }
+
+func TestTrySnapshotRefusesBusyIssuerAndObservesActualLifecycle(t *testing.T) {
+	var missing *ephemeral.Issuer
+	if snapshot, ok := missing.TrySnapshot(); ok || snapshot != (ephemeral.Snapshot{}) {
+		t.Fatal("nil issuer supplied observation")
+	}
+	issuer, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, ok := issuer.TrySnapshot()
+	if !ok || initial.InstanceEpoch == ([32]byte{}) || initial.Generation != 0 || initial.Closed || initial.HasAuthority || initial.Consumed {
+		t.Fatal("new issuer observation changed", initial, ok)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	p := policy()
+	challenge, err := issuer.Prepare(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var enter sync.Once
+	joined := make(chan error, 1)
+	go func() {
+		_, err := issuer.Launch(ctx, challenge, func() time.Time {
+			enter.Do(func() { close(entered) })
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return p.HardDeadline.Add(-20 * time.Second)
+		}, func(context.Context, *supervisor.Authority) error { return nil })
+		joined <- err
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("issuer clock did not enter memory barrier")
+	}
+	type observation struct {
+		snapshot ephemeral.Snapshot
+		ok       bool
+	}
+	result := make(chan observation, 1)
+	go func() { snapshot, ok := issuer.TrySnapshot(); result <- observation{snapshot, ok} }()
+	bounded := true
+	var busy observation
+	select {
+	case busy = <-result:
+	case <-time.After(100 * time.Millisecond):
+		bounded = false
+	}
+	close(release)
+	if !bounded {
+		busy = <-result
+	}
+	select {
+	case err := <-joined:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("issuer memory worker did not join")
+	}
+	if !bounded || busy.ok || busy.snapshot != (ephemeral.Snapshot{}) {
+		t.Fatal("busy issuer observation blocked or fabricated state", bounded, busy)
+	}
+	active, ok := issuer.TrySnapshot()
+	if !ok || active.InstanceEpoch != initial.InstanceEpoch || active.Generation != 1 || !active.HasAuthority || !active.Consumed || active.Closed {
+		t.Fatal("actual launch observation lost", active, ok)
+	}
+	if err := issuer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	closed, ok := issuer.TrySnapshot()
+	if !ok || closed.InstanceEpoch != initial.InstanceEpoch || !closed.Closed || closed.HasAuthority || closed.Generation != 1 {
+		t.Fatal("actual close observation lost", closed, ok)
+	}
+}

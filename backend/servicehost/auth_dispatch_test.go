@@ -12,6 +12,7 @@ import (
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
@@ -60,7 +61,7 @@ func TestServiceAuthStopWaitsForLateStartOwnerAcknowledgement(t *testing.T) {
 	defer cancel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var collects, closed atomic.Int32
-	batch := serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{owner: a.service.authOwner, issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
 		start: func(context.Context) error { close(entered); <-release; return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			collects.Add(1)
@@ -98,7 +99,7 @@ func TestServiceAuthConnectsSameOwnerProofToFiniteDispatch(t *testing.T) {
 	var order []string
 	proof := &operatorauth.Read{}
 	collector := &operatorauth.Collector{}
-	batch := serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: collector,
+	batch := serviceAuthBatchOps{owner: a.service.authOwner, issuer: fixtureAuthIssuer(a), collector: collector,
 		start:   func(context.Context) error { order = append(order, "start"); return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) { order = append(order, "collect"); return proof, nil },
 		consume: func(_ context.Context, got *operatorauth.Read) ([]byte, error) {
@@ -137,7 +138,7 @@ func fixtureAuthIssuer(a *serviceAuthAdapter) *ephemeral.Issuer {
 
 func fixtureAuthBatch(a *serviceAuthAdapter, frame string) serviceAuthBatchOps {
 	proof := &operatorauth.Read{}
-	return serviceAuthBatchOps{issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
+	return serviceAuthBatchOps{owner: a.service.authOwner, issuer: fixtureAuthIssuer(a), collector: &operatorauth.Collector{},
 		start:   func(context.Context) error { return nil },
 		collect: func(context.Context) (*operatorauth.Read, error) { return proof, nil },
 		consume: func(context.Context, *operatorauth.Read) ([]byte, error) { return []byte(frame), nil },
@@ -277,10 +278,10 @@ func TestServiceAuthConsumeDoesNotRunUnderServiceLock(t *testing.T) {
 
 func TestServiceAuthNativeProviderAndZeroBudgetStayUnconfigured(t *testing.T) {
 	for _, issuer := range []*ephemeral.Issuer{nil, {}} {
-		if _, err := nativeServiceAuthBatch(nil, issuer); err == nil {
+		if _, err := nativeServiceAuthBatch(nil, issuer, nil); err == nil {
 			t.Fatal("nil batch accepted")
 		}
-		if _, err := nativeServiceAuthBatch(&operatorauth.Batch{}, issuer); err == nil {
+		if _, err := nativeServiceAuthBatch(&operatorauth.Batch{}, issuer, nil); err == nil {
 			t.Fatal("unprepared batch accepted")
 		}
 	}
@@ -544,6 +545,10 @@ func authUnstartedMemoryOwner(t *testing.T) (*Service, *serviceAuthAdapter) {
 	}
 	s.mu.Lock()
 	s.issuer = issuer
+	s.authWriter, s.authOwner, err = serviceauthowner.New(issuer, &s.mu)
+	if err != nil {
+		t.Fatal(err)
+	}
 	s.state = Running
 	s.used = true
 	s.started = true
@@ -724,5 +729,96 @@ func TestServiceAuthWriterFatalSurvivesSimultaneousBudgetFailure(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestServiceAuthSameIssuerDifferentOwnerCannotSpendBudget(t *testing.T) {
+	s, a, _ := authTestService(t, 1)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	batch := fixtureAuthBatch(a, dispatchHello)
+	_, foreign, err := serviceauthowner.New(batch.issuer, &s.mu)
+	if err != nil {
+		t.Fatal(err)
+	}
+	batch.owner = foreign
+	if r, err := a.register(ctx, batch); r != nil || err == nil {
+		t.Fatal("foreign owner registered")
+	}
+	s.mu.Lock()
+	attempts, active := a.attempts, a.active
+	s.mu.Unlock()
+	if attempts != 0 || active != nil {
+		t.Fatal("rejection consumed admission budget")
+	}
+	batch.owner = s.authOwner
+	if r, err := a.register(ctx, batch); r == nil || err != nil {
+		t.Fatal("canonical owner rejected", err)
+	} else {
+		s.mu.Lock()
+		r.cleaned = true
+		s.mu.Unlock()
+		r.finish()
+		close(r.ownerDone)
+	}
+}
+
+func TestServiceAuthOwnerRevocationRejectsAdmissionBeforeStopWatcher(t *testing.T) {
+	s, a := authUnstartedMemoryOwner(t)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	batch := fixtureAuthBatch(a, dispatchHello)
+	if err := s.authOwner.Revoke(); err != nil {
+		t.Fatal(err)
+	}
+	s.mu.Lock()
+	stopping := s.stopping
+	s.mu.Unlock()
+	if stopping {
+		t.Fatal("fixture unexpectedly delivered service stop")
+	}
+	if r, err := a.register(ctx, batch); r != nil || err == nil {
+		t.Fatal("revoked owner registered before watcher")
+	}
+	s.mu.Lock()
+	if a.attempts != 0 || a.active != nil {
+		t.Error("closed admission spent budget")
+	}
+	s.mu.Unlock()
+}
+
+func TestServiceAuthRegisterAndOwnerRevokeShareOneGate(t *testing.T) {
+	for range 24 {
+		s, a := authUnstartedMemoryOwner(t)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		batch := fixtureAuthBatch(a, dispatchHello)
+		start := make(chan struct{})
+		revoked := make(chan error, 1)
+		registered := make(chan *serviceAuthRequest, 1)
+		go func() { <-start; revoked <- s.authOwner.Revoke() }()
+		go func() { <-start; r, _ := a.register(ctx, batch); registered <- r }()
+		close(start)
+		r := <-registered
+		if err := <-revoked; err != nil {
+			t.Fatal(err)
+		}
+		s.mu.Lock()
+		attempts := a.attempts
+		if r != nil && r.liveLocked() {
+			t.Error("revoked request still live")
+		}
+		if (r == nil && attempts != 0) || (r != nil && attempts != 1) {
+			t.Error("register/revoke ordering spent wrong budget")
+		}
+		s.mu.Unlock()
+		if late, err := a.register(ctx, fixtureAuthBatch(a, dispatchHello)); late != nil || err == nil {
+			t.Fatal("post-revoke request registered")
+		}
+		if r != nil {
+			r.cancel()
+			r.finish()
+			close(r.ownerDone)
+		}
+		cancel()
 	}
 }

@@ -26,7 +26,7 @@ func TestServiceWorkloadReclaimPrecedesAuthOwnerJoin(t *testing.T) {
 	issuer := s.issuer
 	s.mu.Unlock()
 	entered := make(chan struct{})
-	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{owner: s.authOwner, issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")
@@ -99,7 +99,7 @@ func TestServiceWorkloadTimeoutStillRequestsAuthCleanup(t *testing.T) {
 	s.mu.Lock()
 	issuer := s.issuer
 	s.mu.Unlock()
-	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{owner: s.authOwner, issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")
@@ -203,7 +203,7 @@ func TestServiceWorkloadFatalNotifiesAuthOwnerWithoutCleanupProof(t *testing.T) 
 	s.host, s.delivery = h, d
 	s.mu.Unlock()
 	entered := make(chan struct{})
-	batch := serviceAuthBatchOps{issuer: issuer, collector: &operatorauth.Collector{},
+	batch := serviceAuthBatchOps{owner: s.authOwner, issuer: issuer, collector: &operatorauth.Collector{},
 		start: func(ctx context.Context) error { close(entered); <-ctx.Done(); return ctx.Err() },
 		collect: func(context.Context) (*operatorauth.Read, error) {
 			t.Error("canceled helper collected authentication")

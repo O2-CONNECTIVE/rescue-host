@@ -105,6 +105,20 @@ func New() (*Issuer, error) {
 func (i *Issuer) Snapshot() Snapshot {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	return i.snapshotLocked()
+}
+
+// TrySnapshot observes the same actual issuer without waiting for its mutex.
+// A nil or busy issuer provides no observation; this does not grant authority.
+func (i *Issuer) TrySnapshot() (Snapshot, bool) {
+	if i == nil || !i.mu.TryLock() {
+		return Snapshot{}, false
+	}
+	defer i.mu.Unlock()
+	return i.snapshotLocked(), true
+}
+
+func (i *Issuer) snapshotLocked() Snapshot {
 	s := Snapshot{InstanceEpoch: i.epoch, Generation: i.generation, Closed: i.closed}
 	if e := i.current; e != nil {
 		s.Consumed = e.burned

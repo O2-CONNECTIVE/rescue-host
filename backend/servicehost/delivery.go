@@ -40,7 +40,7 @@ func (s *Service) prepareLegacyHostDelivery(ctx context.Context, policy ephemera
 	}()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.stopping || owned.Err() != nil {
+	if !s.authWriter.OpenLocked() || s.stopping || owned.Err() != nil {
 		return nil, context.Canceled
 	}
 	if s.dispatch != nil || !s.started || s.state != Running || s.issuer == nil || s.host != nil || s.delivery != nil {

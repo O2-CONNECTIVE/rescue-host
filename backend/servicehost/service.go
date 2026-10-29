@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
@@ -45,6 +46,8 @@ type Service struct {
 	approvalThread                            serviceThreadOperations
 	serviceName                               string
 	issuer                                    *ephemeral.Issuer
+	authWriter                                *serviceauthowner.Writer
+	authOwner                                 *serviceauthowner.Owner
 	dispatch                                  *serviceDispatcher
 	auth                                      *serviceAuthAdapter
 	ownerIntent                               *serviceOwnerIntent
@@ -173,13 +176,13 @@ func (s *Service) stopFor(cause error) bool {
 	if s.auth != nil && s.auth.active != nil && !s.auth.active.finished {
 		authCancel = s.auth.active.cancel
 	}
-	i, cancel := s.issuer, s.cancel
+	if s.authWriter != nil {
+		_ = s.authWriter.RevokeLocked()
+	}
+	cancel := s.cancel
 	s.mu.Unlock()
 	if unusedDone != nil {
 		s.finish.Do(func() { close(unusedDone) })
-	}
-	if i != nil {
-		_ = i.Close()
 	}
 	// 同issuerの失効より先にworker取消callbackを走らせない。
 	if reservationCancel != nil {
@@ -262,22 +265,31 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 		return ErrProvisioningRejected
 	}
 	s.mu.Lock()
+	s.authWriter, s.authOwner, err = serviceauthowner.New(issuer, &s.mu)
+	if err != nil {
+		s.mu.Unlock()
+		_ = issuer.Close()
+		return ErrProvisioningRejected
+	}
 	s.issuer = issuer
-	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer, changed: make(chan struct{})}
+	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer}
 	stopping = s.stopping
 	s.mu.Unlock()
 	if stopping {
-		_ = issuer.Close()
-		cancel()
+		s.stopFor(nil)
 	}
 	watchStop, watchDone := make(chan struct{}), make(chan struct{})
 	interrogate := make(chan struct{}, 1)
+	ownerStop := s.authOwner.StopRequested()
 	go func() {
 		defer close(watchDone)
 		for {
 			select {
 			case <-watchStop:
 				return
+			case <-ownerStop:
+				ownerStop = nil
+				s.requestStop()
 			case request, open := <-controls:
 				command := Stop
 				if open {

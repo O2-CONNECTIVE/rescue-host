@@ -11,6 +11,7 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/bootstrapauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/protectedkey"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -28,6 +29,7 @@ type serviceAuthAdapter struct {
 // Collector. Only package tests replace this private operation seam.
 type serviceAuthBatchOps struct {
 	issuer    *ephemeral.Issuer
+	owner     *serviceauthowner.Owner
 	collector *operatorauth.Collector
 	start     func(context.Context) error
 	collect   func(context.Context) (*operatorauth.Read, error)
@@ -44,12 +46,12 @@ func authBudget(ctx context.Context) bool {
 	return ok && time.Now().Before(deadline)
 }
 
-func nativeServiceAuthBatch(batch *operatorauth.Batch, issuer *ephemeral.Issuer) (serviceAuthBatchOps, error) {
-	if !batch.MatchesIssuer(issuer) || batch.Collector() == nil {
+func nativeServiceAuthBatch(batch *operatorauth.Batch, issuer *ephemeral.Issuer, owner *serviceauthowner.Owner) (serviceAuthBatchOps, error) {
+	if !batch.MatchesOwner(owner, issuer) || batch.Collector() == nil {
 		return serviceAuthBatchOps{}, ErrProvisioningUnconfigured
 	}
 	collector := batch.Collector()
-	return serviceAuthBatchOps{issuer: issuer, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
+	return serviceAuthBatchOps{issuer: issuer, owner: owner, collector: collector, start: batch.Start, collect: batch.Collect, consume: collector.Consume, close: batch.Close}, nil
 }
 
 type serviceAuthRequest struct {
@@ -93,7 +95,7 @@ func (a *serviceAuthAdapter) register(ctx context.Context, batch serviceAuthBatc
 	s := a.service
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.auth != a || s.dispatch != a.dispatch || s.state != Running || s.stopping || s.issuer == nil || batch.issuer != s.issuer || a.attempts >= a.limit || !a.previousAcknowledgedLocked() {
+	if s.auth != a || s.dispatch != a.dispatch || s.state != Running || s.stopping || s.issuer == nil || !s.authWriter.OpenLocked() || !s.authWriter.MatchesLocked(batch.owner, batch.issuer) || batch.owner != s.authOwner || batch.issuer != s.issuer || a.attempts >= a.limit || !a.previousAcknowledgedLocked() {
 		return nil, ErrProvisioningRejected
 	}
 	if _, seen := a.seen[batch.collector]; seen {
@@ -130,9 +132,9 @@ func (a *serviceAuthAdapter) exchange(ctx context.Context, batch *operatorauth.B
 		return ErrProvisioningRejected
 	}
 	a.service.mu.Lock()
-	issuer := a.service.issuer
+	issuer, owner := a.service.issuer, a.service.authOwner
 	a.service.mu.Unlock()
-	ops, err := nativeServiceAuthBatch(batch, issuer)
+	ops, err := nativeServiceAuthBatch(batch, issuer, owner)
 	if err != nil {
 		return err
 	}
@@ -240,7 +242,7 @@ func (a *serviceAuthAdapter) exchangeOps(ctx context.Context, batch serviceAuthB
 
 func (r *serviceAuthRequest) liveLocked() bool {
 	a, s := r.adapter, r.adapter.service
-	return s.auth == a && a.active == r && s.dispatch == a.dispatch && s.issuer == r.issuer && !s.stopping && s.state == Running && !r.finished && authBudget(r.worker)
+	return s.auth == a && a.active == r && s.dispatch == a.dispatch && s.issuer == r.issuer && s.authWriter.OpenLocked() && s.authWriter.MatchesLocked(r.batch.owner, r.issuer) && !s.stopping && s.state == Running && !r.finished && authBudget(r.worker)
 }
 
 func (a *serviceAuthAdapter) verify(ctx context.Context, frame []byte) (authenticatedServiceRead, error) {
