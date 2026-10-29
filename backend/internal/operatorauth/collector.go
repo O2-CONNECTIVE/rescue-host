@@ -97,14 +97,22 @@ func (r *Read) Consume(ctx context.Context) ([]byte, error) {
 	if r == nil || r.owner == nil {
 		return nil, ErrDenied
 	}
-	c := r.owner
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if r.used || c.proof != r {
+	return r.owner.Consume(ctx, r)
+}
+
+// Consumeは呼出元が保持した同じCollectorを明示してproofを消費する。
+// 別ownerのproofは触らず拒否し、本人の期限/取消失敗は単回権をburnする。
+func (c *Collector) Consume(ctx context.Context, r *Read) ([]byte, error) {
+	if c == nil || r == nil {
 		return nil, ErrDenied
 	}
-	r.used = true // 取消・期限失敗でもburnを戻さない。
-	if c.failed || c.closed || !finite(ctx) || !finite(r.request) || !time.Now().Before(r.deadline) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r.owner != c || c.proof != r || r.used {
+		return nil, ErrDenied
+	}
+	r.used = true
+	if c.failed || c.closed || !reportContextValid(ctx) || !reportContextValid(r.request) || !time.Now().Before(r.deadline) {
 		return nil, ErrDenied
 	}
 	return append([]byte(nil), r.frame...), nil
