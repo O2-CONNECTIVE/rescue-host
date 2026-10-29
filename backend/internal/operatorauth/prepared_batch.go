@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceauthowner"
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
 
@@ -12,6 +13,11 @@ import (
 // prepare it privately and register it with Service before Start. There is no
 // public factory; the zero value is unconfigured and cannot acquire resources.
 type Batch = nativeBatch
+
+// MatchesSoleInput is immutable provenance only, never authentication/admission.
+func (b *nativeBatch) MatchesSoleInput(input *serviceready.SoleInput) bool {
+	return b != nil && b.self == b && input != nil && b.spec.soleInput == input
+}
 
 // MatchesIssuer compares the immutable issuer retained during preparation.
 // Its concrete Owner always holds this same actual issuer.

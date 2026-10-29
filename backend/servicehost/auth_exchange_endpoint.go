@@ -16,7 +16,13 @@ type serviceAuthEndpoint struct {
 	ops                           serviceAuthEndpointOps
 	closed                        *serviceready.EndpointClosed
 	written                       *serviceready.WriteReceipt
+	inspection                    *serviceready.InspectionLease
+	input                         *serviceready.SoleInput
 	acquiring, uncertain, cleaned bool // Service.mu
+}
+
+func (r *serviceAuthRequest) authenticatedEndpointLocked() bool {
+	return r.endpointExchange && r.batchConsumed && r.endpoint != nil && r.endpoint.ops.concrete != nil && r.endpoint.inspection != nil && r.endpoint.input != nil && r.batch.concrete != nil && r.batch.concrete.MatchesSoleInput(r.endpoint.input)
 }
 
 // prepareEndpoint is ownership preparation only. There is no configured caller
