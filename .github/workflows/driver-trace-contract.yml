@@ -1,0 +1,18 @@
+name: Driver trace finite collection contract
+on:
+  pull_request:
+    branches: [codex/wry-init-context-20261029]
+    paths: ['.github/tests/driver-trace-contract.ps1', 'ui/tauri/native-smoke/app-startup-observation.ps1', '.github/workflows/driver-trace-contract.yml']
+permissions:
+  contents: read
+jobs:
+  contract:
+    runs-on: windows-2022
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Check finite collection without a driver or listener
+        run: ./.github/tests/driver-trace-contract.ps1
