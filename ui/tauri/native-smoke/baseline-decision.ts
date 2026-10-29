@@ -22,6 +22,12 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     && collection.normalCloseVerified === true && collection.driverStableThroughClose === true && collection.forcedApp === false && collection.forcedChildren === 0 && cleanupVerified) {
     return { ...result, contrastPassed: true, outcome: 'contrast-pass', nextAction: 'compare-context-settings' };
   }
+  if (object(session) && session.sessionCreated === true && session.browserVersion !== '131.0.2903.86') {
+    return { ...result, outcome: 'runtime-mismatch', nextAction: 'repair-fixed-environment' };
+  }
+  if (object(session) && session.sessionCreated === true && session.documentChecked !== true) {
+    return { ...result, outcome: 'document-not-verified', nextAction: 'inspect-document-boundary' };
+  }
   const nextAction = cleanupVerified ? 'compare-controller-context' : 'repair-ownership-observation';
   if (wry.startup.phase === 'controller-callback-not-observed' && stages.includes('controller-api-return')
     && !stages.includes('controller-callback') && collection.sessionSucceeded === false) {
