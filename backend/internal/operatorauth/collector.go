@@ -14,9 +14,21 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 		return nil, ErrDenied
 	}
 	c.mu.Lock()
-	if c.used || c.failed || c.closed || !c.valid() {
+	if c.used || c.failed || c.closed || !c.valid() || (c.request != nil && !reportContextValid(c.request)) {
 		c.mu.Unlock()
 		return nil, ErrDenied
+	}
+	if reportContextValid(ctx) {
+		var cancel context.CancelFunc
+		if c.request != nil {
+			deadline, _ := c.request.Deadline()
+			ctx, cancel = context.WithDeadline(ctx, deadline)
+			stop := context.AfterFunc(c.request, cancel)
+			c.activeCancel = func() { cancel(); stop() }
+		} else {
+			ctx, cancel = context.WithCancel(ctx)
+			c.activeCancel = cancel
+		}
 	}
 	c.used, c.busy = true, true
 	c.mu.Unlock()
@@ -72,7 +84,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 	c.mu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.failed || c.closed || !finite(ctx) {
+	if c.failed || c.closed || !reportContextValid(ctx) || (c.request != nil && !reportContextValid(c.request)) {
 		return nil, ErrDenied
 	}
 	deadline, _ := ctx.Deadline()
@@ -84,7 +96,7 @@ func (c *Collector) Collect(ctx context.Context) (proof *Read, err error) {
 func (c *Collector) live(ctx context.Context) bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return !c.failed && !c.closed && finite(ctx)
+	return !c.failed && !c.closed && reportContextValid(ctx) && (c.request == nil || reportContextValid(c.request))
 }
 func (c *Collector) valid() bool {
 	o := c.ops
@@ -97,14 +109,22 @@ func (r *Read) Consume(ctx context.Context) ([]byte, error) {
 	if r == nil || r.owner == nil {
 		return nil, ErrDenied
 	}
-	c := r.owner
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if r.used || c.proof != r {
+	return r.owner.Consume(ctx, r)
+}
+
+// Consumeは呼出元が保持した同じCollectorを明示してproofを消費する。
+// 別ownerのproofは触らず拒否し、本人の期限/取消失敗は単回権をburnする。
+func (c *Collector) Consume(ctx context.Context, r *Read) ([]byte, error) {
+	if c == nil || r == nil {
 		return nil, ErrDenied
 	}
-	r.used = true // 取消・期限失敗でもburnを戻さない。
-	if c.failed || c.closed || !finite(ctx) || !finite(r.request) || !time.Now().Before(r.deadline) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if r.owner != c || c.proof != r || r.used {
+		return nil, ErrDenied
+	}
+	r.used = true
+	if c.failed || c.closed || (c.request != nil && !reportContextValid(c.request)) || !reportContextValid(ctx) || !reportContextValid(r.request) || !time.Now().Before(r.deadline) {
 		return nil, ErrDenied
 	}
 	return append([]byte(nil), r.frame...), nil
@@ -132,9 +152,18 @@ func (c *Collector) Close(ctx context.Context) (result error) {
 			result = ErrUnconfirmed
 		}
 	}()
+	c.mu.Lock()
+	activeCancel := c.activeCancel
+	c.mu.Unlock()
+	if activeCancel != nil {
+		defer activeCancel()
+	}
 	if !c.revoked {
 		c.revokeErr = c.ops.revoke()
 		c.revoked = true
+	}
+	if activeCancel != nil {
+		activeCancel()
 	}
 	if !finite(ctx) {
 		return ErrUnconfirmed

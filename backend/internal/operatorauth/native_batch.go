@@ -48,15 +48,27 @@ type nativeBatchOps struct {
 	closeHandle   func(uintptr) error
 }
 type nativeBatch struct {
-	mu                 sync.Mutex
-	ops                nativeBatchOps
-	input, readCopy    uintptr
-	report             batchReport
-	profile            batchProfile
-	child              batchChild
-	collector          *Collector
-	ready, childClosed bool
-	fatal              error
+	uncertain                  bool
+	self                       *nativeBatch
+	mu                         sync.Mutex
+	spec                       nativeBatchSpec
+	request                    context.Context
+	started, starting, closing bool
+	startCancel                context.CancelFunc
+	collectCancel              context.CancelFunc
+	operation                  chan struct{}
+	revokeOnce                 sync.Once
+	revokeOwner                func() error
+	revokeErr                  error
+	startDone                  chan struct{}
+	ops                        nativeBatchOps
+	input, readCopy            uintptr
+	report                     batchReport
+	profile                    batchProfile
+	child                      batchChild
+	collector                  *Collector
+	ready, childClosed         bool
+	fatal                      error
 }
 
 func (s nativeBatchSpec) valid() bool {
@@ -66,121 +78,182 @@ func (s nativeBatchSpec) valid() bool {
 		helperHandle(l.primaryToken) && l.cleanup > 0 && l.processSDDL != "" && l.threadSDDL != "" && l.helperUserSID == s.report.helperSID && s.report.valid()
 }
 
-// startBatchは1要求の固定deadlineを全起動段階で使う。値の正当主体・保護root・
-// sole-read所有の供給元は別の固定provisioningで必要であり、公開入口は閉鎖中。
-func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (b *nativeBatch, err error) {
+// prepareBatch only validates and constructs the retained owner. It performs no native I/O.
+func prepareBatch(s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nativeBatch, error) {
 	if !s.valid() || owner.revoke == nil || owner.reclaim == nil || ops.parent == nil || ops.clean == nil || ops.newReport == nil || ops.newProfile == nil || ops.duplicateRead == nil || ops.start == nil || ops.closeHandle == nil {
 		return nil, ErrUnconfigured
 	}
-	b = &nativeBatch{ops: ops, input: s.input}
+	b := &nativeBatch{ops: ops, input: s.input, spec: s, startDone: make(chan struct{}), operation: make(chan struct{}, 1), revokeOwner: owner.revoke}
+	b.self = b
 	b.collector = &Collector{cleanup: s.launch.cleanup, ops: collectorOps{
 		check: b.recheck, drain: b.drain, terminate: b.terminate, wait: b.wait,
 		closeIO: b.closeOwned, closeProcess: b.confirmClosed,
-		revoke: owner.revoke, reclaim: func(c context.Context) error {
+		revoke: b.revoke, reclaim: func(c context.Context) error {
+			if e := b.awaitStart(c); e != nil {
+				return e
+			}
 			if e := b.cleanupGuard(); e != nil {
 				return e
 			}
 			return owner.reclaim(c)
 		},
 	}}
+	return b, nil
+}
+
+// startBatch is the compatibility path for package fixtures. Service registers
+// the prepared owner before calling Start.
+func startBatch(ctx context.Context, s nativeBatchSpec, owner batchOwner, ops nativeBatchOps) (*nativeBatch, error) {
+	b, err := prepareBatch(s, owner, ops)
+	if err != nil {
+		return nil, err
+	}
+	return b, b.Start(ctx)
+}
+
+// Start admits one attempt against the original finite request. Completion is
+// acknowledged only after every constructor has returned its retained owner;
+// cancellation does not stand in for that acknowledgement.
+func (b *nativeBatch) Start(ctx context.Context) (err error) {
+	if b == nil || b.self != b || b.collector == nil {
+		return ErrUnconfigured
+	}
+	b.mu.Lock()
+	if b.started || b.closing {
+		b.mu.Unlock()
+		return ErrDenied
+	}
+	b.collector.mu.Lock()
+	if b.collector.used || b.collector.failed || b.collector.closed {
+		b.collector.mu.Unlock()
+		b.mu.Unlock()
+		return ErrDenied
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	b.request = ctx
+	b.collector.request = ctx
+	b.collector.mu.Unlock()
+	b.started, b.starting = true, true
+	ctx, b.startCancel = context.WithCancel(ctx)
+	cancel := b.startCancel
+	b.mu.Unlock()
+	s, ops := b.spec, b.ops
 	defer func() {
 		if recover() != nil {
+			b.mu.Lock()
+			b.uncertain = true
+			b.mu.Unlock()
 			err = ErrUnconfirmed
 		}
+		cancel()
+		b.mu.Lock()
+		if b.closing && err == nil {
+			err = ErrDenied
+		}
+		b.ready = err == nil
+		b.starting = false
+		b.startCancel = nil
+		close(b.startDone)
+		b.mu.Unlock()
 		if err != nil {
 			cleanup, cancel := context.WithTimeout(context.Background(), s.launch.cleanup)
 			defer cancel()
-			if e := b.collector.Close(cleanup); e != nil {
-				err = errors.Join(err, e)
-			}
+			err = errors.Join(err, b.Close(cleanup))
 		}
 	}()
 	if e := b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	profile, e := ops.newProfile(ctx)
+	b.mu.Lock()
 	b.profile = profile
+	b.mu.Unlock()
 	if e != nil || profile == nil {
-		return b, ErrUnconfigured
+		return ErrUnconfigured
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	p, e := ops.newReport(ctx, s.report)
+	b.mu.Lock()
 	b.report = p
+	b.mu.Unlock()
 	if e != nil || p == nil {
-		return b, ErrDenied
+		return ErrDenied
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	b.readCopy, e = ops.duplicateRead(b.input)
 	if !helperHandle(b.readCopy) || b.readCopy == b.input || b.readCopy == s.launch.primaryToken || b.readCopy == p.childWriter() || b.readCopy == profile.childReader() {
 		b.readCopy = 0
-		return b, ErrDenied
+		return ErrDenied
 	}
 	if e != nil || !helperHandle(b.readCopy) || b.readCopy == b.input {
-		return b, ErrDenied
+		return ErrDenied
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	l := s.launch
 	l.operatorRead = b.readCopy
 	l.reportWrite = p.childWriter()
 	l.profileRead = profile.childReader()
 	if !profileLaunchID(l.launchID) || profile.launchID() != l.launchID {
-		return b, ErrDenied
+		return ErrDenied
 	}
 	if !helperHandle(l.profileRead) || l.profileRead == s.input || l.profileRead == b.readCopy || l.profileRead == l.reportWrite || l.profileRead == l.primaryToken {
-		return b, ErrDenied
+		return ErrDenied
 	}
 	c, e := ops.start(ctx, l)
+	b.mu.Lock()
 	b.child = c
+	b.mu.Unlock()
 	if e != nil || c == nil {
-		return b, ErrDenied
+		return ErrDenied
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = profile.releaseReader(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = p.releaseWriter(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = b.closeInputs(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = c.resume(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = c.recheck(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = profile.sendAfterResume(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = b.parent(ctx); e != nil {
-		return b, e
+		return e
 	}
 	if e = c.recheck(ctx); e != nil {
-		return b, e
+		return e
 	}
-	if !reportContextValid(ctx) {
-		return b, ErrDenied
+	if !b.admitted(ctx) {
+		return ErrDenied
 	}
-	b.ready = true
-	return b, nil
+	return nil
 }
 func (b *nativeBatch) parent(ctx context.Context) error {
-	if !reportContextValid(ctx) {
+	if !b.admitted(ctx) {
 		return ErrDenied
 	}
 	if e := b.ops.parent(ctx); e != nil {
@@ -191,7 +264,7 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 		}
 		return e
 	}
-	if !reportContextValid(ctx) {
+	if !b.admitted(ctx) {
 		return ErrDenied
 	}
 	return nil
@@ -199,7 +272,11 @@ func (b *nativeBatch) parent(ctx context.Context) error {
 func (b *nativeBatch) cleanupGuard() error {
 	b.mu.Lock()
 	e := b.fatal
+	starting := b.starting
 	b.mu.Unlock()
+	if starting {
+		return ErrUnconfirmed
+	}
 	if e != nil {
 		return e
 	}
@@ -213,13 +290,16 @@ func (b *nativeBatch) cleanupGuard() error {
 	return nil
 }
 func (b *nativeBatch) recheck(ctx context.Context) error {
+	b.mu.Lock()
+	ready, child := b.ready && !b.closing, b.child
+	b.mu.Unlock()
+	if !ready || child == nil {
+		return ErrDenied
+	}
 	if e := b.parent(ctx); e != nil {
 		return e
 	}
-	if !b.ready || b.child == nil {
-		return ErrDenied
-	}
-	return b.child.recheck(ctx)
+	return child.recheck(ctx)
 }
 func (b *nativeBatch) drain(ctx context.Context) (reportResult, error) {
 	if b.report == nil {
@@ -287,34 +367,19 @@ func (b *nativeBatch) closeOwned(ctx context.Context) error {
 	if !reportContextValid(ctx) {
 		return ErrUnconfirmed
 	}
+	b.mu.Lock()
 	b.childClosed = true
+	b.mu.Unlock()
 	return nil
 }
 
 // Collectorの最後のcontext-free段階では新しいOS callを開始しない。
 // 有限closeOwned内でJob/保持process/全I/Oの回収を確認済みの場合だけ終端とする。
 func (b *nativeBatch) confirmClosed() error {
-	if !b.childClosed {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.childClosed || b.uncertain {
 		return ErrUnconfirmed
 	}
 	return nil
-}
-func (b *nativeBatch) Collect(ctx context.Context) (*Read, error) {
-	if b == nil || b.collector == nil {
-		return nil, ErrUnconfigured
-	}
-	r, e := b.collector.Collect(ctx)
-	b.mu.Lock()
-	fatal := b.fatal
-	b.mu.Unlock()
-	if fatal != nil {
-		return nil, errors.Join(e, ErrFatal, fatal)
-	}
-	return r, e
-}
-func (b *nativeBatch) Close(ctx context.Context) error {
-	if b == nil || b.collector == nil {
-		return ErrUnconfigured
-	}
-	return b.collector.Close(ctx)
 }
