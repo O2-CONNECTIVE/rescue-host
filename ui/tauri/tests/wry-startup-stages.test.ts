@@ -2,12 +2,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { classifyWryStartup } from '../native-smoke/wry-startup-stages.ts';
 
+void test('不正な登録結果objectを文字列化せず不完全として拒否する', () => {
+  const trace = fixture(['webview-enter']);
+  assert.equal(classifyWryStartup({ ...trace, scripts: { ...trace.scripts,
+    result: { toString: null, privateValue: 'PRIVATE_FIXTURE' } } }).phase, 'diagnostic-incomplete');
+});
+
 void test('同じscriptの送信成功後もwaitが戻らない状態を識別する', () => {
   const trace = fixture(['webview-enter', 'environment-api-start', 'environment-api-return',
     'environment-callback', 'environment-wait-return', 'controller-api-start',
     'controller-api-return', 'controller-callback', 'controller-wait-return', 'init-enter']);
   const report = classifyWryStartup({ ...trace, variant: 'wry-webview2-stage-3', windowEndUs: 2000,
-    scripts: { calls: 1, apiReturns: 1, callbacks: 1, sends: 1, returns: 0,
+    scripts: { calls: 1, apiReturns: 1, callbacks: 1, sends: 1, returns: 0, pumpOrdinal: 1,
       startedUs: 920, apiStartUs: 930, apiReturnUs: 1000, callbackUs: 1100, sentUs: 1110,
       returnUs: null, result: 'pending', callbackOk: true, invalid: false },
     pumps: { ...trace.pumps, script: { entered: true, phase: 'get-message', iterations: 1,
@@ -50,7 +56,7 @@ function fixture(stages: string[]) {
     events: stages.map((stage, i) => ({ seq: i + 1, stage, elapsedUs: i * 100 })),
     attempted: stages.length, recorded: stages.length, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000,
     pumps: { environment: pump('environment'), controller: pump('controller'), script: { ...empty } },
-    scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0,
+    scripts: { calls: 0, apiReturns: 0, callbacks: 0, sends: 0, returns: 0, pumpOrdinal: 0,
       startedUs: null, apiStartUs: null, apiReturnUs: null, callbackUs: null, sentUs: null,
       returnUs: null, result: 'idle', callbackOk: null, invalid: false } };
 }
