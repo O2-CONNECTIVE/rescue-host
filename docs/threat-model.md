@@ -1,6 +1,6 @@
 # Rescue Hostの脅威モデル
 
-[安全要件](security.md) / [通信契約](communication-contract.md) / [接続再開の条件](../SECURITY_BACKEND_CONTRACT.md)
+[安全要件](security.md) / [通信契約](communication-contract.md) / [接続再開の条件](SECURITY_BACKEND_CONTRACT.md)
 
 製品の新規接続ゲートは閉鎖しており、本番利用できません。
 対象は[通信契約の固定参照](communication-contract.md#対象版と根拠)と、2026-10-27時点の[受入Issue #1](https://github.com/O2-CONNECTIVE/rescue-host/issues/1)です。

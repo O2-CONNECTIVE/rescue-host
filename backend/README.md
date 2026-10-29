@@ -120,4 +120,4 @@ GOTOOLCHAIN=local GOPROXY=off GOWORK=off go test -race ./...
 保護 supervisor、ACL、製品保護用途のJob Object、認証付き IPC、実 Upterm、内側の操作認可、OS 停止中の失効は未実装または未検証です。
 外側通信の終了は、汎用 sshd が別に起動した処理や既実行の変更の取消ではありません。
 両モードの外側権限は同じであり、full でも管理者昇格を認可しません。
-実接続の再有効化には既存の `SECURITY_BACKEND_CONTRACT.md` の全条件と別途の承認が必要です。
+実接続の再有効化には既存の `docs/SECURITY_BACKEND_CONTRACT.md` の全条件と別途の承認が必要です。

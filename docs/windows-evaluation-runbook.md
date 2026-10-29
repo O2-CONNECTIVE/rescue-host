@@ -33,7 +33,7 @@ P2 handshakeの専用再現や代替試験は追加しません。
 | [配布条件](distribution.md) | source、hash、依存とlicenseの対応 |
 | [Windowsローカル制御](windows-local-control.md)、[制御契約ADR](adr/0001-control-contract-candidate.md) | pipe、token、wireの候補仕様と実装限界 |
 | [再起動後に許可を復元しないissuer](../backend/supervisor/ephemeral/README.md) | 単回承認と旧grantを復元しない方式 |
-| [安全要件](security.md)、[バックエンド契約](../SECURITY_BACKEND_CONTRACT.md) | 接続再開の条件。文書の承認だけではgateを解除しない |
+| [安全要件](security.md)、[バックエンド契約](SECURITY_BACKEND_CONTRACT.md) | 接続再開の条件。文書の承認だけではgateを解除しない |
 
 ## 作業前の読み取り確認
 

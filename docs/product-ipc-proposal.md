@@ -20,7 +20,7 @@
 | 現在の shell v1 | [#48 の固定未接続契約](shell-status-contract-fixtures.md)。製品版交渉や start/stop は提供しない |
 | Rust 有限自己子 | [#50](https://github.com/O2-CONNECTIVE/rescue-host/pull/50) の試験専用契約。製品 wire 版、IPC 認証、実 Go 終了の証明ではない |
 
-認可、鍵集合、固定宛先、最大期限、lease、失効は [Go の既存責務](../SECURITY_BACKEND_CONTRACT.md)です。
+認可、鍵集合、固定宛先、最大期限、lease、失効は [Go の既存責務](SECURITY_BACKEND_CONTRACT.md)です。
 UI の表示、確認ボタン、残り時間、Rust の command 受付を認可根拠にしません。
 最小化の比較案は「1つの検証済み backend 起動に1セッション、終了後の再利用なし」です。
 この寿命と資源台帳の所有者も DEC-01 の採用判断に含めます。
