@@ -58,7 +58,11 @@ func (w *Writer) MatchesLocked(owner *Owner, issuer *ephemeral.Issuer) bool {
 	return w.valid() && owner.valid() && w.core == owner.core && issuer != nil && w.core.issuer == issuer
 }
 func (w *Writer) OpenLocked() bool {
-	return w.valid() && !w.core.closed && !w.core.issuer.Snapshot().Closed
+	if !w.valid() || w.core.closed {
+		return false
+	}
+	snapshot, observed := w.core.issuer.TrySnapshot()
+	return observed && !snapshot.Closed
 }
 func (o *Owner) MatchesIssuer(issuer *ephemeral.Issuer) bool {
 	if !o.valid() {
@@ -84,7 +88,7 @@ func (o *Owner) Admit(ctx context.Context) error {
 		return ErrDenied
 	}
 	defer o.core.gate.Unlock()
-	if !finite(ctx) || !o.core.writer.OpenLocked() {
+	if !finite(ctx) || !o.core.writer.OpenLocked() || !finite(ctx) {
 		return ErrDenied
 	}
 	return nil

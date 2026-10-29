@@ -314,3 +314,69 @@ func TestOwnerAdmissionAndWorkloadWaitRespectDeadlineWhileGateContended(t *testi
 		})
 	}
 }
+
+func TestOwnerAdmissionRefusesBusyIssuerWithoutHoldingServiceGatePastDeadline(t *testing.T) {
+	issuer, err := ephemeral.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gate sync.Mutex
+	_, owner, err := serviceauthowner.New(issuer, &gate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	now := time.Date(2026, 10, 28, 12, 0, 0, 0, time.UTC)
+	policy := ephemeral.ApprovedPolicy{PolicyDigest: strings.Repeat("a", 64), KeySetDigest: [32]byte{1}, GuestBoundary: supervisor.SeparatedNonAdminGuest, HardDeadline: now.Add(20 * time.Second), BackendLeaseCeiling: 3 * time.Second}
+	challenge, err := issuer.Prepare(policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var enter sync.Once
+	launched := make(chan error, 1)
+	go func() {
+		_, err := issuer.Launch(ctx, challenge, func() time.Time {
+			enter.Do(func() { close(entered) })
+			select {
+			case <-release:
+			case <-ctx.Done():
+			}
+			return now
+		}, func(context.Context, *supervisor.Authority) error { return nil })
+		launched <- err
+	}()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("issuer clock did not enter memory barrier")
+	}
+	short, end := context.WithTimeout(ctx, 10*time.Millisecond)
+	defer end()
+	result := make(chan error, 1)
+	go func() { result <- owner.Admit(short) }()
+	bounded := true
+	var admitErr error
+	select {
+	case admitErr = <-result:
+	case <-time.After(100 * time.Millisecond):
+		bounded = false
+	}
+	close(release)
+	if !bounded {
+		admitErr = <-result
+	}
+	select {
+	case <-launched:
+	case <-ctx.Done():
+		t.Fatal("issuer memory worker did not join")
+	}
+	_ = owner.Revoke()
+	if !bounded {
+		t.Fatal("issuer observation held service gate beyond admission deadline", admitErr)
+	}
+	if admitErr == nil {
+		t.Fatal("busy issuer admitted a new acquisition")
+	}
+}
