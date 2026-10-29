@@ -5,7 +5,7 @@ export function decideBaseline(collection: unknown, wry: unknown, session: unkno
     observedChildrenOnly: true, contrastPassed: false, cleanupVerified: false };
   const incomplete = { ...base, diagnostic: 'incomplete', outcome: 'inconclusive', nextAction: 'repair-observation' };
   if (!object(collection) || collection.schema !== 1 || collection.kind !== 'direct-wry-controller-contrast'
-    || collection.productNativePass !== false || collection.configurationMatched !== true
+    || collection.productNativePass !== false || collection.fixedInputsVerified !== true
     || collection.wryStartupFileClosed !== true || !object(wry) || wry.diagnostic !== 'complete'
     || !object(wry.startup) || !Array.isArray(wry.startup.events)) return incomplete;
   const cleanupVerified = collection.cleanupFailures === 0 && collection.ownerSetRecorded === true
