@@ -52,6 +52,7 @@ export function classifyWryStartup(input: unknown) {
       : !seen.has('controller-wait-return') ? 'controller-wait-return-not-observed' : 'controller-wait-returned';
   }
   return { schema: 1, purpose: 'diagnostic-hints-only', phase, events, windowEndUs: input.windowEndUs, pumps,
-    pumpHint: phase === 'controller-callback-not-observed' ? controllerPumpHint(pumps.controller) : null };
+    pumpHint: ['controller-callback-not-observed', 'controller-wait-return-not-observed'].includes(phase)
+      ? controllerPumpHint(pumps.controller) : null };
 }
 import { readPumps, controllerPumpHint } from './wry-pump-state.ts';
