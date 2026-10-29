@@ -58,7 +58,8 @@ type accountSnapshot struct {
 // する。同じrecordへの再保存は冪等で、terminalの回帰/他intentの上書きは
 // 拒否する。特に削除済みaccountの終端commit再試行にこの条件が必要である。
 // receiptはdurable commit確認後だけ返し、loadも同じ排他scopeの確定記録
-// を読む。これを満たすnative backendは未実装。memoryは製品へ接続しない。
+// を読む。privateなWindows候補はjournal*.goにあるが、正規root producerと
+// 製品への配線は未設定である。memoryは製品へ接続しない。
 type journalSource interface {
 	reserve(context.Context, record) (journalReceipt, error)
 	save(context.Context, record) (journalReceipt, error)
