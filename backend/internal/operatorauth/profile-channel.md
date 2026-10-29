@@ -7,3 +7,9 @@ reader/writerの同期workerは開始前取消と開始直後取消をstickyに�
 この差分は形式検査と配送のsource候補である。正規producer、同launchのOS binding、実helper executable入口の保護source供給は未接続であり、実Windowsの保護とEOFは未実証。`RunFixed`は未設定拒否を維持する。thread取得中にAPIがpanicして未返却となったhandleは復元できず、ownerは不明として保持する。
 
 後続配送sourceはCreatePipe、第3handle継承、resume後sender、receiverのjoined readとEOF確認後のprivate helper entryを接続する。メモリfixtureでこの経路を検証するが、実WindowsのEOFやbindingの成立は未実証。正規producerとreceiver sourceの実供給がないため公開入口は拒否する。
+
+## 方式Bの明示profile/2
+
+[ADR-0002](../../../docs/adr/0002-operator-sid-policy.md)のBは`sid-message` modeを使い、固定OperatorSID/guestUserと同launch相関だけを配送する。事前のAuthId/session/integrity期待値は含めない。
+実message tokenの固定制約検査と復帰後だけ、実主体と原public frameをreport/2へ結合する。内部reportは32KiB、原public frameは16KiB以内。
+EOF・正常exit・同launch再照合・回収を確認したCollectorだけがframeとopaque bindingを一度に消費する。生decode値やlaunchIdを認証根にしない。

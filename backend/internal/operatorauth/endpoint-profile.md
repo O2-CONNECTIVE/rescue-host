@@ -1,5 +1,8 @@
 # 同じ入力から取得する候補と未構成の正規policy
 
+[採用した方式B](../../../docs/adr/0002-operator-sid-policy.md)は固定SIDと実messageを認証根にし、AuthIdを認証後bindingに使う。
+profile/2とsealed report/readは接続したが、保護Root供給・Service登録は後続で、専用helper資源は未構成のままである。
+
 ## 接続済みsource
 
 private `prepareNativeEndpointProfileBatch` は同じ spec の入力と launch 相関へ候補leaseとproviderを構成し、既存 `prepareNativeBatch` へ渡す。
@@ -33,7 +36,7 @@ queryの部分取得、取消、panic、fatal、close失敗は同じleaseへ残�
 停止中のconstructorが実際に戻るまで、回収ackを発行しない。
 OS inline API自体の非returnをcontextで中断できるとは主張しない。
 
-## 正規AuthenticationIdが不足している理由
+## 旧方式Aの期待値供給の制約（互換経路）
 
 現 `serviceprovision.Record` は固定SID・配置・ACL・image等を持つが、登録済みoperatorログオンの証拠を持たない。
 AuthenticationIdはログオンsessionのLUIDであり、永続のoperator SIDそのものではない。
@@ -47,8 +50,9 @@ LsaGetLogonSessionDataで取得できる情報も、そのsessionを承認済み
 WTSQueryUserTokenのLocalSystem/SE_TCB_NAME要件を満たすための昇格や、LogonUserによる新資格情報の作成は採用しない。
 
 別案として、固定SIDとkernelが確認した実message主体を認証根にし、AuthenticationIdを接続後のbindingへ限定する方式はあり得る。
-これは現在の「独立AuthenticationId必須」契約と同一SIDの別ログオンを許す範囲を変更するため、今回採用しない。
-正規登録の選択は未決として統合ownerへ返す。
+方式Bは[ADR-0002](../../../docs/adr/0002-operator-sid-policy.md)で明示採用した。
+同SIDの別ログオンは新規承認資格だけを得る。旧channel/owner/許可の引継ぎは認めず、認証後の全主体projectionを毎要求照合する。
+以下の独立AuthId供給条件はprofile/1互換経路の履歴で、初版へ独立登録を新たに必須化しない。
 
 ## Service adapterへの残る接続条件
 

@@ -30,7 +30,9 @@ Move の `serviceready.ErrFatal` は普通の拒否へ縮小せず、Batch に s
 既知 fatal 後に native query/cleanup を再開せず、Service worker の既存退役契約へ返す。
 
 typed Move は所有移動であり、operator 認証や同じ Service/profile の証明ではない。
-same Service/profile の実照合、独立 AuthenticationId を含む正規 policy producer、公開 native factory の登録は未完成である。
+以下は初回追加時のprofile/1互換sourceの検証記録である。
+現在採用した[方式B](../../../docs/adr/0002-operator-sid-policy.md)は固定SIDと認証後AuthId bindingを分け、新しい独立登録を必須化しない。
+B policy factoryは静的構成だけを保持し、正規helper token/runtime未構成ならMoveより前に拒否する。Root供給・Service登録は後続差分で検証する。
 欠けた policy を候補から補完せず、既存 provider の厳密な必須値検査を維持する。
 製品 gate は閉鎖したままで、OS/ACL/account/資格情報/実 SSH/P2 の操作や成功を今回の memory 試験へ含めない。
 
