@@ -174,6 +174,7 @@ void test('準備失敗と期限切れでは遅い接続応答で復帰せず、
     const { controller, emit, requests } = setup();
     controller.acceptSample('code'); await controller.requestApproval(true);
     emit('approved'); emit(event);
+    assert.equal(controller.snapshot().diagnostic, event === 'failed' ? 'DEMO_PREPARATION_FAILED' : 'DEMO_EXPIRED');
     const terminal = controller.snapshot();
     controller.reset(); controller.acceptSample('definition'); await controller.requestApproval(true);
     emit('approved'); emit('prepared'); emit('connected'); emit('status_active');

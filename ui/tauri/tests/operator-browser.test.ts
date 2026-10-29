@@ -102,6 +102,9 @@ void test('承認待ち・準備失敗・拒否を区別し、終了未確認の
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
   assert.equal(await next.isDisabled(), false);
   await screenshot(instance, 'operator-denied.png');
+  await details(instance);
+  const notice = instance.getByRole('region', { name: '重要な通知（モック）', exact: true });
+  assert.equal(await notice.getByText('承認されませんでした（モック）', { exact: true }).count(), 1);
   await instance.close();
 });
 
