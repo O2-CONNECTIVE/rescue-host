@@ -15,6 +15,7 @@ type serviceAuthEndpointOps struct {
 type serviceAuthEndpoint struct {
 	ops                           serviceAuthEndpointOps
 	closed                        *serviceready.EndpointClosed
+	written                       *serviceready.WriteReceipt
 	acquiring, uncertain, cleaned bool // Service.mu
 }
 
@@ -27,23 +28,7 @@ func (r *serviceAuthRequest) prepareEndpoint(ctx context.Context, f *serviceread
 	}
 	return r.prepareEndpointOps(ctx, func(c context.Context) (serviceAuthEndpointOps, error) {
 		endpoint, err := f.PrepareEndpoint(c)
-		if endpoint == nil {
-			return serviceAuthEndpointOps{}, err
-		}
-		return serviceAuthEndpointOps{concrete: endpoint, close: func(cleanup context.Context) error {
-			receipt, e := endpoint.CloseEndpoint(cleanup)
-			if e != nil {
-				return e
-			}
-			if receipt == nil {
-				return ErrRuntimeUnconfirmed
-			}
-			s := r.adapter.service
-			s.mu.Lock()
-			r.endpoint.closed = receipt
-			s.mu.Unlock()
-			return nil
-		}}, err
+		return r.nativeEndpointOperations(endpoint), err
 	})
 }
 func (r *serviceAuthRequest) acquisitionLiveLocked(ctx context.Context) bool {
@@ -124,4 +109,27 @@ func (r *serviceAuthRequest) closeEndpoint(ctx context.Context) error {
 		return ErrRuntimeUnconfirmed
 	}
 	return nil
+}
+
+func (r *serviceAuthRequest) nativeEndpointOperations(endpoint *serviceready.Endpoint) serviceAuthEndpointOps {
+	if endpoint == nil {
+		return serviceAuthEndpointOps{}
+	}
+	return serviceAuthEndpointOps{concrete: endpoint, close: func(cleanup context.Context) error {
+		receipt, err := endpoint.CloseEndpoint(cleanup)
+		if err != nil {
+			return err
+		}
+		if receipt == nil {
+			return ErrRuntimeUnconfirmed
+		}
+		s := r.adapter.service
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if r.endpoint == nil || r.endpoint.ops.concrete != endpoint {
+			return ErrRuntimeUnconfirmed
+		}
+		r.endpoint.closed = receipt
+		return nil
+	}}
 }

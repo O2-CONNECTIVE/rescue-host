@@ -224,3 +224,13 @@ fatalなworkerのjoin後は、別threadでnative回収を再開せず、同じ�
 この所有記録は認証・入力来歴・readinessの許可ではない。
 typed SoleInput factory、same-Service/profile照合、SCM fresh Witness、Endpoint応答writeは未接続であり、新Endpoint経路のStartと次要求受理は明示拒否する。
 認証根の選択やguest方針をこの変更で採用・実装せず、製品gate閉鎖、実機・実SSH未実証を維持する。
+
+### 制御経路の再照合と応答
+
+privateな制御経路は、同じ構成のdeep snapshotからreadinessとbootstrapの実Factoryを束ねます。
+SCM所有threadが取得前・dispatch前にquery-only Witnessを照合し、同じ要求・issuer・Owner・目的に束縛した単回observationを返します。
+このobservationは認証・grant・SoleInput来歴の証明ではありません。
+応答bridgeはexact dispatcher replyを検査し、具体Endpointの有限writeと非nil receiptを要求してからdispatch完了へ進みます。
+未構成のNative入力経路のStart・次要求受理は拒否したままです。
+正常縦断fixtureは既存memory auth/writeの準備→取得→再照合→応答→停止を検証し、実Endpoint receiptやWindows保護の成立は証明しません。
+別threadからの任意Scope/Factory、候補値を正本にするpolicy、UIによるgate解除は追加していません。

@@ -15,6 +15,8 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / 'backend'
 GO_VERSION = 'go1.27.3'
 PRODUCT_FILES = {
+    'github.com/O2-CONNECTIVE/rescue-host/backend/internal/guestaccount': {
+        'close.go', 'lifecycle.go', 'model.go', 'plan.go', 'prepare.go', 'recovery.go', 'source.go', 'validation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
@@ -29,7 +31,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
         'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
-        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go'},
+        'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/runbackend': {'runtime.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/childjob': {'child.go', 'plan.go'},
@@ -53,7 +55,7 @@ PRODUCT_FILES = {
         'collector.go', 'controller.go', 'helper.go', 'types.go', 'launch.go', 'native_batch.go',
         'report.go', 'report_cleanup.go', 'report_endpoint.go', 'report_operation.go', 'report_owner.go', 'report_pair.go',
         'profile_frame.go', 'profile_stream.go', 'profile_sync.go', 'profile_pipe.go', 'profile_receiver.go',
-        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go', 'endpoint_candidate.go'},
+        'helper_entry.go', 'helper_entry_owner.go', 'prepared_batch.go', 'batch_scope.go', 'profile_provider.go', 'profile_query.go', 'endpoint_candidate.go', 'sole_input_batch.go'},
 }
 
 
