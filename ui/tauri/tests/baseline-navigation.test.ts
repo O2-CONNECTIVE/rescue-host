@@ -20,6 +20,15 @@ void test('前後snapshotにある匿名eventだけを因果関係に応じて�
   assert.equal(JSON.stringify(classifyNavigationSnapshots(before, { ...after, events: ['PRIVATE_FIXTURE'] })).includes('PRIVATE_FIXTURE'), false);
 });
 
+void test('同じ拒否callbackで固定HTMLに厳密一致したときだけ匿名分類する', () => {
+  const before = { schema: 1, phase: 'before', dropped: 0, events: ['navigation-denied-fixture'] };
+  const after = { ...before, phase: 'after' };
+  const report = classifyNavigationSnapshots(before, after);
+  assert.equal(report.navigationDenied, 'before-request');
+  assert.equal(report.fixtureUriMatch, 'before-request');
+  assert.equal(report.diagnostic, 'incomplete');
+});
+
 void test('専用dirのackを読み古いrequestを再利用しない（後付け回帰）', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'baseline-nav-'));
   const worker = setInterval(() => {
