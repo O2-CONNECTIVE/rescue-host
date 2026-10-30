@@ -79,7 +79,7 @@ servicecontrolは全OSでrequest.go/strict.goと応答専用response.go/response
 native receiver・認証・所有I/OのsourceとAPI seam試験を、実Windowsでの保護主体・ACL・実EOF後PID照会の成立へ広げません。
 保護stdio/stderrの所有・取消・EOF回収にはsourceとAPI seam試験がありますが、実Windowsでの保護成立や期限内回収は未実証です。
 許可0のSCM readyとservice全体のissuer所有はsource候補とAPI seam試験の対象です。
-固定provisioning読取りのsource候補は追加されていますが、実配置とfixedAnchorは未設定です。
+固定provisioning読取りのsource候補は追加されていますが、実配置と`fixedEvaluationConfig`は未設定です。
 保護preflight、強token取得、SCMの内側回収と元threadの外側回収ackを接続したsource/API seam試験を含みます。
 固定実値、正規operator認証・承認source、受理transportは未設定・未接続で、既定の入口と製品接続gateは閉鎖を維持します。
 実service/process ACLやlistenerの保護成立、元thread退役とOS上の物理停止をCIだけで確認済みとは扱いません。
