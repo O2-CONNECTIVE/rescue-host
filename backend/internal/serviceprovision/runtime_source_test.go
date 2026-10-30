@@ -132,12 +132,12 @@ func TestRuntimeGuestConfigurationRejectsLegacyOrForeignProtectedContents(t *tes
 
 func TestRuntimeNativeFactoryHoldsRuntimeBundleBeforeStrongAcquisition(t *testing.T) {
 	p, r, _, _ := runtimeConfigurationFixture(t)
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil || e == nil || !e.runtimeGuest || e.staging {
 		t.Fatal("explicit runtime mode was not isolated", err)
 	}
 	strongCalls := 0
-	s := &nativeExecutionStage{cfg: e.cfg, preview: e.preview, runtimeGuest: true, calls: nativeExecutionCalls{
+	s := &nativeExecutionStage{cfg: e.cfg, preview: e.preview, runtimeGuest: true, requestBudgets: runtimeRequestBudgets(), calls: nativeExecutionCalls{
 		prepare: func(context.Context, Anchor) (*Prepared, error) { return p, nil },
 		guest: func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) {
 			return p.loadRuntimeGuestConfiguration(ctx, r)
@@ -172,7 +172,7 @@ func TestRuntimeNativeFactoryRejectsLegacyBundleBeforeStrongAcquisition(t *testi
 	p, r, _, _ := guestConfigurationFixture(t)
 	limits := previewExecutionConfig().Limits
 	strongCalls := 0
-	s := &nativeExecutionStage{cfg: ExecutionConfig{}, preview: &limits, runtimeGuest: true, calls: nativeExecutionCalls{
+	s := &nativeExecutionStage{cfg: ExecutionConfig{}, preview: &limits, runtimeGuest: true, requestBudgets: runtimeRequestBudgets(), calls: nativeExecutionCalls{
 		prepare: func(context.Context, Anchor) (*Prepared, error) { return p, nil },
 		guest:   func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) { return p.loadFixedGuest(ctx, r) },
 		launch:  func(context.Context, *Prepared) (*LaunchToken, error) { strongCalls++; return nil, ErrLaunchDenied },

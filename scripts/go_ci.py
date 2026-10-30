@@ -42,7 +42,7 @@ PRODUCT_FILES = {
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor': {'authority.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral': {'issuer.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/servicehost': {
-        'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go',
+        'control.go', 'host.go', 'approved.go', 'job.go', 'ownercontrol.go', 'request_loop.go',
         'issued.go', 'nativebootstrap.go', 'nativestdio.go', 'ownedstdio.go',
         'scm_ready.go', 'service.go', 'outer.go', 'dispatch.go', 'dispatch_owner.go', 'reservation.go', 'delivery.go', 'auth_dispatch.go', 'workload_reclaim.go', 'auth_exchange.go', 'auth_exchange_endpoint.go', 'auth_exchange_worker.go', 'control_factory.go', 'control_readiness.go', 'control_exchange.go', 'preview.go', 'preview_dispatch.go', 'confirmation.go', 'confirmed_grant.go', 'confirmed_grant_snapshot.go', 'confirmed_target.go', 'guest_staging.go', 'guest_staging_dispatch.go', 'operator_sid.go', 'runtime_guest.go', 'runtime_guest_actor.go', 'runtime_guest_native.go', 'runtime_guest_prepare.go', 'runtime_guest_admission.go', 'runtime_guest_evaluation.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/internal/localcontrol': {'policy.go', 'boundary.go', 'wire.go'},

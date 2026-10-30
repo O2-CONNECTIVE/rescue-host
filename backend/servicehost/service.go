@@ -50,6 +50,7 @@ type Service struct {
 	authOwner                                 *serviceauthowner.Owner
 	dispatch                                  *serviceDispatcher
 	auth                                      *serviceAuthAdapter
+	requestLoop                               *serviceRequestLoop
 	ownerIntent                               *serviceOwnerIntent
 	reservation                               *serviceReservation
 	host                                      *Host
@@ -276,6 +277,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	s.mu.Unlock()
 	defer func() {
 		s.awaitAuthRequestBeforeReturn()
+		s.awaitRequestLoopBeforeReturn()
 		s.awaitOwnerReservationBeforeReturn()
 		s.awaitHostDeliveryBeforeReturn()
 		s.awaitTargetBeforeReturn()
@@ -382,6 +384,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			// Collector.Close may await whole-workload completion. Guest cleanup
 			// and its real ack therefore precede this join, within the same budget.
 			closeErr = errors.Join(closeErr, s.waitAuthRequest(cleanup))
+			closeErr = errors.Join(closeErr, s.waitRequestLoop(cleanup))
 			if closeErr == nil {
 				if approvalDone != nil {
 					select {
@@ -510,7 +513,8 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	controlled := s.dispatch != nil
 	s.mu.Unlock()
 	if controlled {
-		// controlled経路は許可0のstatus/quiesce専用。legacy承認をfallbackしない。
+		// Query-only preview and explicit runtime reception never fall back to
+		// the legacy approval source.
 		approvals = nil
 		close(sourceDone)
 	} else {
@@ -530,6 +534,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	if s.control != nil {
 		readiness = s.control.requests
 	}
+	requestResult := s.startRequestLoop(root)
 	for {
 		select {
 		case <-root.Done():
@@ -548,6 +553,8 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 			if err := s.handleControlReadiness(request); err != nil {
 				return serviceFailure(err)
 			}
+		case err := <-requestResult:
+			return serviceFailure(err)
 		case <-observe.C:
 			check, finish := context.WithTimeout(root, cfg.Budgets.Startup)
 			var err error

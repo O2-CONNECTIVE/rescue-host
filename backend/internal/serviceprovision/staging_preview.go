@@ -16,9 +16,15 @@ func (s *nativeExecutionStage) composeStagingPreview(ctx context.Context) (*serv
 	if err != nil {
 		return nil, servicehost.PreviewDescriptor{}, err
 	}
-	service, err := servicehost.NewPreviewService(servicehost.PreviewServiceConfig{
+	configuration := servicehost.PreviewServiceConfig{
 		Ready:   serviceready.Config{Profile: r.Profile, PrimaryToken: token, Endpoint: r.Endpoint, ServiceCommandLine: r.ServiceCommandLine, ServiceSecurity: r.ServiceSecurity, ProcessSecurity: r.ProcessSecurity, CleanupTimeout: r.ReadyCleanupTimeout},
 		Budgets: r.Budgets, RequestLimit: s.preview.RequestLimit, LaunchLimit: s.preview.LaunchLimit, IntentTTL: s.preview.IntentTTL, Preview: preview,
-	})
+	}
+	var service *servicehost.Service
+	if s.runtimeGuest {
+		service, err = servicehost.NewRuntimeService(configuration, s.requestBudgets)
+	} else {
+		service, err = servicehost.NewPreviewService(configuration)
+	}
 	return service, preview, err
 }

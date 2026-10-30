@@ -9,9 +9,10 @@ import (
 // Only the private memory seam replaces operations. Production wraps the exact
 // concrete Endpoint and never manufactures its cross-package receipts.
 type serviceAuthEndpointOps struct {
-	concrete  *serviceready.Endpoint
-	factories *serviceNativeFactories
-	close     func(context.Context) error
+	concrete       *serviceready.Endpoint
+	factories      *serviceNativeFactories
+	close          func(context.Context) error
+	awaitConnected func(context.Context) error
 }
 type serviceAuthEndpoint struct {
 	ops                           serviceAuthEndpointOps
@@ -150,7 +151,7 @@ func (r *serviceAuthRequest) nativeEndpointOperations(endpoint *serviceready.End
 	if endpoint == nil {
 		return serviceAuthEndpointOps{}
 	}
-	return serviceAuthEndpointOps{concrete: endpoint, close: func(cleanup context.Context) error {
+	return serviceAuthEndpointOps{concrete: endpoint, awaitConnected: endpoint.AwaitConnected, close: func(cleanup context.Context) error {
 		receipt, err := endpoint.CloseEndpoint(cleanup)
 		if err != nil {
 			return err
@@ -178,13 +179,22 @@ func (r *serviceAuthRequest) splitEndpointForInspection(ctx context.Context) (*s
 	s := r.adapter.service
 	s.mu.Lock()
 	held := r.endpoint
-	if held == nil || held.ops.concrete == nil || held.input != nil || held.inspection != nil || !r.acquisitionLiveLocked(ctx) {
+	if held == nil || held.ops.concrete == nil || held.ops.awaitConnected == nil || held.input != nil || held.inspection != nil || !r.acquisitionLiveLocked(ctx) {
 		s.mu.Unlock()
 		return nil, ErrProvisioningRejected
 	}
-	endpoint := held.ops.concrete
+	endpoint, awaitConnected := held.ops.concrete, held.ops.awaitConnected
+	loop := s.requestLoop
 	s.mu.Unlock()
-	if err := endpoint.AwaitConnected(ctx); err != nil {
+	wait, end := ctx, func() {}
+	if loop != nil {
+		wait, end = context.WithTimeout(ctx, loop.budgets.Wait)
+	}
+	defer end()
+	err := awaitConnected(wait)
+	inTime := authBudget(wait)
+	end()
+	if err != nil || !inTime {
 		return nil, authFailure(err, ErrProvisioningRejected)
 	}
 	input, lease, err := endpoint.SplitForInspection(ctx)
@@ -204,8 +214,9 @@ func (r *serviceAuthRequest) splitEndpointForInspection(ctx context.Context) (*s
 	return input, nil
 }
 
-// No caller is configured until an independent protected expected operator
-// policy supplies this concrete factory. Nil never adopts observed candidates.
+// Explicit runtime reception calls this on a dedicated worker. Acquisition
+// still requires the concrete protected helper source; observed candidates
+// never supply policy or replace an unconfigured factory.
 func (a *serviceAuthAdapter) exchangeControlEndpoint(ctx context.Context) error {
 	if a == nil || a.service == nil {
 		return ErrProvisioningRejected

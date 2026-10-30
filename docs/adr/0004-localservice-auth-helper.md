@@ -32,7 +32,8 @@ supplier停止やtoken handle閉鎖だけで、既存子processの終了や複�
 
 SCMのservice object保護と、生成されるprocess/token objectの保護は別である。
 生成から最初の検査までの間に、共有LocalService主体が危険なhandleを取得できなかったことは、後から安全なDACLを観測しただけでは証明できない。
-初期生成時の保護を含む正規supplier、token借用の全寿命、固定配置、子側の同launch証拠、Serviceの実要求受付は引き続き未完成または未接続である。
+初期生成時の保護を含む正規supplier、token借用の全寿命、固定配置、子側の同launch証拠は引き続き未完成または未接続である。
+Serviceの有限な要求受付callerは明示runtime構成へ接続するが、helper未構成時は取得前に拒否し、実Windowsの認証・受付成功は未検証である。
 今回のSID分離と現在状態の検査だけで、これらを信頼済み・構成完了へ昇格させない。
 公開factoryの未構成拒否と製品gate閉鎖を維持し、source/fake試験やWindows compileを実機保護・実SSHの成功とは扱わない。
 
