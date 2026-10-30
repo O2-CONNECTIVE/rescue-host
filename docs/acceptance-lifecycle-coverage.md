@@ -5,7 +5,10 @@
 照合基点はmain `eb179ddf2858e1330de1a3e073855e8f7a8c56d4`（#161）です。
 本書は受入条件とsource/fake試験の対応表で、実機の成功記録ではありません。
 #155の8件、JSON schema、既存44条件の合否は変更しません。
-実SSH、正規guest token生成、製品caller、実Windows保護は未実証で、製品gateは閉鎖中、C方式は未採用です。
+実SSH、正規guest token生成、製品caller、実Windows保護は未実証で、製品gateは閉鎖中です。
+source照合後の方針として、端末内SSH実行をbrokerが所有するC方式、利用中だけのLocalSystem監督service、非管理者guest、終了時撤去を採用しました。
+既存のrelay containerとnative hostの方向は維持し、実機のserviceやアカウント作成は具体的な操作内容の別承認が必要です。
+この方針採用を、sourceの製品配線や実OSの導入と回収の成功へ読み替えません。
 
 ## 既存条件と試験の対応
 
@@ -55,6 +58,7 @@ go test -count=1 -timeout=30s -run '^TestObservedGuest' ./internal/childjob
 実機の操作、資格情報、service、ACL、Firewall、OS設定は変更しません。
 P2専用再現、ps、loopback bindによる代替実証は実行しません。
 
-正規token生成方式、製品caller、同じ実targetに対する正規承認の縦断は統合担当へ残します。
-方式の決定前に、特定のWindows API、権限の付与、service identity、復元値を期待結果へ追加しません。
+正規token生成の具体契約、製品caller、同じ実targetに対する正規承認の縦断は統合担当へ残します。
+現在の候補policyが要求するNETWORK groupとbatch候補の差は契約変更待ちで、今回の試験の期待値は変えません。
+採用方針だけから特定のWindows API、権限付与の操作、service配置値、復元値を推定して期待結果へ追加しません。
 実機の8件は[既存記録](contracts/windows-acceptance-record.template.json)の未実行を維持し、本書の2件を実機の成功件数へ加算しません。
