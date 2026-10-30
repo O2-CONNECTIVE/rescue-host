@@ -170,10 +170,16 @@ outer未登録の失敗では元threadがRootを回収し、fatalなthreadや未
 ## 固定評価入口と同じ確認からの単回開始
 
 `rescue-service-host → RunFixed → NewNativeRuntimeExecution` は、sourceに固定する評価構成だけを選ぶ。
-Anchor・表示予算・回収再確認間隔は未設定のままで、引数・環境変数・UI・現在の端末から補完しない。
+Anchor・表示予算・回収再確認間隔・runtimeの要求受付予算は未設定のままで、引数・環境変数・UI・現在の端末から補完しない。
 実機用の値を後から与える汎用CLIや暗黙fallbackは追加しない。
 設定が揃ったsource構成では、元Execution ownerを `BindRuntimeGuestEvaluationOwner` に固定し、runtime用の保護設定と同Serviceの認証・確認へ接続する。
 既存の `BindRuntimeGuestOwner` は準備専用のまま、preview/staging/legacyから評価開始へ自動昇格しない。
+
+runtimeのnative構成は `NewRuntimeService` を選び、SCM Running後に既存の認証exchangeを呼ぶ。
+`RuntimeRequests` は待機上限と要求全体の上限を明示する。両方とも正で1分以下、待機上限は要求全体を超えない。
+前要求の回収と専用workerの実終了を確認した後だけ次要求を受ける。エラー・期限切れでは停止し、要求を自動再試行しない。
+停止は新規受付を閉じ、要求の取消・所有参照の回収・loop終了を待つ。未終了workerを成功として外側ownerへ返さない。
+`NewPreviewService` とstagingは要求受付を始めず、runtime予算が欠けた構成をpreviewへfallbackしない。
 
 評価modeは成功したconfirm応答にexact grantを内部保持し、同じauth workerの実書込み完了とdispatch完了後にだけ単回開始する。
 応答は承認receiptであって開始・終了成功の証明ではない。開始失敗・取消・失効は同じissuerとownerの停止・回収へ戻す。

@@ -15,7 +15,7 @@ import (
 
 func TestRuntimeExecutionConstructorSelectsOnlyRuntimeMode(t *testing.T) {
 	cfg := previewExecutionConfig()
-	runtimeOwner, err := NewNativeRuntimeExecution(cfg)
+	runtimeOwner, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil || !runtimeOwner.runtimeGuest || runtimeOwner.staging || runtimeOwner.preview == nil {
 		t.Fatal("runtime mode was not selected independently")
 	}
@@ -91,7 +91,7 @@ func (m *runtimeQueueModel) CloseRuntimeGuest(ctx context.Context, _ servicehost
 
 func TestRuntimeRPCCancelRetainsPartialUntilOwnerCloseAcknowledges(t *testing.T) {
 	p, root, _, _ := guestConfigurationFixture(t)
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestRuntimeRPCCancelRetainsPartialUntilOwnerCloseAcknowledges(t *testing.T)
 func TestRuntimeOwnerReplyKeepsAdmissionAndRejectsDifferentLease(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +197,7 @@ func TestRuntimeOwnerReplyKeepsAdmissionAndRejectsDifferentLease(t *testing.T) {
 func TestRuntimeOwnerLateCloseNilRetainsPartialUntilFreshAck(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestRuntimeOwnerLateCloseNilRetainsPartialUntilFreshAck(t *testing.T) {
 func TestRuntimeOwnerRejectsNilMaterialWithoutError(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,7 +250,7 @@ func (c *runtimeDeadlineContext) Deadline() (time.Time, bool) { return c.deadlin
 func TestRuntimeOwnerRejectsDeadlineEvenBeforeContextNotification(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestRuntimeOwnerRejectsDeadlineEvenBeforeContextNotification(t *testing.T) 
 func TestRuntimeOwnerRetainsPartialIfDeadlineExpiresDuringPrepare(t *testing.T) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	e, err := NewNativeRuntimeExecution(previewExecutionConfig())
+	e, err := NewNativeRuntimeExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}

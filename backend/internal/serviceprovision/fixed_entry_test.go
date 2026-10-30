@@ -13,12 +13,12 @@ import (
 // 構成、同じExecutionによる登録と回収は実コードを通す。
 func TestFixedEntryLoadsRuntimeBundleBeforeSCMAndKeepsSameOwner(t *testing.T) {
 	p, root, _, _ := runtimeConfigurationFixture(t)
-	e, err := newFixedExecution(previewExecutionConfig())
+	e, err := newFixedExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	loads, dispatches, strong := 0, 0, 0
-	stage := &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest,
+	stage := &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest, requestBudgets: e.requestBudgets,
 		calls: nativeExecutionCalls{
 			prepare: func(context.Context, Anchor) (*Prepared, error) { return p, nil },
 			guest: func(ctx context.Context, got *Prepared) (*GuestConfiguration, error) {
@@ -61,13 +61,13 @@ func TestFixedEntryLoadsRuntimeBundleBeforeSCMAndKeepsSameOwner(t *testing.T) {
 
 func TestFixedEntryCanceledPreparationKeepsPartialUntilCleanupRetry(t *testing.T) {
 	p, _, _, _ := runtimeConfigurationFixture(t)
-	e, err := newFixedExecution(previewExecutionConfig())
+	e, err := newFixedExecution(runtimeExecutionConfig())
 	if err != nil {
 		t.Fatal(err)
 	}
 	entered, prepared := make(chan struct{}), make(chan struct{})
 	stage := &previewExecutionStageModel{
-		native: nativeExecutionStage{cfg: e.cfg, preview: e.preview, runtimeGuest: e.runtimeGuest,
+		native: nativeExecutionStage{cfg: e.cfg, preview: e.preview, runtimeGuest: e.runtimeGuest, requestBudgets: e.requestBudgets,
 			calls: nativeExecutionCalls{prepare: func(context.Context, Anchor) (*Prepared, error) {
 				close(entered)
 				<-prepared
@@ -121,9 +121,9 @@ func TestFixedEntryCanceledPreparationKeepsPartialUntilCleanupRetry(t *testing.T
 }
 
 func TestFixedEntryRejectsPartialConfigurationWithoutNativeFallback(t *testing.T) {
-	for _, kind := range []string{"empty", "anchor", "retry", "limits"} {
+	for _, kind := range []string{"empty", "anchor", "retry", "limits", "requests"} {
 		t.Run(kind, func(t *testing.T) {
-			c := previewExecutionConfig()
+			c := runtimeExecutionConfig()
 			switch kind {
 			case "empty":
 				c = PreviewExecutionConfig{}
@@ -133,6 +133,8 @@ func TestFixedEntryRejectsPartialConfigurationWithoutNativeFallback(t *testing.T
 				c.CleanupRetry = 0
 			case "limits":
 				c.Limits = PreviewLimits{}
+			case "requests":
+				c.RuntimeRequests = servicehost.RequestLoopBudgets{}
 			}
 			if e, err := newFixedExecution(c); err == nil || e != nil {
 				t.Fatal("partial fixed configuration acquired an execution owner")

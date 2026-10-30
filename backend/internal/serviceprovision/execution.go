@@ -25,6 +25,9 @@ type PreviewExecutionConfig struct {
 	Anchor       Anchor
 	CleanupRetry time.Duration
 	Limits       PreviewLimits
+	// RuntimeRequests is required only by the explicit runtime constructor.
+	// Preview and disabled-guest staging do not start a request loop.
+	RuntimeRequests servicehost.RequestLoopBudgets
 }
 
 type executionStage interface {
@@ -57,10 +60,11 @@ type executionRequest struct {
 type Execution struct {
 	configured      bool
 	cfg             ExecutionConfig
-	staging         bool           // explicit disabled-guest mode; never selects runtime grants
-	runtimeGuest    bool           // separate explicit runtime candidate; staging remains independent
-	fixedEvaluation bool           // 固定評価entryだけが同じ確認応答後の単回開始を選ぶ
-	preview         *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
+	staging         bool                           // explicit disabled-guest mode; never selects runtime grants
+	runtimeGuest    bool                           // separate explicit runtime candidate; staging remains independent
+	requestBudgets  servicehost.RequestLoopBudgets // immutable protected caller limits
+	fixedEvaluation bool                           // 固定評価entryだけが同じ確認応答後の単回開始を選ぶ
+	preview         *PreviewLimits                 // constructor-owned copy; nil selects the original legacy stage
 	calls           executionCalls
 	used            atomic.Bool
 	service         atomic.Pointer[servicehost.Service]
@@ -112,11 +116,15 @@ func NewNativeStagingExecution(c PreviewExecutionConfig) (*Execution, error) {
 // NewNativeRuntimeExecution selects the separate runtime owner candidate; it
 // performs no native acquisition, authentication or guest authorization.
 func NewNativeRuntimeExecution(c PreviewExecutionConfig) (*Execution, error) {
+	if err := c.RuntimeRequests.Validate(); err != nil {
+		return nil, ErrRootConfig
+	}
 	e, err := NewNativePreviewExecution(c)
 	if err != nil {
 		return nil, err
 	}
 	e.runtimeGuest = true
+	e.requestBudgets = c.RuntimeRequests
 	return e, nil
 }
 
@@ -141,7 +149,7 @@ func (e *Execution) Run(ctx context.Context) error {
 	}
 	if calls.stage == nil {
 		calls.stage = func() executionStage {
-			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest}
+			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest, requestBudgets: e.requestBudgets}
 		}
 	}
 	if calls.runSCM == nil {

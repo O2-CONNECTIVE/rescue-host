@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは257実装、Windowsでは284実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは258実装、Windowsでは285実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -50,6 +50,10 @@ servicehostは共通control.go/host.go/approved.go/job.go/ownercontrol.go/issued
 Linux/macOSはscm_other.go、Windowsはscm_windows.goを厳密選択し、未知GOOSを拒否します。
 nativebootstrapは非Windowsのnativebootstrap_other.goまたはWindowsのnativebootstrap_windows.goを選択します。
 SCM readyは非Windowsのscm_ready_other.goまたはWindowsのscm_ready_windows.goを厳密選択します。
+servicehostのrequest_loop.goを全OSで限定登録します。
+明示runtime構成だけがSCM Running後に有限の要求受付を始め、前要求の回収とworker終了を確認して次へ進みます。
+待機と要求全体の予算は固定構成から別々に与え、preview経路へ暗黙追加しません。
+source/fake試験は未構成helperの拒否と所有権・期限・停止joinを確認するもので、実Windowsのmessage認証成功を示しません。
 SCMの登録や起動、実機の権限分離を検証したとは扱いません。
 localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応する明示実装だけを許可します。
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。

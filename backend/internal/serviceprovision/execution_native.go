@@ -22,6 +22,7 @@ type nativeExecutionStage struct {
 	previewSnapshot *servicehost.PreviewDescriptor
 	staging         bool
 	runtimeGuest    bool
+	requestBudgets  servicehost.RequestLoopBudgets
 	preview         *PreviewLimits
 	calls           nativeExecutionCalls
 	cfg             ExecutionConfig
