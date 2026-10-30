@@ -32,13 +32,14 @@ type confirmationTargetLaunch struct {
 // Fields are frozen before any inspection or Acquire callback; mutable source
 // reports never choose the cleanup or revocation target.
 type confirmationTargetOwner struct {
-	source *confirmationRuntimeSource
-	owner  *confirmationEvidenceOwner
-	kernel confirmationRuntimeKernel
-	target *confirmationTarget
-	launch *confirmationTargetLaunch // Service.mu
-	closed bool
-	fatal  error // original SCM cleanup thread only
+	source      *confirmationRuntimeSource
+	owner       *confirmationEvidenceOwner
+	kernel      confirmationRuntimeKernel
+	target      *confirmationTarget
+	launch      *confirmationTargetLaunch // Service.mu
+	closed      bool
+	actorJoined bool
+	fatal       error // original SCM cleanup thread only
 }
 
 func (s *Service) registerConfirmationTarget(source *confirmationRuntimeSource) error {
@@ -214,8 +215,11 @@ func (s *Service) reclaimRegisteredTarget(ctx context.Context, registration *con
 	}
 	// The frozen original actor owns the suspended target even without approval.
 	err := s.closeRegisteredTarget(ctx)
-	if err == nil {
+	if err == nil && !registration.actorJoined {
 		err = authCleanupCall(func() error { return registration.kernel.CloseOwned(ctx, registration.owner) })
+		if err == nil && authBudget(ctx) {
+			registration.actorJoined = true
+		}
 	}
 	if err != nil {
 		if authFatal(err) {

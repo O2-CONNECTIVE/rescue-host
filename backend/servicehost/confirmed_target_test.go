@@ -2,6 +2,7 @@ package servicehost
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -315,5 +316,54 @@ func TestFatalServiceDoesNotPublishDoneBeforeTargetWorkerReturns(t *testing.T) {
 	}
 	if s.Snapshot().CleanupConfirmed {
 		t.Fatal("fatal pending cleanup became success")
+	}
+}
+
+func TestRegisteredActorSuccessIsNotReplayedAfterPlaneCleanupFailure(t *testing.T) {
+	for _, approved := range []bool{false, true} {
+		t.Run(fmt.Sprint(approved), func(t *testing.T) {
+			s, a, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return nil })
+			source := grantRuntimeFixture(t, s)
+			model := &confirmationTargetMemory{}
+			source.target = &confirmationTarget{ops: model}
+			source.owner.target = source.target
+			var actorJoins, planeCloses atomic.Int32
+			source.kernel = &runtimeCleanupModel{confirmationRuntimeKernel: source.kernel, close: func(context.Context, *confirmationEvidenceOwner) error {
+				if actorJoins.Add(1) > 1 {
+					return operatorauth.ErrFatal
+				}
+				return nil
+			}}
+			if err := s.registerConfirmationTarget(source); err != nil {
+				t.Fatal(err)
+			}
+			if approved {
+				hello := previewExchange(t, a, dispatchHello)
+				intent := previewExchange(t, a, dispatchRequest(hello, 1, "22222222222222222222222222222222", servicecontrol.PrepareIntent))
+				_ = previewExchange(t, a, confirmationFrame(hello, intent.Intent, 2, "33333333333333333333333333333333"))
+			}
+			failed := make(chan struct{})
+			s.control.witness.close = func(context.Context) error {
+				if planeCloses.Add(1) == 1 {
+					close(failed)
+					return ErrRuntimeUnconfirmed
+				}
+				return nil
+			}
+			s.requestStop()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			select {
+			case <-failed:
+			case <-ctx.Done():
+				t.Fatal("plane failure not reached")
+			}
+			if err := s.Close(ctx); err != nil {
+				t.Error(err)
+			}
+			if actorJoins.Load() != 1 || model.closes.Load() != 1 || !s.Snapshot().CleanupConfirmed {
+				t.Error("successful original actor cleanup was replayed", actorJoins.Load(), model.closes.Load())
+			}
+		})
 	}
 }
