@@ -43,6 +43,7 @@ type Spec struct {
 	CleanupTimeout time.Duration
 	Bootstrap      *Bootstrap
 	Command        *FixedCommand
+	Protection     *ProtectedGuestConfig
 }
 
 type kernel interface {
@@ -78,6 +79,9 @@ func bounded(ctx context.Context) bool {
 }
 
 func configured(spec Spec) bool {
+	if spec.Protection != nil && !spec.Protection.valid {
+		return false
+	}
 	h := spec.Handles
 	if _, err := launchArgs(spec); err != nil {
 		return false
@@ -93,13 +97,16 @@ func ordinaryHandle(handle uintptr) bool { return handle != 0 && handle < ^uintp
 
 func Start(ctx context.Context, spec Spec) (*Child, error) {
 	spec = freezeSpec(spec)
-	if !bounded(ctx) || !configured(spec) {
+	if !bounded(ctx) || !configured(spec) || spec.Protection != nil {
 		return nil, ErrConfig
 	}
 	return platformStart(ctx, spec)
 }
 
 func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
+	if spec.Protection != nil {
+		return nil, ErrConfig
+	}
 	c, err := stage(ctx, spec, api)
 	if err != nil {
 		return c, err
@@ -156,13 +163,32 @@ func stage(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 			}
 		}
 	}
-	c.job, err = api.newJob()
+	if spec.Protection != nil {
+		protected, ok := api.(protectedGuestKernel)
+		if !ok || inspectSecurity(protected, *spec.Protection, spec.PrimaryToken, protectedToken) != nil {
+			return fail()
+		}
+		c.job, err = protected.newProtectedJob(*spec.Protection)
+	} else {
+		c.job, err = api.newJob()
+	}
 	if err != nil || c.job == 0 || ctx.Err() != nil {
 		return fail()
 	}
 	c.process, c.thread, err = api.createSuspended(spec)
 	if err != nil || c.process == 0 || c.thread == 0 || ctx.Err() != nil {
 		return fail()
+	}
+	if spec.Protection != nil {
+		protected := api.(protectedGuestKernel)
+		for _, target := range []struct {
+			h    uintptr
+			kind protectedKind
+		}{{c.job, protectedJob}, {c.process, protectedProcess}, {c.thread, protectedThread}} {
+			if inspectSecurity(protected, *spec.Protection, target.h, target.kind) != nil || !bounded(ctx) {
+				return fail()
+			}
+		}
 	}
 	if err = api.assign(c.job, c.process); err != nil || ctx.Err() != nil {
 		return fail()
@@ -172,6 +198,10 @@ func stage(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 }
 
 func freezeSpec(spec Spec) Spec {
+	if spec.Protection != nil {
+		snapshot := *spec.Protection
+		spec.Protection = &snapshot
+	}
 	spec.Command = copyCommand(spec.Command)
 	if spec.Bootstrap != nil {
 		snapshot := *spec.Bootstrap
