@@ -5,6 +5,7 @@ package childjob
 import (
 	"runtime"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -64,6 +65,17 @@ func diagnoseGuestTokenRead(t *testing.T, token windows.Token) {
 	}{{"elevation-type", windows.TokenElevationType}, {"elevation", windows.TokenElevation}, {"ui-access", windows.TokenUIAccess}, {"restrictions", windows.TokenHasRestrictions}, {"app-container", guestTokenIsAppContainer}} {
 		_, err = guestTokenDWORD(token, field.class)
 		check(field.stage, err == nil)
+		if field.class == windows.TokenHasRestrictions && err != nil {
+			var buffer, returned uint32
+			nativeErr := windows.GetTokenInformation(token, field.class, (*byte)(unsafe.Pointer(&buffer)), 4, &returned)
+			shape := "other-length"
+			if returned == 1 {
+				shape = "one-byte"
+			} else if returned == 4 {
+				shape = "four-bytes"
+			}
+			t.Logf("restriction query layout: success=%t shape=%s", nativeErr == nil, shape)
+		}
 	}
 	err = withGuestTokenInfo(token, windows.TokenGroups, 65536, func(data []byte, base uint64) error {
 		_, e := guestTokenGroups(data, base)
