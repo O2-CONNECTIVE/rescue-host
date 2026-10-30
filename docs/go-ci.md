@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは231実装、Windowsでは254実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは234実装、Windowsでは258実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -55,7 +55,7 @@ localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応す�
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
-runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.go/prepared.go/inspection.goと、非Windowsのnative_other.go、
+runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.go/prepared.go/inspection.go/guest_token.go/guest_token_policy.go/guest_token_buffer.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/artifact_windows.go/prepared_windows.goだけを許可します。
 preparedは同一の停止中targetを検査してから単回開始するsource候補です。
 登録は製品入口への配線やC方式の採用を意味せず、実Windowsの検査・停止・期限執行の成立は未検証です。
@@ -177,3 +177,10 @@ profile/reportの明示v2と単回binding消費を検査し、policy構成をRoo
 同対象の検査/単回開始の分離はchildjob/inspection.go、保持対象と同issuer challengeの結合はservicehost/confirmed_target.goだけを共通追加します。
 認証要求→検査→明示fakeの同対象nonadmin証拠→実issuer Prepare→実issuer Launchと単回開始を、private syscall/target seamで検証します。
 実token生成、nonadmin証拠のnative供給、製品constructor/dispatch起動、実SSH、Windows停止/期限執行を検証した意味ではありません。
+
+## 保持target tokenの読取候補
+
+childjobのguest_token.go/guest_token_policy.go/guest_token_buffer.goを共通、guest_token_windows.goだけをWindowsへ限定追加します。
+OSから取得するgroup/privilege/identity等の有限bufferと、同じ保持target/元token/観測receipt/期限の照合をsource/fakeで検証します。
+Windowsの追加試験はテスト自身のprocess tokenをTOKEN_QUERYで読むだけで、guest logonやaccount/credential/privilege変更を実行しません。観測SIDやtoken値は出力しません。
+生成元はinner sshdで未決のまま、別のLogonUser/S4U/Go tokenは生成せず、実guest token producerやSeparatedNonAdminGuest成立を検証したとは扱いません。

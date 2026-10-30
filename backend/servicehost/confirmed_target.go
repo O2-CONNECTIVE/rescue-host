@@ -60,16 +60,27 @@ func (s *Service) registerConfirmationTarget(source *confirmationRuntimeSource) 
 // opaque same-target observation, not authentication or a runtime grant. No
 // product source currently constructs this adapter or supplies its primary token.
 type preparedConfirmationTarget struct {
-	prepared    *childjob.Prepared
-	observation *childjob.Inspection
+	prepared         *childjob.Prepared
+	observation      *childjob.Inspection
+	expectation      *childjob.GuestTokenExpectation
+	guestObservation *childjob.GuestTokenObservation
 }
 
 func (t *preparedConfirmationTarget) inspect(ctx context.Context) error {
+	if t.expectation == nil {
+		return ErrProvisioningUnconfigured
+	}
 	var err error
 	t.observation, err = t.prepared.Inspect(ctx)
+	if err == nil {
+		t.guestObservation, err = t.prepared.ObserveGuestToken(ctx, t.observation, *t.expectation)
+	}
 	return err
 }
 func (t *preparedConfirmationTarget) commit(ctx context.Context) error {
+	if !t.prepared.GuestTokenCurrent(t.observation, t.guestObservation) {
+		return ErrProvisioningRejected
+	}
 	return t.prepared.CommitInspected(ctx, t.observation)
 }
 func (t *preparedConfirmationTarget) revoke() error                   { return t.prepared.Revoke() }
