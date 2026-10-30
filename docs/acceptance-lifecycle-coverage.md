@@ -26,6 +26,7 @@ source/fakeの正常値や固定codeは、正規tokenの来歴、保護DACL、�
 
 [追加試験](../backend/internal/childjob/guest_token_lifecycle_test.go)は、既存の公開メソッドと既存kernel fakeを使います。
 producer、承認bridge、API、配布物、共有README、Go CI inventoryは変更しません。
+既存の受入記録から本書へ案内し、既存の受入IDと記録形式は維持します。
 新しい機能は追加しておらず、初回から既存実装で成功した後付け回帰です。
 新機能のTDDや製品の実機合格には数えません。
 
@@ -35,7 +36,8 @@ producer、承認bridge、API、配布物、共有README、Go CI inventoryは変
 | `TestObservedGuestAbnormalExitKeepsUnconfirmedQueryCleanupAndExitFailure` | token観測後に開始し、非0退出とquery close失敗を同時に返す。最初のWaitは `ErrUnconfirmed`、古い観測の再利用は拒否。同じ所有者の再Waitで残るqueryを回収しても `ErrExit` が残る。以後のWait/Closeがqueryを再閉鎖せず、観測を復活させない |
 
 異常退出後の試験では、Inspect、Observe、Commitが保持した3つのquery参照の回収を確認します。
-最初の1回の失敗を成功した閉鎖へ数えず、その後の3回の回収と区別します。
+専用kernel fakeでopenが返した各参照と閉鎖成功を個別に記録し、同じ参照の二重閉鎖と別参照の回収漏れを区別します。
+最初の1回の失敗を成功した閉鎖へ数えず、その後の3参照それぞれの回収と区別します。
 Job内のprocessとquery参照の回収が揃っても、Go close応答、実SSH終端、全workload終了を生成しません。
 
 ## 実行範囲と未決事項
