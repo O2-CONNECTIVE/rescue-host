@@ -120,7 +120,7 @@ func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, 
 	}
 	s.mu.Lock()
 	// Real Prepare has already consumed the actual generation. Never roll it back.
-	r.grant = &confirmedGrant{confirmation: r, challenge: challenge, binding: challenge.Binding(), approvalID: approvalID, target: source.target, proof: proof}
+	r.grant = &confirmedGrant{confirmation: r, challenge: challenge, binding: challenge.Binding(), approvalID: approvalID, target: r.runtimeTarget, proof: proof}
 	live = r.liveLocked(time.Now())
 	if live {
 		s.preview.grant = r.grant
@@ -141,7 +141,7 @@ func (r *previewConfirmation) consumeRuntimeProof(p *confirmationRuntimeProof, d
 	if o.revoked || o.source != source || source.owner != o || o.service != r.service || o.issuer != r.issuer || o.auth != r.owner || o.outer != r.service.outerTicket || !validRuntimeGuestSID(o.expectedSID) || slices.Contains(r.service.preview.excludedSIDs, o.expectedSID) {
 		return ephemeral.Challenge{}, ErrProvisioningRejected
 	}
-	if source.target != nil && (o.target != source.target || !source.target.inspected.Load() || source.target.revoked.Load() || p == nil || p.target != source.target) {
+	if (r.runtimeTarget != nil || source.target != nil || o.target != nil) && (r.runtimeTarget == nil || o.target != r.runtimeTarget || source.target != r.runtimeTarget || !r.runtimeTarget.inspected.Load() || r.runtimeTarget.revoked.Load() || p == nil || p.target != r.runtimeTarget) {
 		return ephemeral.Challenge{}, ErrProvisioningRejected
 	}
 	if p == nil || p.self != p || p.source != source || p.owner != o || p.confirmation != r || p.service != r.service || p.issuer != r.issuer || p.auth != r.owner || p.outer != o.outer || p.consumed || p.stagingSID != o.expectedSID || p.runtimeSID != o.expectedSID || p.boundary != supervisor.SeparatedNonAdminGuest || !sameGrantDescriptor(p.descriptor, d) {

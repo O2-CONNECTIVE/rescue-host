@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/operatorauth"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/servicecontrol"
 	"github.com/O2-CONNECTIVE/rescue-host/backend/supervisor/ephemeral"
 )
@@ -108,8 +109,7 @@ func TestConfirmedTargetRejectsUnapprovedForeignOrChangedEvidence(t *testing.T) 
 				defer other.Close()
 				g.challenge, _ = other.Prepare(ephemeral.ApprovedPolicy{})
 			case "owner":
-				copy := *source.owner
-				source.owner = &copy
+				source.owner = &confirmationEvidenceOwner{}
 			case "proof":
 				g.confirmation.runtimeProof.target = &confirmationTarget{}
 			case "expired":
@@ -219,5 +219,84 @@ func TestStopDuringTargetCommitWaitsForActualReturnAndRejectsLateSuccess(t *test
 	}
 	if model.closes.Load() == 0 || !s.Snapshot().CleanupConfirmed {
 		t.Fatal("original target was not reclaimed after launch joined")
+	}
+}
+
+func TestRegisteredTargetIsClosedWhenStoppedBeforeConfirmation(t *testing.T) {
+	s, _, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return nil })
+	model := &confirmationTargetMemory{}
+	grantRuntimeFixture(t, s, &confirmationTarget{ops: model})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := s.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if model.closes.Load() != 1 || !model.revoked.Load() {
+		t.Fatal("registered suspended target lost before confirmation", model.closes.Load())
+	}
+}
+func TestAcquireCannotClearOrReplaceOriginalTarget(t *testing.T) {
+	for _, kind := range []string{"clear", "replace"} {
+		t.Run(kind, func(t *testing.T) {
+			s, a, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return nil })
+			model, foreign := &confirmationTargetMemory{}, &confirmationTargetMemory{}
+			originalTarget := &confirmationTarget{ops: model}
+			source := grantRuntimeFixture(t, s, originalTarget)
+			original := source.kernel
+			source.kernel = runtimeKernelModel(func(ctx context.Context, ticket PreviewConfirmationTicket) (*confirmationRuntimeProof, error) {
+				p, err := original.Acquire(ctx, ticket)
+				if kind == "clear" {
+					source.target = nil
+				} else {
+					source.target = &confirmationTarget{ops: foreign}
+				}
+				return p, err
+			})
+			hello := previewExchange(t, a, dispatchHello)
+			intent := previewExchange(t, a, dispatchRequest(hello, 1, "22222222222222222222222222222222", servicecontrol.PrepareIntent))
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = a.exchangeOps(ctx, fixtureAuthBatch(a, confirmationFrame(hello, intent.Intent, 2, "33333333333333333333333333333333")), func(context.Context, []byte) error { return nil })
+			if s.issuer.Snapshot().Generation != 0 {
+				t.Error("acquisition downgraded into legacy authority")
+			}
+			if err := s.Close(ctx); err != nil {
+				t.Error(err)
+			}
+			if model.closes.Load() != 1 || !model.revoked.Load() || foreign.closes.Load() != 0 {
+				t.Error("cleanup retargeted or lost the originally registered target")
+			}
+		})
+	}
+}
+func TestFatalServiceDoesNotPublishDoneBeforeTargetWorkerReturns(t *testing.T) {
+	s, model, _ := confirmedTargetFixture(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	unblock := func() { once.Do(func() { close(release) }) }
+	t.Cleanup(unblock)
+	model.onCommit = func(context.Context) error { close(entered); <-release; return nil }
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	result := make(chan error, 1)
+	go func() { result <- s.launchConfirmedTarget(ctx, s.preview.grant) }()
+	<-entered
+	s.stopFor(operatorauth.ErrFatal)
+	observation, done := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	select {
+	case <-s.done:
+		t.Error("fatal Service published Done while target worker still owned execution")
+	case <-observation.Done():
+	}
+	done()
+	unblock()
+	<-result
+	select {
+	case <-s.done:
+	case <-ctx.Done():
+		t.Fatal("fatal Service did not finish after worker returned")
+	}
+	if s.Snapshot().CleanupConfirmed {
+		t.Fatal("fatal pending cleanup became success")
 	}
 }

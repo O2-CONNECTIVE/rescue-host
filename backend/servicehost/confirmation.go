@@ -32,6 +32,7 @@ type previewConfirmation struct {
 	ctx                     context.Context
 	runtimeSource           *confirmationRuntimeSource
 	runtimeOwner            *confirmationEvidenceOwner
+	runtimeTarget           *confirmationTarget
 	partialOwner            *confirmationEvidenceOwner
 	runtimeProof            *confirmationRuntimeProof
 	runtimeCleanupConfirmed bool
@@ -146,6 +147,9 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		if source != nil {
 			r.runtimeSource = source
 			r.runtimeOwner = source.owner
+			if s.preview.targetOwner != nil {
+				r.runtimeTarget = s.preview.targetOwner.target
+			}
 		}
 	}
 	resolver := p.resolver

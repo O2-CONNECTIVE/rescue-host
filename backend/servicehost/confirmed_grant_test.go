@@ -46,6 +46,11 @@ func grantRuntimeFixture(t *testing.T, s *Service, targets ...*confirmationTarge
 	s.mu.Lock()
 	s.preview.runtime = source
 	s.mu.Unlock()
+	if source.target != nil {
+		if err := s.registerConfirmationTarget(source); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return source
 }
 

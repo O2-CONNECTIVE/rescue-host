@@ -170,3 +170,35 @@ func TestFailedSecondInspectionRetainsBothQueryReferencesUntilClose(t *testing.T
 		t.Fatal("query references not reclaimed")
 	}
 }
+
+// Models an elapsed deadline whose cancellation notification has not arrived.
+type inspectionDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c *inspectionDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+func TestExpiredInspectionCannotBorrowFreshContextBeforeCancelNotification(t *testing.T) {
+	admission := &inspectionDeadlineContext{Context: context.Background(), deadline: time.Now().Add(time.Hour)}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, err := prepareWithKernel(admission, approvedSpec(), api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := p.Inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	admission.deadline = time.Now().Add(-time.Second)
+	if err := p.CommitInspected(ctx, receipt); err == nil {
+		t.Error("expired inspection borrowed a fresh context")
+	}
+	_ = p.Close(ctx)
+	for _, call := range api.calls {
+		if call == "resume" {
+			t.Error("expiry was postponed until notification")
+		}
+	}
+}

@@ -73,8 +73,8 @@ func bounded(ctx context.Context) bool {
 	if ctx == nil || ctx.Err() != nil {
 		return false
 	}
-	_, ok := ctx.Deadline()
-	return ok
+	deadline, ok := ctx.Deadline()
+	return ok && time.Now().Before(deadline)
 }
 
 func configured(spec Spec) bool {

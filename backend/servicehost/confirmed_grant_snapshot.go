@@ -28,7 +28,7 @@ func (s *Service) confirmedGrantSnapshotLocked(d *serviceDispatcher, actual ephe
 }
 
 func (s *Service) hasConfirmationRuntimeLocked() bool {
-	return s.preview != nil && s.preview.intent != nil && s.preview.intent.confirmation != nil && s.preview.intent.confirmation.runtimeSource != nil
+	return s.preview != nil && (s.preview.targetOwner != nil || s.preview.intent != nil && s.preview.intent.confirmation != nil && s.preview.intent.confirmation.runtimeSource != nil)
 }
 
 // The SCM owner joins grant/reservation/Host work before this RPC, then publishes
@@ -43,6 +43,15 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 	if !s.hasConfirmationRuntimeLocked() {
 		s.mu.Unlock()
 		return nil
+	}
+	if registration := s.preview.targetOwner; registration != nil && (s.preview.intent == nil || s.preview.intent.confirmation == nil || s.preview.intent.confirmation.runtimeSource == nil) {
+		actual, ok := s.issuer.TrySnapshot()
+		valid := ok && actual.Closed && s.stopping && s.workload.sameWorkloadLocked(s) && s.workload.hostJoined
+		s.mu.Unlock()
+		if !valid {
+			return ErrRuntimeUnconfirmed
+		}
+		return s.reclaimUnconfirmedTarget(ctx, registration)
 	}
 	r := s.preview.intent.confirmation
 	source, owner := r.runtimeSource, r.runtimeOwner
@@ -63,7 +72,7 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 		if actual, ok := r.issuer.TrySnapshot(); !ok || !actual.Closed {
 			return ErrRuntimeUnconfirmed
 		}
-		err := r.closeTarget(ctx)
+		err := s.closeRegisteredTarget(ctx)
 		if err == nil {
 			err = authCleanupCall(func() error { return source.kernel.CloseOwned(ctx, owner) })
 		}

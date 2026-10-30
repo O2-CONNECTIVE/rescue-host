@@ -9,15 +9,13 @@ import (
 // a nonadmin proof, a grant, or an identity that may be serialized/restored.
 type Inspection struct{ owner *Prepared }
 
-const inspected uint32 = 3
-
 // Inspect retains the same suspended process/thread/Job and its query token.
 // It never resumes the target. The original owner remains responsible for Close.
 func (p *Prepared) Inspect(ctx context.Context) (*Inspection, error) {
 	if p == nil || p.child == nil || !bounded(ctx) {
 		return nil, ErrConfig
 	}
-	if p.state.Load() != 0 {
+	if p.state.Load() != preparedStaged {
 		return nil, ErrStart
 	}
 	runtime.LockOSThread()
@@ -26,16 +24,16 @@ func (p *Prepared) Inspect(ctx context.Context) (*Inspection, error) {
 		return nil, err
 	}
 	var err error
-	if p.state.Load() != 0 || p.lease.Err() != nil {
+	if p.state.Load() != preparedStaged || !bounded(p.lease) {
 		err = ErrStart
 	} else {
 		p.queryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-		if err != nil || !ordinaryHandle(p.queryToken) || ctx.Err() != nil || p.lease.Err() != nil || !p.state.CompareAndSwap(0, inspected) {
+		if err != nil || !ordinaryHandle(p.queryToken) || ctx.Err() != nil || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedInspected) {
 			err = ErrStart
 		}
 	}
 	if err != nil {
-		p.state.Store(2)
+		p.state.Store(preparedRevoked)
 	} else {
 		p.inspection = &Inspection{owner: p}
 	}
@@ -54,7 +52,7 @@ func (p *Prepared) CommitInspected(ctx context.Context, receipt *Inspection) err
 	if p == nil || p.child == nil || !bounded(ctx) {
 		return ErrConfig
 	}
-	if receipt == nil || receipt.owner != p || p.state.Load() != inspected {
+	if receipt == nil || receipt.owner != p || p.state.Load() != preparedInspected {
 		return ErrStart
 	}
 	runtime.LockOSThread()
@@ -63,13 +61,13 @@ func (p *Prepared) CommitInspected(ctx context.Context, receipt *Inspection) err
 		return err
 	}
 	err := ErrStart
-	if receipt == p.inspection && p.state.Load() == inspected && ctx.Err() == nil && p.lease.Err() == nil {
+	if receipt == p.inspection && p.state.Load() == preparedInspected && ctx.Err() == nil && bounded(p.lease) {
 		// Reobserve the same retained target immediately before the admission CAS.
 		// Both query references remain owned even when the second inspection fails.
 		p.commitQueryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-		if err == nil && ordinaryHandle(p.commitQueryToken) && ctx.Err() == nil && p.lease.Err() == nil && p.state.CompareAndSwap(inspected, 1) {
+		if err == nil && ordinaryHandle(p.commitQueryToken) && ctx.Err() == nil && bounded(p.lease) && p.state.CompareAndSwap(preparedInspected, preparedStarted) {
 			err = p.child.resumeOwned(ctx)
-			if err == nil && (p.state.Load() != 1 || ctx.Err() != nil || p.lease.Err() != nil) {
+			if err == nil && (p.state.Load() != preparedStarted || ctx.Err() != nil || !bounded(p.lease)) {
 				err = ErrStart
 			}
 		} else {
@@ -77,7 +75,7 @@ func (p *Prepared) CommitInspected(ctx context.Context, receipt *Inspection) err
 		}
 	}
 	if err != nil {
-		p.state.Store(2)
+		p.state.Store(preparedRevoked)
 	}
 	p.child.gate <- struct{}{}
 	if err != nil {

@@ -28,6 +28,32 @@ type confirmationTargetLaunch struct {
 	cancel context.CancelFunc
 }
 
+// The SCM owner keeps this registration even when no confirmation is accepted.
+// Fields are frozen before any inspection or Acquire callback; mutable source
+// reports never choose the cleanup or revocation target.
+type confirmationTargetOwner struct {
+	source *confirmationRuntimeSource
+	owner  *confirmationEvidenceOwner
+	target *confirmationTarget
+	launch *confirmationTargetLaunch // Service.mu
+	closed bool
+	fatal  error // original SCM cleanup thread only
+}
+
+func (s *Service) registerConfirmationTarget(source *confirmationRuntimeSource) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.preview == nil || s.preview.runtime != source || source == nil || source.self != source || source.target == nil || source.target.ops == nil || source.kernel == nil || s.preview.targetOwner != nil || s.preview.intent != nil || s.stopping || s.state != Running {
+		return ErrProvisioningRejected
+	}
+	o := source.owner
+	if o == nil || o.self != o || o.source != source || o.service != s || o.issuer != s.issuer || o.auth != s.authOwner || o.outer != s.outerTicket || o.target != source.target {
+		return ErrProvisioningRejected
+	}
+	s.preview.targetOwner = &confirmationTargetOwner{source: source, owner: o, target: source.target}
+	return nil
+}
+
 // preparedConfirmationTarget is the concrete childjob adapter. It retains the
 // opaque same-target observation, not authentication or a runtime grant. No
 // product source currently constructs this adapter or supplies its primary token.
@@ -56,10 +82,14 @@ func (t *confirmationTarget) revoke() error {
 }
 func (r *previewConfirmation) inspectTarget(ctx context.Context) error {
 	source, o := r.runtimeSource, r.runtimeOwner
-	if source == nil || source.target == nil {
+	if source == nil || (r.runtimeTarget == nil && source.target == nil && o != nil && o.target == nil) {
 		return nil
 	} // legacy memory seam; no product constructor
-	t := source.target
+	t := r.runtimeTarget
+	registration := r.service.preview.targetOwner
+	if registration == nil || registration.source != source || registration.owner != o || registration.target != t || t == nil || source.target != t {
+		return ErrProvisioningRejected
+	}
 	if o == nil || o.self != o || o.source != source || source.owner != o || o.target != t || t.ops == nil || t.revoked.Load() || t.inspected.Load() {
 		return ErrProvisioningRejected
 	}
@@ -88,7 +118,9 @@ func (s *Service) launchConfirmedTarget(ctx context.Context, g *confirmedGrant) 
 	}
 	run, cancel := context.WithCancel(ctx)
 	work := &confirmationTargetLaunch{done: make(chan struct{}), cancel: cancel}
-	g.launch = work // ownership published before issuer callback or OS side effects
+	g.launch = work
+	s.preview.targetOwner.launch = work // retained independently of mutable source/grant views
+	// ownership published before issuer callback or OS side effects
 	r, t := g.confirmation, g.target
 	s.mu.Unlock()
 	defer func() { cancel(); close(work.done) }()
@@ -112,6 +144,10 @@ func (s *Service) confirmedTargetMatchesLocked(g *confirmedGrant) bool {
 		return false
 	}
 	r, t := g.confirmation, g.target
+	registration := s.preview.targetOwner
+	if registration == nil || registration.target != t || registration.source != s.preview.runtime {
+		return false
+	}
 	if r == nil || !r.finished || r.service != s || r.issuer != s.issuer || r.owner != s.authOwner || r.grant != g || r.dispatcher != s.dispatch || s.dispatch.issuer != s.issuer || s.preview.intent != r.intent || r.intent == nil || r.intent.invalidated || r.intent.confirmation != r {
 		return false
 	}
@@ -127,19 +163,17 @@ func (s *Service) confirmedTargetMatchesLocked(g *confirmedGrant) bool {
 	}
 	return s.reservation != nil && s.reservation == r.work.reservation && s.reservation.finished
 }
-func (r *previewConfirmation) closeTarget(ctx context.Context) error {
-	t := r.runtimeSource.target
-	if t == nil {
-		return nil
-	}
-	s := r.service
+func (s *Service) closeRegisteredTarget(ctx context.Context) error {
 	s.mu.Lock()
-	g := r.grant
+	registration := s.preview.targetOwner
 	var done <-chan struct{}
-	if g != nil && g.launch != nil {
-		done = g.launch.done
+	if registration != nil && registration.launch != nil {
+		done = registration.launch.done
 	}
 	s.mu.Unlock()
+	if registration == nil {
+		return nil
+	}
 	if done != nil {
 		select {
 		case <-done:
@@ -150,5 +184,56 @@ func (r *previewConfirmation) closeTarget(ctx context.Context) error {
 	if !authBudget(ctx) {
 		return ErrRuntimeUnconfirmed
 	}
-	return authCleanupCall(func() error { return t.ops.close(ctx) })
+	if registration.closed {
+		return nil
+	}
+	if err := authCleanupCall(func() error { return registration.target.ops.close(ctx) }); err != nil {
+		return err
+	}
+	if !authBudget(ctx) {
+		return ErrRuntimeUnconfirmed
+	}
+	registration.closed = true
+	return nil
+}
+func (s *Service) awaitTargetBeforeReturn() {
+	s.mu.Lock()
+	var done <-chan struct{}
+	if s.preview != nil && s.preview.targetOwner != nil && s.preview.targetOwner.launch != nil {
+		done = s.preview.targetOwner.launch.done
+	}
+	s.mu.Unlock()
+	if done != nil {
+		<-done
+	} // memory-only actual join, including fatal; never retry native cleanup
+}
+func (s *Service) reclaimUnconfirmedTarget(ctx context.Context, registration *confirmationTargetOwner) error {
+	if registration.fatal != nil {
+		return registration.fatal
+	}
+	// This path owns a suspended target even before an approval record exists.
+	err := s.closeRegisteredTarget(ctx)
+	if err == nil {
+		err = authCleanupCall(func() error { return registration.source.kernel.CloseOwned(ctx, registration.owner) })
+	}
+	if err != nil {
+		if authFatal(err) {
+			registration.fatal = err
+			s.mu.Lock()
+			_ = s.authWriter.FatalWorkloadLocked(err)
+			s.authWriter.NotifyPendingLocked()
+			s.mu.Unlock()
+		}
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !authBudget(ctx) || !s.stopping || s.preview.targetOwner != registration || !s.workload.sameWorkloadLocked(s) || !s.workload.hostJoined {
+		return ErrRuntimeUnconfirmed
+	}
+	if err := s.authWriter.ConfirmWorkloadLocked(); err != nil {
+		return ErrRuntimeUnconfirmed
+	}
+	s.authWriter.NotifyPendingLocked()
+	return nil
 }
