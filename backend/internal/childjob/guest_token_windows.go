@@ -51,9 +51,9 @@ func guestTokenSID(token windows.Token, class uint32, header int) (value string,
 	})
 	return
 }
-func guestPrivilegeNames() (map[uint64]string, error) {
+func guestPrivilegeLUIDs() (map[uint64]string, error) {
 	names := make(map[uint64]string, 3)
-	for _, name := range []string{"SeChangeNotifyPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege"} {
+	for _, name := range guestPrivilegeNames() {
 		text, e := windows.UTF16PtrFromString(name)
 		if e != nil {
 			return nil, ErrStart
@@ -122,7 +122,7 @@ func (windowsKernel) tokenFacts(handle uintptr) (guestTokenFacts, error) {
 	if err != nil {
 		return guestTokenFacts{}, ErrStart
 	}
-	names, err := guestPrivilegeNames()
+	names, err := guestPrivilegeLUIDs()
 	if err != nil {
 		return guestTokenFacts{}, ErrStart
 	}

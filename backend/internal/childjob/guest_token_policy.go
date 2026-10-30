@@ -35,8 +35,16 @@ func allowedGuestGroup(sid, machine string) bool {
 	}
 	return false
 }
+func guestPrivilegeNames() [3]string {
+	return [3]string{"SeChangeNotifyPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege"}
+}
 func allowedGuestPrivilege(name string) bool {
-	return name == "SeChangeNotifyPrivilege" || name == "SeIncreaseWorkingSetPrivilege" || name == "SeTimeZonePrivilege"
+	for _, allowed := range guestPrivilegeNames() {
+		if name == allowed {
+			return true
+		}
+	}
+	return false
 }
 func NewGuestTokenExpectation(user string, groups, privileges []string) (GuestTokenExpectation, error) {
 	machine, ok := guestAccountSID(user)

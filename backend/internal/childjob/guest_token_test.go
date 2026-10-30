@@ -24,10 +24,13 @@ func (m *guestTokenMemory) tokenFacts(handle uintptr) (guestTokenFacts, error) {
 	}
 	return m.facts, nil
 }
-func guestTokenFixture(t *testing.T) (*Prepared, *Inspection, GuestTokenExpectation, *guestTokenMemory, context.Context) {
+func guestTokenFixture(t *testing.T, admissions ...context.Context) (*Prepared, *Inspection, GuestTokenExpectation, *guestTokenMemory, context.Context) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	t.Cleanup(cancel)
+	if len(admissions) == 1 {
+		ctx = admissions[0]
+	}
 	const user = "S-1-5-21-7-8-9-2048"
 	expectation, err := NewGuestTokenExpectation(user, []string{"S-1-1-0", "S-1-5-2", "S-1-5-11", "S-1-5-32-545"}, []string{"SeChangeNotifyPrivilege"})
 	if err != nil {
@@ -264,9 +267,10 @@ func TestGuestTokenExpectationCannotAuthorizeUnknownOrPrivilegedPolicy(t *testin
 	}
 }
 func TestGuestTokenObservationDoesNotOutliveOriginalAdmission(t *testing.T) {
-	p, i, e, _, ctx := guestTokenFixture(t)
 	admission := &inspectionDeadlineContext{Context: context.Background(), deadline: time.Now().Add(time.Hour)}
-	p.lease = admission // private pre-acquisition context fixture only
+	p, i, e, _, _ := guestTokenFixture(t, admission)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	g, err := p.ObserveGuestToken(ctx, i, e)
 	if err != nil {
 		t.Fatal(err)
