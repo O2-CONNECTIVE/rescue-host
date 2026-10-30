@@ -10,6 +10,8 @@
 
 [単発版の配置に関する受入計画](ephemeral-deployment-acceptance.md)は、採用済み配置の責任分担を確認する補助計画です。
 既存44条件、以下8件のID、JSON schemaと合否は変更しません。
+[失効と回収の限定試験との対応](acceptance-lifecycle-coverage.md)は、既存source/fake試験と不足する組合せを整理する補助文書です。
+その成功を以下8件の実機合格へ転記しません。
 
 ## 現在実行できる範囲
 
