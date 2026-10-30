@@ -77,7 +77,11 @@ func (windowsKernel) inspectTarget(spec Spec, process, thread, job uintptr) (uin
 		return 0, err
 	}
 	var token windows.Token
-	if windows.OpenProcessToken(windows.Handle(process), windows.TOKEN_QUERY, &token) != nil {
+	access := uint32(windows.TOKEN_QUERY)
+	if spec.Protection != nil {
+		access |= windows.READ_CONTROL
+	}
+	if windows.OpenProcessToken(windows.Handle(process), access, &token) != nil {
 		return uintptr(token), ErrStart
 	}
 	actual, err := targetPrincipalOf(token)

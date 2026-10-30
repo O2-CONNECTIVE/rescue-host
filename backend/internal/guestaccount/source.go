@@ -86,6 +86,11 @@ type creatorSessionBinder interface {
 	bindCreated(accountReceipt, *seal) error
 }
 
+// Runtime-only provisioning starts after the actual owned SID is durable.
+type ownedAccountPreparer interface {
+	prepareOwnedAccount(context.Context, binding) error
+}
+
 // previousSessionSourceは旧epochの実対象を回収する専用producer。
 // 新しい空sessionの成功を旧sessionの清掃証拠として代用しない。
 type previousSessionSource interface {

@@ -82,7 +82,7 @@ Serviceのprivate bridgeは認証済み確認要求と独立した同対象nonad
 source/owner/proof/retained grantが同じtargetを保持し、元の実issuerが発行したchallengeだけをLaunchで単回消費する。
 停止はtarget受付を閉じ、canonical issuerを失効させてからworkerを取り消し、実commit返却をjoinして同対象をCloseする。
 ローカルのCloseをwhole-workload成功にはせず、既存SCM回収順を維持する。
-この経路はsource/fake限定、製品constructor/dispatcherの起動呼出しはない。正規guest token・同targetの非admin保護証拠のnative producer、C方式採用、実SSHは未実装または未実証。
+この経路はsource/fake限定、製品constructor/dispatcherの起動呼出しはない。方式Cは[設計採用](../../../docs/adr/0003-owned-guest-workload.md)済み。正規guest tokenと保護targetを結ぶsourceは開発中で、実Windowsの非admin保護・停止・実SSHは未実証。
 
 ## 保持tokenの限定観測
 
@@ -101,8 +101,8 @@ issuer/confirmationとのbindingは既存Serviceの固定ownerが引き続き強
 
 検証はsource/fakeとWindows2arch compileを基本とし、Windows CIの追加native試験はテストprocess自身のread-only queryだけである。
 これは実guest logon、保護DACL、実sshdが生成するtoken/shell、期限内の物理停止を検証したものではない。
-現guestはdisabled/NoPasswordで、[実tokenの生成元](../../../docs/guest-fixed-source.md#実guest-tokenとresume前gateの所在)はinner sshdの方式判断と正規admission供給に依存する。
-別のLogonUser/S4U tokenを作って代用しない。製品caller/実OS変更/資格情報生成は追加せずgate閉鎖を維持する。
+従来の未起動guestはdisabled/NoPasswordのままで、[過去の生成元の境界](../../../docs/guest-fixed-source.md#実guest-tokenとresume前gateの所在)を保持する。
+方式Cの新経路は別runtime設定とBATCH期待値を明示し、正規作成receiptからの実logonを同ownerへ束縛する。NETWORK観測の代用品や旧未起動経路の迂回には使わない。製品callerは有効化せず、実機のOS変更・資格情報生成は実施していない。gate閉鎖を維持する。
 最後の観測からresumeまでをOS側で原子的に封じるものではなく、token変更権限と対象DACLを守る正規ownerの成立は別の未達である。
 
 - [GetTokenInformation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation)

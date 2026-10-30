@@ -50,7 +50,9 @@ main `3b4a3ac75c1307071ad6c94f15f6a35330729d53` の[Go 3OS](https://github.com/O
 承認主体は[方式B](docs/adr/0002-operator-sid-policy.md)を採用しました。指定Windowsユーザーの再ログイン後も新規承認資格はありますが、既存許可や接続を引き継ぎません。
 [#151](https://github.com/O2-CONNECTIVE/rescue-host/pull/151)の認証coreは固定SIDと実message主体を分離し、専用helper資源の未構成拒否を維持します。[#152](https://github.com/O2-CONNECTIVE/rescue-host/pull/152)で保持RootからServiceへの供給と、同一channelでのAuthId完全一致・別ログオンへの移譲拒否をsource/fakeで検証しました。
 このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
-同じ停止中の対象を準備し、検査後に単回開始する[基盤API候補](backend/internal/childjob/README.md)も小規模なsource/fake検証の対象です。Windows APIへの接点はcompile確認で、新APIの製品callerはなく、正規guest tokenと承認Recordは未配線、実Windows保護は未実証です。Windows実行方式A/B/Cの採用を意味しません。 検査と承認後開始を分けるbridgeもsource/fake検証に限定し、同じ所有targetと実issuerの単回challengeを照合します。検査だけから非adminや本人承認の証拠は作らず、製品起動口は未接続です。 保持tokenのOS読取による限定検査もsource候補として追加していますが、正規guest tokenの生成元と実sshdの保護経路は未構成です。
+端末内実行は[方式Cと利用中のLocalSystem監督service](docs/adr/0003-owned-guest-workload.md)を設計採用しました。既存Windows OpenSSHの設定やportに依存せず、一時非管理者guestと同じtargetの検査・承認・停止を製品が所有する方針です。
+[基盤API](backend/internal/childjob/README.md)には、停止中targetの保持、token読取、保護記述子検査と承認後単回開始のsource候補があります。実装中の縦断は固定された無害workloadを対象にし、従来NETWORK契約とは別のBATCHログオンを明示します。
+source/fakeの成功とWindows向けcompileを、実guestの生成・保護・停止や実SSHの成功には読み替えません。製品caller、実Windows配置、実SSH session処理と実機受入は未接続または未検証で、開始ゲートは閉鎖したままです。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。
 [確認した版、公開証跡、統合済み準備コード、残る制約](docs/status.md)を参照してください。

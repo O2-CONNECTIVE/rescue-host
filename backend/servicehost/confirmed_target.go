@@ -20,9 +20,46 @@ type confirmationTargetOps interface {
 }
 type confirmationTarget struct {
 	ops       confirmationTargetOps
+	preparing atomic.Bool
 	inspected atomic.Bool
 	revoked   atomic.Bool
 }
+
+type confirmationTargetPreparer interface {
+	PrepareTarget(context.Context, PreviewConfirmationTicket) error
+}
+
+// Materialization is optional only for the existing already-held target seam.
+// A runtime actor is fixed in the registry before this single preparation call.
+func (r *previewConfirmation) prepareTarget(ctx context.Context) error {
+	s := r.service
+	s.mu.Lock()
+	t := r.runtimeTarget
+	if t == nil {
+		s.mu.Unlock()
+		return nil
+	}
+	prepare, ok := t.ops.(confirmationTargetPreparer)
+	if !ok {
+		s.mu.Unlock()
+		return nil
+	}
+	registration := s.preview.targetOwner
+	valid := authBudget(ctx) && r.liveLocked(time.Now()) && registration != nil && r.runtimeSource != nil && r.runtimeOwner != nil && registration.target == t && registration.source == r.runtimeSource && registration.owner == r.runtimeOwner && s.preview.runtime == registration.source && r.runtimeSource.target == t && r.runtimeOwner.target == t && !t.revoked.Load() && !t.inspected.Load() && t.preparing.CompareAndSwap(false, true)
+	s.mu.Unlock()
+	if !valid {
+		return ErrProvisioningRejected
+	}
+	err := authCleanupCall(func() error { return prepare.PrepareTarget(ctx, PreviewConfirmationTicket{record: r}) })
+	s.mu.Lock()
+	live := r.liveLocked(time.Now()) && !t.revoked.Load()
+	s.mu.Unlock()
+	if err != nil || !live || !authBudget(ctx) {
+		return authFailure(err, ErrRuntimeUnconfirmed)
+	}
+	return nil
+}
+
 type confirmationTargetLaunch struct {
 	done   chan struct{}
 	cancel context.CancelFunc
@@ -60,14 +97,16 @@ func (s *Service) registerConfirmationTarget(source *confirmationRuntimeSource) 
 // opaque same-target observation, not authentication or a runtime grant. No
 // product source currently constructs this adapter or supplies its primary token.
 type preparedConfirmationTarget struct {
-	prepared         *childjob.Prepared
-	observation      *childjob.Inspection
-	expectation      *childjob.GuestTokenExpectation
-	guestObservation *childjob.GuestTokenObservation
+	prepared             *childjob.Prepared
+	observation          *childjob.Inspection
+	expectation          *childjob.GuestTokenExpectation
+	guestObservation     *childjob.GuestTokenObservation
+	requireProtected     bool
+	protectedObservation *childjob.ProtectedGuestObservation
 }
 
 func (t *preparedConfirmationTarget) inspect(ctx context.Context) error {
-	if t.expectation == nil {
+	if t.prepared == nil || t.expectation == nil {
 		return ErrProvisioningUnconfigured
 	}
 	var err error
@@ -75,13 +114,22 @@ func (t *preparedConfirmationTarget) inspect(ctx context.Context) error {
 	if err == nil {
 		t.guestObservation, err = t.prepared.ObserveGuestToken(ctx, t.observation, *t.expectation)
 	}
+	if err == nil && t.requireProtected {
+		t.protectedObservation, err = t.prepared.ObserveProtectedGuest(ctx, t.observation)
+	}
 	return err
 }
 func (t *preparedConfirmationTarget) commit(ctx context.Context) error {
 	if !t.prepared.GuestTokenCurrent(t.observation, t.guestObservation) {
 		return ErrProvisioningRejected
 	}
+	if t.requireProtected && !t.prepared.ProtectedGuestCurrent(t.observation, t.protectedObservation) {
+		return ErrProvisioningRejected
+	}
 	return t.prepared.CommitInspected(ctx, t.observation)
+}
+func (t *preparedConfirmationTarget) matchesGuestSID(sid string) bool {
+	return t != nil && t.requireProtected && t.prepared != nil && t.prepared.GuestTokenCurrent(t.observation, t.guestObservation) && t.prepared.ProtectedGuestCurrent(t.observation, t.protectedObservation) && t.protectedObservation.MatchesGuestSID(sid)
 }
 func (t *preparedConfirmationTarget) revoke() error                   { return t.prepared.Revoke() }
 func (t *preparedConfirmationTarget) close(ctx context.Context) error { return t.prepared.Close(ctx) }

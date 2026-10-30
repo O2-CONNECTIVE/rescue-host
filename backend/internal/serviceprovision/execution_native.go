@@ -16,10 +16,12 @@ type nativeExecutionCalls struct {
 	launch  func(context.Context, *Prepared) (*LaunchToken, error)
 	guest   func(context.Context, *Prepared) (*GuestConfiguration, error)
 	staging func(context.Context, *nativeExecutionStage, servicehost.GuestStagingTicket, servicehost.GuestStagingOwner, *serviceready.InspectionLease) (nativeGuestStager, error)
+	runtime func(context.Context, *nativeExecutionStage, servicehost.RuntimeGuestTicket, servicehost.RuntimeGuestOwner, *serviceready.InspectionLease) (nativeRuntimeGuest, error)
 }
 type nativeExecutionStage struct {
 	previewSnapshot *servicehost.PreviewDescriptor
 	staging         bool
+	runtimeGuest    bool
 	preview         *PreviewLimits
 	calls           nativeExecutionCalls
 	cfg             ExecutionConfig
@@ -27,6 +29,7 @@ type nativeExecutionStage struct {
 	token           *LaunchToken
 	guest           *GuestConfiguration
 	guestAttempt    *nativeGuestAttempt
+	runtimeAttempt  *nativeRuntimeAttempt
 	service         *servicehost.Service
 }
 
@@ -43,13 +46,18 @@ func (s *nativeExecutionStage) Initialize(ctx context.Context) (service *service
 		return nil, ErrRootDenied
 	}
 	if s.preview != nil {
-		if s.staging {
+		if s.staging || s.runtimeGuest {
 			guest := s.calls.guest
 			if guest == nil {
-				guest = func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) { return p.LoadFixedGuest(ctx) }
+				guest = func(ctx context.Context, p *Prepared) (*GuestConfiguration, error) {
+					if s.runtimeGuest {
+						return p.LoadRuntimeGuestConfiguration(ctx)
+					}
+					return p.LoadFixedGuest(ctx)
+				}
 			}
 			s.guest, err = guest(ctx, s.prepared)
-			if err != nil || s.guest == nil {
+			if err != nil || s.guest == nil || s.guest.runtimeGuest != s.runtimeGuest {
 				return nil, errors.Join(ErrRootDenied, err)
 			}
 			service, snapshot, err := s.composeStagingPreview(ctx)
@@ -114,7 +122,7 @@ func prepareExecutionToken(ctx context.Context, prepared *Prepared) (*LaunchToke
 }
 
 func (s *nativeExecutionStage) Close(ctx context.Context) error {
-	if s.guestAttempt != nil && !s.guestAttempt.closed {
+	if (s.guestAttempt != nil && !s.guestAttempt.closed) || (s.runtimeAttempt != nil && !s.runtimeAttempt.closed) {
 		return ErrRootUnconfirmed
 	}
 	if s.guest != nil {

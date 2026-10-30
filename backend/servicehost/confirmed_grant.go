@@ -97,6 +97,9 @@ func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, 
 	if source == nil || source.self != source || source.kernel == nil {
 		return "SERVICE_NOT_READY", nil
 	}
+	if err := r.prepareTarget(r.ctx); err != nil {
+		return r.failGrant(err)
+	}
 	if err := r.inspectTarget(r.ctx); err != nil {
 		return r.failGrant(err)
 	}

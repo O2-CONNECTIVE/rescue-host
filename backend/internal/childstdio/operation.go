@@ -12,6 +12,8 @@ type ownedOperation struct {
 	mu                        sync.Mutex
 	raw                       operation
 	done, released, cancelled bool
+	starting, unknown         bool
+	secret                    []byte
 	n                         uint32
 	err                       error
 }
@@ -28,7 +30,22 @@ func (o *ownedOperation) tryStep(cancel bool) (bool, uint32, error) {
 	defer o.mu.Unlock()
 	return o.stepLocked(cancel)
 }
-func (o *ownedOperation) stepLocked(cancel bool) (bool, uint32, error) {
+func (o *ownedOperation) stepLocked(cancel bool) (done bool, n uint32, err error) {
+	// A secret operation whose native adapter panics remains owned and unconfirmed.
+	// Preserve ordinary operations' existing panic behavior.
+	if o.secret != nil {
+		defer func() {
+			if recover() != nil {
+				done, n, err = false, 0, ErrUnconfirmed
+			}
+		}()
+	}
+	if o.starting || o.unknown {
+		return false, 0, ErrUnconfirmed
+	}
+	if o.raw == nil {
+		return o.done && o.released, o.n, o.err
+	}
 	if cancel && !o.done && !o.cancelled {
 		o.cancelled = true
 		_ = o.raw.cancel()
@@ -44,6 +61,10 @@ func (o *ownedOperation) stepLocked(cancel bool) (bool, uint32, error) {
 			return false, 0, err
 		}
 		o.released = true
+		if o.secret != nil {
+			clear(o.secret)
+			o.secret = nil
+		}
 	}
 	if o.cancelled {
 		return true, o.n, errors.Join(io.ErrClosedPipe, o.err)

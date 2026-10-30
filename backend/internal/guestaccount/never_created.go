@@ -27,7 +27,7 @@ type NeverCreatedStaging struct {
 // the native stager. launch borrows the original owner's concrete LaunchToken;
 // this function never owns Token.Close.
 func NewNeverCreatedStaging(ctx context.Context, layout *FixedLayout, prepared *bootstrapauth.PreparedService, ready serviceready.Config, launch stagingLaunch, ticket servicehost.GuestStagingTicket, owner servicehost.GuestStagingOwner, lease *serviceready.InspectionLease) (held *NeverCreatedStaging, result error) {
-	if layout == nil || !layout.configured || owner == nil || !finite(ctx) {
+	if layout == nil || !layout.configured || layout.runtime || owner == nil || !finite(ctx) {
 		return nil, ErrUnconfigured
 	}
 	descriptor, err := ticket.DescriptorFor(ctx, owner)

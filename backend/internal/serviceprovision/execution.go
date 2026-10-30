@@ -42,27 +42,31 @@ type executionReady struct {
 }
 type executionRequest struct {
 	guest        *servicehost.GuestStagingTicket
+	runtime      *servicehost.RuntimeGuestTicket
 	lease        *serviceready.InspectionLease
 	closeGuest   bool
 	confirmation *servicehost.PreviewConfirmationTicket
 	ctx          context.Context
 	proof        servicehost.InnerCleanupProof
 	reply        chan error
+	runtimeReply chan runtimeGuestResult
 }
 
 // Executionは一つのservice起動の外側所有者であり、利用後にコピーしない。
 // partial ownerは元OS threadに保持し、回収不明をmainのos.Exitへ落とさない。
 type Execution struct {
-	configured bool
-	cfg        ExecutionConfig
-	staging    bool           // explicit disabled-guest mode; never selects runtime grants
-	preview    *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
-	calls      executionCalls
-	used       atomic.Bool
-	service    atomic.Pointer[servicehost.Service]
-	requests   chan executionRequest
-	cleaned    chan struct{}
-	stage      executionStage // native owner threadだけが操作する。失敗時も参照を保持する。
+	configured     bool
+	cfg            ExecutionConfig
+	staging        bool           // explicit disabled-guest mode; never selects runtime grants
+	runtimeGuest   bool           // separate explicit runtime candidate; staging remains independent
+	preview        *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
+	calls          executionCalls
+	used           atomic.Bool
+	service        atomic.Pointer[servicehost.Service]
+	requests       chan executionRequest
+	cleaned        chan struct{}
+	stage          executionStage       // native owner threadだけが操作する。失敗時も参照を保持する。
+	runtimeAttempt *runtimeGuestAttempt // original owner thread only
 }
 
 // NewNativeExecutionは値検査だけを行い、token/SCM/ファイルを開かない。
@@ -104,6 +108,17 @@ func NewNativeStagingExecution(c PreviewExecutionConfig) (*Execution, error) {
 	return e, nil
 }
 
+// NewNativeRuntimeExecution selects the separate runtime owner candidate; it
+// performs no native acquisition, authentication or guest authorization.
+func NewNativeRuntimeExecution(c PreviewExecutionConfig) (*Execution, error) {
+	e, err := NewNativePreviewExecution(c)
+	if err != nil {
+		return nil, err
+	}
+	e.runtimeGuest = true
+	return e, nil
+}
+
 func newExecutionOwner(c ExecutionConfig) *Execution {
 	return &Execution{configured: true, cfg: c, requests: make(chan executionRequest), cleaned: make(chan struct{})}
 }
@@ -125,7 +140,7 @@ func (e *Execution) Run(ctx context.Context) error {
 	}
 	if calls.stage == nil {
 		calls.stage = func() executionStage {
-			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging}
+			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest}
 		}
 	}
 	if calls.runSCM == nil {

@@ -9,6 +9,13 @@
 Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI からの呼び出し、Upterm への配線を持ちません。
 この基盤の追加や試験成功だけで製品の開始ゲートを解除できません。
 
+## C本線の固定workload候補
+
+[ADR-0003](../docs/adr/0003-owned-guest-workload.md)で端末内実行を製品が所有し、利用中だけLocalSystem監督serviceを使う設計を採用しました。
+保護runtime設定から正規guestと固定無害targetを準備するsourceを開発しています。
+これは既存forward-only基盤の宛先やsession拒否を変えず、実SSH dispatcherの実装・製品caller・実Windows保護の証明にはしません。
+公開entryの未設定拒否と製品gate閉鎖は維持します。
+
 ## 分離した処理
 
 | 処理 | 所在 | 範囲 |

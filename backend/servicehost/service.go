@@ -194,8 +194,12 @@ func (s *Service) stopFor(cause error) bool {
 		authCancel = s.auth.active.cancel
 	}
 	var targetCancel context.CancelFunc
+	var runtimeGuestCancel context.CancelFunc
 	if s.preview != nil && s.preview.targetOwner != nil {
 		registration := s.preview.targetOwner
+		if actor, ok := registration.kernel.(*runtimeGuestActor); ok {
+			runtimeGuestCancel = actor.cancelAdmission
+		}
 		if err := registration.target.revoke(); err != nil {
 			s.stopCause = serviceFailure(s.stopCause, err)
 		}
@@ -214,6 +218,9 @@ func (s *Service) stopFor(cause error) bool {
 	// 同issuerの失効より先にworker取消callbackを走らせない。
 	if targetCancel != nil {
 		targetCancel()
+	}
+	if runtimeGuestCancel != nil {
+		runtimeGuestCancel()
 	}
 	if reservationCancel != nil {
 		reservationCancel()
@@ -304,6 +311,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	}
 	s.issuer = issuer
 	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer}
+	runtimeBindErr := s.bindRuntimeGuestLocked(root)
 	stopping = s.stopping
 	s.mu.Unlock()
 	if stopping {
@@ -441,6 +449,9 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 		}
 	}()
 
+	if runtimeBindErr != nil {
+		return runtimeBindErr // the existing canonical revocation/cleanup defers are now installed
+	}
 	startup, end := context.WithTimeout(root, cfg.Budgets.Startup)
 	if err := publish(startup, StartPending); err != nil {
 		end()

@@ -25,7 +25,7 @@ func (s *nativeExecutionStage) VerifyPreviewConfirmation(ctx context.Context, ex
 		return err
 	}
 	// currentの新しいdeadlineは採用しない。初回構成のhard capを延長しない。
-	if s.staging {
+	if s.staging || s.runtimeGuest {
 		if s.guest == nil {
 			return ErrRootDenied
 		}

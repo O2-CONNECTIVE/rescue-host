@@ -7,12 +7,20 @@ import (
 
 // GuestTokenExpectation is a frozen verification candidate, not authentication,
 // account provenance or permission to create/log on an account. This deliberately
-// supports only a narrow network-guest profile; no runtime profile is adopted.
+// supports separate narrow network and batch candidates; no runtime profile is adopted.
 type GuestTokenExpectation struct {
 	user               string
 	groups, privileges []string
+	profile            guestTokenProfile
 	valid              bool
 }
+
+type guestTokenProfile uint8
+
+const (
+	networkGuest guestTokenProfile = iota
+	batchGuest
+)
 
 func guestAccountSID(user string) (string, bool) {
 	parts := strings.Split(user, "-")
@@ -28,9 +36,18 @@ func guestAccountSID(user string) (string, bool) {
 	rid, _ := strconv.ParseUint(parts[7], 10, 32)
 	return strings.Join(parts[:7], "-"), rid >= 1000
 }
-func allowedGuestGroup(sid, machine string) bool {
+func allowedGuestGroup(sid, machine string, profile guestTokenProfile) bool {
+	if profile != networkGuest && profile != batchGuest {
+		return false
+	}
+	if sid == "S-1-5-2" {
+		return profile == networkGuest
+	}
+	if sid == "S-1-5-3" {
+		return profile == batchGuest
+	}
 	switch sid {
-	case "S-1-1-0", "S-1-2-0", "S-1-5-2", "S-1-5-11", "S-1-5-15", "S-1-5-113", "S-1-5-32-545", machine + "-513":
+	case "S-1-1-0", "S-1-2-0", "S-1-5-11", "S-1-5-15", "S-1-5-113", "S-1-5-32-545", machine + "-513":
 		return true
 	}
 	return false
@@ -47,18 +64,37 @@ func allowedGuestPrivilege(name string) bool {
 	return false
 }
 func NewGuestTokenExpectation(user string, groups, privileges []string) (GuestTokenExpectation, error) {
+	return newGuestTokenExpectation(user, groups, privileges, networkGuest)
+}
+
+// NewBatchGuestTokenExpectation creates a separate batch verification candidate;
+// it does not authenticate a token or create a guest account or logon.
+func NewBatchGuestTokenExpectation(user string, groups, privileges []string) (GuestTokenExpectation, error) {
+	return newGuestTokenExpectation(user, groups, privileges, batchGuest)
+}
+
+func newGuestTokenExpectation(user string, groups, privileges []string, profile guestTokenProfile) (GuestTokenExpectation, error) {
 	machine, ok := guestAccountSID(user)
 	if !ok || groups == nil || privileges == nil || len(groups) > 64 || len(privileges) > 64 {
 		return GuestTokenExpectation{}, ErrConfig
 	}
 	seen := map[string]bool{}
 	for _, sid := range groups {
-		if seen[sid] || !allowedGuestGroup(sid, machine) {
+		if seen[sid] || !allowedGuestGroup(sid, machine, profile) {
 			return GuestTokenExpectation{}, ErrConfig
 		}
 		seen[sid] = true
 	}
-	for _, sid := range []string{"S-1-1-0", "S-1-5-2", "S-1-5-11", "S-1-5-32-545"} {
+	var logonGroup string
+	switch profile {
+	case networkGuest:
+		logonGroup = "S-1-5-2"
+	case batchGuest:
+		logonGroup = "S-1-5-3"
+	default:
+		return GuestTokenExpectation{}, ErrConfig
+	}
+	for _, sid := range []string{"S-1-1-0", logonGroup, "S-1-5-11", "S-1-5-32-545"} {
 		if !seen[sid] {
 			return GuestTokenExpectation{}, ErrConfig
 		}
@@ -70,7 +106,7 @@ func NewGuestTokenExpectation(user string, groups, privileges []string) (GuestTo
 		}
 		seen[name] = true
 	}
-	return GuestTokenExpectation{user: user, groups: append([]string{}, groups...), privileges: append([]string{}, privileges...), valid: true}, nil
+	return GuestTokenExpectation{user: user, groups: append([]string{}, groups...), privileges: append([]string{}, privileges...), profile: profile, valid: true}, nil
 }
 func (e GuestTokenExpectation) accepts(f guestTokenFacts) bool {
 	machine, ok := guestAccountSID(e.user)
@@ -107,7 +143,7 @@ func (e GuestTokenExpectation) accepts(f guestTokenFacts) bool {
 			continue
 		}
 		// Disabled/deny-only privileged groups cannot be hidden by an enabled-only check.
-		if !allowed[g.sid] || !allowedGuestGroup(g.sid, machine) || g.attributes & ^uint32(7) != 0 || g.attributes&4 == 0 {
+		if !allowed[g.sid] || !allowedGuestGroup(g.sid, machine, e.profile) || g.attributes & ^uint32(7) != 0 || g.attributes&4 == 0 {
 			return false
 		}
 	}

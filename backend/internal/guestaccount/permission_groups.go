@@ -44,7 +44,13 @@ func containsPermissionSID(values []string, value string) bool {
 // 静的割当の投影。logon SID等の未来の実token全体を列挙したとはしない。
 // primary 513は呼出側が同じUSER_INFO_4から観測した場合だけ支持する。
 func permissionClosure(b binding, groups []permissionGroup, logonSID string) ([]string, error) {
-	if !accountSID(b.sid) || !machineSID(b.machine) || !strings.HasPrefix(b.sid, b.machine+"-") || logonSID != "S-1-5-2" {
+	if logonSID != "S-1-5-2" {
+		return nil, ErrDenied
+	}
+	return permissionLogonClosure(b, groups, logonSID)
+}
+func permissionLogonClosure(b binding, groups []permissionGroup, logonSID string) ([]string, error) {
+	if !accountSID(b.sid) || !machineSID(b.machine) || !strings.HasPrefix(b.sid, b.machine+"-") || (logonSID != "S-1-5-2" && logonSID != "S-1-5-3") {
 		return nil, ErrDenied
 	}
 	if len(groups) > permissionMaxGroups {

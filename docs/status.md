@@ -8,6 +8,15 @@
 コードのmain統合、未接続GUIの評価、製品の遠隔接続とOS保護は別々に判定します。
 変化するCI結果は[Actions](https://github.com/O2-CONNECTIVE/rescue-host/actions)と各PRの固定headで確認してください。
 
+## 2026-10-30の設計採用と開発範囲
+
+[ADR-0003](adr/0003-owned-guest-workload.md)で方式Cと利用中のみのLocalSystem監督serviceを採用しました。
+端末の一時guest・停止中target・同issuerの承認・停止ownerを結ぶsourceを開発中です。
+対象は固定された無害workloadで、SSH session処理や任意commandの製品入口は有効化しません。
+NETWORK用の既存設定とは別にBATCH用の保護runtime設定を明示し、未設定時は拒否します。
+実Windowsの資格情報生成、保護object、同ownerの停止/撤去、実SSHは未実証です。実機OS変更の許可や製品gate解除は含みません。
+以下の過去記録にあるinner sshd依存・方式未採用の記述は当時の境界であり、現在の設計方針は本節とADRを優先します。
+
 ## 2026-10-29のsource統合追記
 
 [#147](https://github.com/O2-CONNECTIVE/rescue-host/pull/147)は、固定guest設定の保護Root読取と同じ要求Endpointの検査leaseを追加しました。
