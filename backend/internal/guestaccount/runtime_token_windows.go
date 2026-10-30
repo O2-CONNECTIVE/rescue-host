@@ -18,15 +18,14 @@ type runtimeTokenWindows struct {
 	serviceSID     string
 	raw, primary   windows.Token
 	authentication uint64
-	guard          func() bool
+	scope          func() bool
 	closed         bool
 }
 
 func (t *runtimeTokenWindows) acquire(ctx context.Context, b binding, secret []uint16, guard func() bool) error {
-	if t.raw != 0 || t.primary != 0 || t.closed || guard == nil || !guard() || !finite(ctx) || len(secret) != 37 || secret[36] != 0 {
+	if t.raw != 0 || t.primary != 0 || t.closed || t.scope == nil || guard == nil || !guard() || !finite(ctx) || len(secret) != 37 || secret[36] != 0 {
 		return ErrDenied
 	}
-	t.guard = guard
 	name, err := windows.UTF16FromString(b.name)
 	if err != nil {
 		return ErrDenied
@@ -68,10 +67,19 @@ func (t *runtimeTokenWindows) acquire(ctx context.Context, b binding, secret []u
 	if err = t.inspect(ctx, b, guard); err != nil {
 		return err
 	}
-	if err = t.raw.Close(); err != nil || !guard() {
+	if !t.scope() || !finite(ctx) {
 		return ErrCleanup
 	}
-	t.raw = 0
+	err = t.raw.Close()
+	if err == nil {
+		t.raw = 0
+	} // retain actual release before inspecting admission again
+	if err != nil || !t.scope() {
+		return ErrCleanup
+	}
+	if !guard() {
+		return ErrDenied
+	}
 	return nil
 }
 func runtimeTokenIdentity(token windows.Token, sid string) (uint64, error) {
@@ -111,10 +119,10 @@ func (t *runtimeTokenWindows) Close(ctx context.Context) error {
 	}
 	for _, slot := range []*windows.Token{&t.primary, &t.raw} {
 		if *slot != 0 {
-			if !finite(ctx) || t.guard == nil || !t.guard() {
+			if !finite(ctx) || t.scope == nil || !t.scope() {
 				return ErrCleanup
 			}
-			if err := slot.Close(); err != nil || !t.guard() {
+			if err := slot.Close(); err != nil || !t.scope() {
 				return ErrCleanup
 			}
 			*slot = 0

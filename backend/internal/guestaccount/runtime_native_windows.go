@@ -21,25 +21,28 @@ func runtimePlatform(r *RuntimeGuest) (runtimeOps, error) {
 		}
 		return s.rawScope()
 	}
-	return runtimeOps{guard: guard, random: runtimeRandom,
-		rights: func() runtimeRights { return newRuntimeRightsOwner(&runtimeRightsWindows{}) },
+	return runtimeOps{scope: guard, random: runtimeRandom,
+		rights: func() runtimeRights { return newRuntimeRightsOwner(&runtimeRightsWindows{}, guard) },
 		credential: func() runtimeCredential {
 			s, ok := r.stage.(*stagingOwner)
 			if !ok || s == nil {
 				return &runtimeCredentialExecutor{}
 			}
 			owner, _ := runtimeCredentialNative(s.profile.native)
-			return &runtimeCredentialExecutor{owner: owner}
+			return &runtimeCredentialExecutor{owner: owner, admission: func() bool { return !r.stop.Load() }}
 		},
 		token: func() runtimeToken {
 			s, _ := r.stage.(*stagingOwner)
-			return &runtimeTokenWindows{serviceSID: s.profile.serviceSID}
+			return &runtimeTokenWindows{serviceSID: s.profile.serviceSID, scope: guard}
 		},
 		target: func() runtimeTarget {
 			s, _ := r.stage.(*stagingOwner)
-			return &runtimeTargetWindows{serviceSID: s.profile.serviceSID, user: r.plan.binding.service}
+			return &runtimeTargetWindows{serviceSID: s.profile.serviceSID, user: r.plan.binding.service, scope: guard}
 		},
 		check: func(ctx context.Context, b binding) error {
+			if !r.acquireScope() {
+				return ErrDenied
+			}
 			s, err := r.lifecycle.sources.accounts.inspect(ctx, b)
 			if err != nil || !r.lifecycle.limited(s) || !guard() || !finite(ctx) {
 				return ErrDenied
@@ -65,15 +68,14 @@ type runtimeTargetWindows struct {
 	serviceSID, user string
 	pipes            *childstdio.Pipes
 	prepared         *childjob.Prepared
-	guard            func() bool
+	scope            func() bool
 	closed           bool
 }
 
 func (t *runtimeTargetWindows) prepare(ctx context.Context, b binding, token uintptr, spec childjob.Spec, guard func() bool) (*childjob.Prepared, error) {
-	if t.pipes != nil || t.prepared != nil || t.closed || !finite(ctx) || guard == nil || !guard() || spec.PrimaryToken != 0 || spec.Handles != (childjob.Handles{}) || spec.Protection != nil {
+	if t.pipes != nil || t.prepared != nil || t.closed || t.scope == nil || !finite(ctx) || guard == nil || !guard() || spec.PrimaryToken != 0 || spec.Handles != (childjob.Handles{}) || spec.Protection != nil {
 		return nil, ErrDenied
 	}
-	t.guard = guard
 	protection, err := childjob.NewProtectedGuestConfig(t.serviceSID, b.sid)
 	if err != nil {
 		return nil, err
@@ -100,7 +102,7 @@ func (t *runtimeTargetWindows) Close(ctx context.Context) error {
 		t.closed = true
 		return nil
 	}
-	if !finite(ctx) || t.guard == nil || !t.guard() {
+	if !finite(ctx) || t.scope == nil || !t.scope() {
 		return ErrCleanup
 	}
 	if t.prepared != nil {
@@ -113,7 +115,7 @@ func (t *runtimeTargetWindows) Close(ctx context.Context) error {
 			return err
 		}
 	}
-	if !finite(ctx) || !t.guard() {
+	if !finite(ctx) || !t.scope() {
 		return ErrCleanup
 	}
 	t.closed = true

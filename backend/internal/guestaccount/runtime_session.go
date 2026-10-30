@@ -21,7 +21,7 @@ func (r *RuntimeGuest) prepareOwnedAccount(ctx context.Context, b binding) error
 	if r == nil || r.created != b || r.rights == nil || r.lifecycle.record.stage != ownedSID || !r.live(ctx) {
 		return ErrDenied
 	}
-	if err := r.rights.provision(ctx, b, r.plan.policy.logonRights, r.ops.guard); err != nil || !r.live(ctx) {
+	if err := r.rights.provision(ctx, b, r.plan.policy.logonRights, r.acquireScope); err != nil || !r.live(ctx) {
 		return ErrDenied
 	}
 	return nil
@@ -48,7 +48,7 @@ func (r *RuntimeGuest) quiesce(ctx context.Context, b binding) (sessionReceipt, 
 func (r *RuntimeGuest) closeRuntime(ctx context.Context) error {
 	for _, held := range []creationOwned{r.target, r.credential, r.token, r.rights} {
 		if held != nil {
-			if !finite(ctx) || !r.ops.guard() {
+			if !finite(ctx) || !r.ops.scope() {
 				return ErrCleanup
 			}
 			if err := held.Close(ctx); err != nil {

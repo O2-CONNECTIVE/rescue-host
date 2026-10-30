@@ -29,7 +29,7 @@ func runtimeCredentialFixtureOwner(t *testing.T, r *RuntimeGuest) (*runtimeCrede
 	b := r.plan.binding
 	b.sid = b.machine + "-1002"
 	p.output = io.NopCloser(bytes.NewReader(sidResult(runtimeCredentialRequest(b))))
-	return &runtimeCredentialExecutor{owner: o}, w
+	return &runtimeCredentialExecutor{owner: o, admission: func() bool { return !r.stop.Load() }}, w
 }
 func TestRuntimeGuestUsesDedicatedSecretSegmentAndErasesBinaryCopyAfterWriterReturn(t *testing.T) {
 	r, _ := runtimeOwnerFixture(t)

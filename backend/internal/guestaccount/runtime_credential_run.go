@@ -81,13 +81,17 @@ func (o *sidRunOwner) executeCredential(ctx context.Context, b binding, secret [
 	return nil
 }
 
-type runtimeCredentialExecutor struct{ owner *sidRunOwner }
+type runtimeCredentialExecutor struct {
+	owner     *sidRunOwner
+	admission func() bool // read by setup/I/O workers without entering the owner OS scope
+}
 
 func (c *runtimeCredentialExecutor) prepare(ctx context.Context, guard func() bool) error {
-	if c == nil || c.owner == nil || guard == nil || !guard() || !finite(ctx) {
+	if c == nil || c.owner == nil || c.admission == nil || guard == nil || !guard() || !finite(ctx) {
 		return ErrDenied
 	}
 	o := c.owner
+	o.admission = c.admission
 	o.mu.Lock()
 	o.setup = newSIDRunWork()
 	setup := o.setup

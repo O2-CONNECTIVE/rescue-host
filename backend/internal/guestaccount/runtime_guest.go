@@ -38,15 +38,18 @@ type RuntimeGuest struct {
 }
 
 func newRuntimeGuest(p Plan, a runtimeAuthority, ops runtimeOps) (*RuntimeGuest, error) {
-	if !p.valid || !p.policy.batch || a == nil || ops.guard == nil || ops.random == nil || ops.rights == nil || ops.credential == nil || ops.token == nil || ops.target == nil || ops.check == nil {
+	if !p.valid || !p.policy.batch || a == nil || ops.scope == nil || ops.random == nil || ops.rights == nil || ops.credential == nil || ops.token == nil || ops.target == nil || ops.check == nil {
 		return nil, ErrUnconfigured
 	}
 	r := &RuntimeGuest{plan: p, authority: a, ops: ops}
 	r.self = r
 	return r, nil
 }
+
+// acquireScope withdraws new phases while preserving the original cleanup scope.
+func (r *RuntimeGuest) acquireScope() bool { return !r.stop.Load() && r.ops.scope() }
 func (r *RuntimeGuest) live(ctx context.Context) bool {
-	return finite(ctx) && !r.stop.Load() && r.ops.guard()
+	return finite(ctx) && r.acquireScope()
 }
 func (r *RuntimeGuest) finish(result *error) {
 	if recover() != nil {
@@ -79,7 +82,7 @@ func (r *RuntimeGuest) Prepare(ctx context.Context) (p *childjob.Prepared, resul
 	if r.credential == nil {
 		return nil, ErrUnconfigured
 	}
-	if err := r.credential.prepare(ctx, r.ops.guard); err != nil || !r.live(ctx) {
+	if err := r.credential.prepare(ctx, r.acquireScope); err != nil || !r.live(ctx) {
 		return nil, ErrUnconfigured
 	}
 	r.rights = r.ops.rights()
@@ -100,17 +103,17 @@ func (r *RuntimeGuest) Prepare(ctx context.Context) (p *childjob.Prepared, resul
 	if err != nil || !r.live(ctx) {
 		return nil, ErrDenied
 	}
-	if err = r.credential.provision(ctx, r.created, r.secret, r.ops.guard); err != nil || !r.live(ctx) {
+	if err = r.credential.provision(ctx, r.created, r.secret, r.acquireScope); err != nil || !r.live(ctx) {
 		return nil, ErrDenied
 	}
 	r.token = r.ops.token()
 	if r.token == nil {
 		return nil, ErrUnconfigured
 	}
-	if err = r.token.acquire(ctx, r.created, r.secret, r.ops.guard); err != nil || !r.live(ctx) {
+	if err = r.token.acquire(ctx, r.created, r.secret, r.acquireScope); err != nil || !r.live(ctx) {
 		return nil, ErrDenied
 	}
-	if err = r.token.inspect(ctx, r.created, r.ops.guard); err != nil || !r.live(ctx) {
+	if err = r.token.inspect(ctx, r.created, r.acquireScope); err != nil || !r.live(ctx) {
 		return nil, ErrDenied
 	}
 	d, err := r.lifecycle.sources.accounts.disable(ctx, r.created)
@@ -125,7 +128,7 @@ func (r *RuntimeGuest) Prepare(ctx context.Context) (p *childjob.Prepared, resul
 	if r.target == nil {
 		return nil, ErrUnconfigured
 	}
-	p, err = r.target.prepare(ctx, r.created, r.token.value(), spec, r.ops.guard)
+	p, err = r.target.prepare(ctx, r.created, r.token.value(), spec, r.acquireScope)
 	r.prepared.Store(p)
 	if err != nil || p == nil || !r.live(ctx) {
 		if p != nil {

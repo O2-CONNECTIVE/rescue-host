@@ -97,7 +97,7 @@ func runtimeOwnerFixture(t *testing.T) (*RuntimeGuest, *runtimeFixture) {
 	l.plan.policy.batch = true
 	rf := &runtimeFixture{}
 	rf.token = &runtimeTokenFixture{f: rf}
-	ops := runtimeOps{guard: func() bool { return true }, random: func(b []byte) error {
+	ops := runtimeOps{scope: func() bool { return true }, random: func(b []byte) error {
 		for i := range b {
 			b[i] = byte(i)
 		}

@@ -43,6 +43,7 @@ type sidRunOwner struct {
 	ops                            sidRunOps
 	mu, cleanup                    sync.Mutex
 	closing                        atomic.Bool
+	admission                      func() bool // runtime-only, memory latch; never an OS-thread subject check
 	used, uncertain, closed        bool
 	cancel                         context.CancelFunc
 	setup                          *sidRunWork
@@ -100,7 +101,9 @@ func newSIDRunOwner(config sidRunConfig, ops sidRunOps) (*sidRunOwner, error) {
 	o.self = o
 	return o, nil
 }
-func (o *sidRunOwner) live(ctx context.Context) bool { return finite(ctx) && !o.closing.Load() }
+func (o *sidRunOwner) live(ctx context.Context) bool {
+	return finite(ctx) && !o.closing.Load() && (o.admission == nil || o.admission())
+}
 func (o *sidRunOwner) execute(ctx context.Context, request []byte) (output []byte, result error) {
 	if o == nil || o.self != o {
 		return nil, ErrUnconfigured

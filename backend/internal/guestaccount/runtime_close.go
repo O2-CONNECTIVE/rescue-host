@@ -35,7 +35,7 @@ func (r *RuntimeGuest) Close(ctx context.Context) (result error) {
 	if s, ok := r.stage.(*stagingOwner); ok && s != nil && (s.blocked || s.fatal) {
 		return ErrUnknown
 	}
-	if r.stage != nil && !r.ops.guard() {
+	if r.stage != nil && !r.ops.scope() {
 		if s, ok := r.stage.(*stagingOwner); ok && s != nil && s.blocked {
 			return ErrUnknown
 		}

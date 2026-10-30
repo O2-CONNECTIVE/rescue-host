@@ -40,7 +40,7 @@ func TestRuntimeGuestRetainsPartialRightsAttemptAndRemovesOnlyItsOwnDifference(t
 	r, _ := runtimeOwnerFixture(t)
 	k := &runtimeRightsKernelFixture{rights: map[string]bool{"SeDenyNetworkLogonRight": true}, partial: true}
 	r.plan.policy.logonRights = []string{"SeBatchLogonRight", "SeDenyNetworkLogonRight"}
-	r.ops.rights = func() runtimeRights { return newRuntimeRightsOwner(k) }
+	r.ops.rights = func() runtimeRights { return newRuntimeRightsOwner(k, r.ops.scope) }
 	if _, err := r.Prepare(testContext(t)); err == nil {
 		t.Fatal("partial rights succeeded")
 	}

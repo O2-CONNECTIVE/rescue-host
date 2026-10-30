@@ -38,7 +38,7 @@ type runtimeTarget interface {
 
 // Only a concrete native constructor chooses these factories; fixtures are private.
 type runtimeOps struct {
-	guard      func() bool
+	scope      func() bool // original cleanup subject; admission additionally checks stop
 	random     func([]byte) error
 	rights     func() runtimeRights
 	credential func() runtimeCredential

@@ -58,13 +58,15 @@ func (k *runtimeRightsWindows) open(ctx context.Context, b binding, guard func()
 	// never inputs; CREATE_ACCOUNT permits a first direct rights assignment.
 	status, _, _ := accountQueryLsaOpen.Call(0, uintptr(unsafe.Pointer(&k.attrs)), 0x810, uintptr(unsafe.Pointer(&k.handle)))
 	pins.Unpin()
+	if status == 0 && k.handle != 0 {
+		k.opened = true
+	} // retain actual open success before admission cancellation
 	if !guard() {
 		return ErrUnknown
 	}
 	if status != 0 || k.handle == 0 || !finite(ctx) {
 		return ErrDenied
 	}
-	k.opened = true
 	return nil
 }
 func (k *runtimeRightsWindows) write(ctx context.Context, b binding, rights []string, guard func() bool, remove bool) error {
