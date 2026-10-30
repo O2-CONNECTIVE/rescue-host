@@ -107,6 +107,118 @@ func (w *input) Write(b []byte) (int, error) {
 	}
 	return written, nil
 }
+
+// WriteSecret owns one bounded copy until the native operation is actually
+// released. It never modifies or retains the caller's slice after copying.
+func (w *input) WriteSecret(b []byte) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+	if len(b) > chunkBytes {
+		return 0, ErrConfig
+	}
+	if err := w.e.take(); err != nil {
+		return 0, err
+	}
+	defer func() { w.e.serial <- struct{}{} }()
+	owned := append([]byte(nil), b...)
+	b = nil
+	return w.e.runSecret(owned)
+}
+
+func (e *endpoint) runSecret(buffer []byte) (int, error) {
+	e.mu.Lock()
+	if e.closed {
+		e.mu.Unlock()
+		clear(buffer) // no native start was attempted
+		return 0, io.ErrClosedPipe
+	}
+	e.busy = true
+	h := e.parent
+	op := &ownedOperation{starting: true, secret: buffer}
+	e.op = op // publish ownership before native start can observe the buffer
+	e.mu.Unlock()
+	defer func() { e.mu.Lock(); e.busy = false; e.mu.Unlock() }()
+	raw, startErr, panicked := e.startSecret(h, buffer)
+	op.mu.Lock()
+	op.starting = false
+	if panicked {
+		op.unknown = true
+	} else if raw == nil && startErr == nil {
+		// A nil operation without an error violates the native start contract;
+		// completion and ownership are unknown, so do not clear the copy.
+		op.unknown = true
+	} else if raw == nil {
+		// Native nil-with-error is returned only before an I/O operation starts.
+		clear(op.secret)
+		op.secret = nil
+		op.done, op.released = true, true
+	} else {
+		op.raw = raw
+	}
+	op.mu.Unlock()
+	if panicked {
+		e.signal()
+		return 0, ErrUnconfirmed
+	}
+	if raw == nil {
+		if startErr == nil {
+			e.signal()
+			return 0, ErrUnconfirmed
+		}
+		return 0, ErrConfig
+	}
+	if startErr != nil {
+		e.signal()
+		_, _, _ = op.tryStep(true)
+		return 0, ErrUnconfirmed
+	}
+	for {
+		cancelled := e.isClosed()
+		done, n, err := op.tryStep(cancelled)
+		if done {
+			if cancelled || e.isClosed() {
+				return 0, io.ErrClosedPipe
+			}
+			if n > uint32(len(buffer)) || err != nil {
+				e.signal()
+				return 0, ErrUnconfirmed
+			}
+			if n != uint32(len(buffer)) {
+				return int(n), io.ErrShortWrite
+			}
+			return int(n), nil
+		}
+		if cancelled {
+			return 0, errors.Join(io.ErrClosedPipe, ErrUnconfirmed)
+		}
+		if err != nil {
+			e.signal()
+			_, _, _ = op.tryStep(true)
+			return 0, ErrUnconfirmed
+		}
+		timer := time.NewTimer(time.Millisecond)
+		select {
+		case <-e.stop:
+			timer.Stop()
+		case <-timer.C:
+		}
+	}
+}
+
+func (e *endpoint) startSecret(handle uintptr, buffer []byte) (raw operation, err error, panicked bool) {
+	returned := false
+	defer func() {
+		if !returned {
+			_ = recover()
+			panicked = true
+		}
+	}()
+	raw, err = e.api.start(writeIO, handle, buffer)
+	returned = true
+	return raw, err, false
+}
+
 func (r *output) Read(b []byte) (int, error) {
 	if err := r.e.take(); err != nil {
 		return 0, err
