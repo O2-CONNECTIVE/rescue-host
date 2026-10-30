@@ -71,6 +71,7 @@ GUI評価は[未接続Tauri評価版の説明](docs/tauri-evaluation.md)と[同�
 候補のsource SHA、ハッシュ、CI結果を照合し、開始と停止が無効であることを確認します。
 新しい候補の合格や配布可を、過去の実機確認から推定しません。
 実機の事前確認、未確定項目、実行時承認、受け入れと撤去の準備は[Windows限定評価手順](docs/windows-evaluation-runbook.md)にまとめています。
+[配布版の受入手順と結果記録](docs/windows-acceptance-records.md)には開始条件・終了確認・公開要約の形式検査をまとめています。実機8件は未実行で、記録形式の合格は実機合否を認定しません。
 
 開発時は[Pythonのオフライン検証](docs/development.md)、[Tauriの検証手順](ui/tauri/README.md)、[Goの検証手順](docs/go-ci.md)から対象を選びます。
 GUIの終了は通信終了の証明ではありません。

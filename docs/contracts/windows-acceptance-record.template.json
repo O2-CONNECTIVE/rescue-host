@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "source_sha": "3b4a3ac75c1307071ad6c94f15f6a35330729d53",
+  "artifact": {
+    "zip_sha256": null,
+    "exe_sha256": null
+  },
+  "ci_run_ids": [],
+  "environment": {
+    "os": "windows",
+    "architecture": "x64",
+    "build": null
+  },
+  "cases": [
+    {
+      "id": "normal",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "authenticated_roundtrip": "unobserved"
+      }
+    },
+    {
+      "id": "permission_denied",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "request_rejected": "unobserved",
+        "forbidden_dial_zero": "unobserved",
+        "forbidden_effect_zero": "unobserved"
+      }
+    },
+    {
+      "id": "maximum_ttl",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "deadline_not_extended": "unobserved"
+      }
+    },
+    {
+      "id": "inactivity",
+      "status": "not_run",
+      "reason": "definition_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "idle_definition_confirmed": "unobserved"
+      }
+    },
+    {
+      "id": "lease_loss",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "deadline_not_extended": "unobserved"
+      }
+    },
+    {
+      "id": "disconnect",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "disconnect_observed": "unobserved"
+      }
+    },
+    {
+      "id": "stop_unconfirmed",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "ui_end_unconfirmed": "unobserved",
+        "restart_blocked": "unobserved"
+      }
+    },
+    {
+      "id": "stale_permission",
+      "status": "not_run",
+      "reason": "implementation_pending",
+      "elapsed_ms": null,
+      "limit_ms": null,
+      "evidence_ids": [],
+      "checks": {
+        "revoked": "unobserved",
+        "both_end_eof": "unobserved",
+        "reader_join": "unobserved",
+        "process_exit_reap": "unobserved",
+        "job_cleanup": "unobserved",
+        "resource_restoration": "unobserved",
+        "old_permission_rejected": "unobserved",
+        "fresh_approval_required": "unobserved"
+      }
+    }
+  ]
+}

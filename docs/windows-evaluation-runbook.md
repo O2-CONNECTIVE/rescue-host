@@ -5,11 +5,11 @@
 ## 対象と現在できること
 
 本書はセットアップ、限定検証、撤去を準備する手順で、実行済みの報告ではありません。
-基点はmain `929d516173dbbf772ba224d5dde500f6e51f1501` です。
+手順の照合基点はmain `3b4a3ac75c1307071ad6c94f15f6a35330729d53` です。
 実SSHは未有効で、Tauriの開始と停止も無効です。
-固定provisioning、保護されたstdioとstderrの回収、許可0でのSCM制御面ready、正規operatorの承認入口、受理transportは未完成です。
-Windows clientとnative bootstrapの準備コード、認証交換の所有管理はmainにありますが、実pipe認証や実SSHは検証済みではありません。
-基点の[Go](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40852895398)、[Python](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40852895341)、[日本語commit](https://github.com/O2-CONNECTIVE/rescue-host/actions/runs/40852895365)のCI成功は、実機受け入れの合格ではありません。
+固定Record、stdio回収、SCM ready、承認と認証交換にはsourceと限定fixtureがあり、指定Windowsユーザーの承認資格は[ADR-0002](adr/0002-operator-sid-policy.md)に従います。
+実message認証用helperの起動資源、実runtimeからの起動許可、内側sshdのtokenとshell、実Windows配置と保護、実SSHの縦断は未完成または未実証です。
+候補ごとのCIは固定headで照合し、実機受け入れの合格へ読み替えません。
 今回は文書整備だけを行い、実設定変更、サービスやアカウントの作成、鍵や資格情報の生成、SSH接続は行いません。
 
 評価対象はWindows 11 Pro 23H2 x64の旧OS互換性です。
@@ -35,6 +35,7 @@ P2 handshakeの専用再現や代替試験は追加しません。
 | [Windowsローカル制御](windows-local-control.md)、[制御契約ADR](adr/0001-control-contract-candidate.md) | pipe、token、wireの候補仕様と実装限界 |
 | [再起動後に許可を復元しないissuer](../backend/supervisor/ephemeral/README.md) | 単回承認と旧grantを復元しない方式 |
 | [安全要件](security.md)、[バックエンド契約](SECURITY_BACKEND_CONTRACT.md) | 接続再開の条件。文書の承認だけではgateを解除しない |
+| [配布版の受入記録](windows-acceptance-records.md)、[未実行テンプレート](contracts/windows-acceptance-record.template.json) | 試験ごとの開始条件、期待結果、終了確認、停止条件、公開要約の記入と形式検査 |
 
 ## 作業前の読み取り確認
 
@@ -94,6 +95,9 @@ UIやOSの保護を回避して先へ進む手順は作りません。
 本書の作成時点では実行承認を求める設定値や操作が未確定なので、実行コマンドを埋めていません。
 
 ## 限定検証と受け入れ記録
+
+各候補の実施順、失効と終了の別記録、停止確認失敗の扱いは[配布版の受入記録](windows-acceptance-records.md)で具体化します。
+以下の分類表と同じ安全境界を使い、実施結果は候補ごとの記録へ残します。
 
 現在は実SSHと保護主体が未接続のため、下表の実機項目はすべて未実行です。
 実装、評価専用環境、実行時承認がそろった行だけを、確定した上限内で実施します。
