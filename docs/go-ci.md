@@ -172,6 +172,9 @@ profile/reportの明示v2と単回binding消費を検査し、policy構成をRoo
 保護Rootから方式Bのpolicyを供給する接点はserviceprovision/operator_policy.go、Serviceの同一channel束縛はservicehost/operator_sid.goだけを共通追加登録します。
 静的policyの登録はhelper起動資源や実message認証の成功ではなく、未構成ならEndpoint取得より前に拒否します。
 
+LocalServiceと専用service SIDの分離は、登録済みoperatorauthのlaunch.go、native_batch.go、report.go、native_launch_windows.go、native_launch_binding_windows.goを変更します。
+追加はhelper_service_identity_test.goのfixtureだけで、実装fileのallowlistは増やしません。source/childの現在のgroup検査を、正規supplierの初期保護や実Windows隔離の証明へ昇格させません。
+
 ## 検査と承認の未接続bridge
 
 同対象の検査/単回開始の分離はchildjob/inspection.go、保持対象と同issuer challengeの結合はservicehost/confirmed_target.goだけを共通追加します。
