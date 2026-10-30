@@ -84,6 +84,28 @@ source/owner/proof/retained grantが同じtargetを保持し、元の実issuer�
 ローカルのCloseをwhole-workload成功にはせず、既存SCM回収順を維持する。
 この経路はsource/fake限定、製品constructor/dispatcherの起動呼出しはない。正規guest token・同targetの非admin保護証拠のnative producer、C方式採用、実SSHは未実装または未実証。
 
+## 保持tokenの限定観測
+
+`NewGuestTokenExpectation`は候補network profileの期待値を整形するだけで、保護された設定、guest作成来歴、正規ログオン、issuer承認を証明しない。
+未知group、管理者group、3種類の保守的許可集合以外のprivilegeを期待値へ指定しても拒否する。runtime profileの採用ではない。
+`ObserveGuestToken`は同じPrepared/Inspectionが保持した実targetと元の借用primary tokenをOSから独立に照会する。
+TokenUser/Owner/PrimaryGroup、AuthenticationId/session、TokenId/ModifiedId、group全体、present privilege全体、elevation/type/integrity/UIAccess/restriction/AppContainerを照合する。
+有効なAdministrators membershipだけで判定せず、disabled/deny-only管理者groupや、disabledでも存在する危険privilegeを拒否する。
+観測を最初の同targetへ固定し、開始直前に再照会してTokenId/ModifiedId等が変われば再基準化せず拒否する。部分取得query handleは元Preparedが保持・回収し、借用primary tokenを閉じない。
+opaqueな`GuestTokenObservation`は別target/copy/失効後へ移せず、元のadmission lifetimeを新しいcall contextで延長できない。
+issuer/confirmationとのbindingは既存Serviceの固定ownerが引き続き強制し、この観測だけからgrantや`SeparatedNonAdminGuest`を生成しない。
+
+検証はsource/fakeとWindows2arch compileを基本とし、Windows CIの追加native試験はテストprocess自身のread-only queryだけである。
+これは実guest logon、保護DACL、実sshdが生成するtoken/shell、期限内の物理停止を検証したものではない。
+現guestはdisabled/NoPasswordで、[実tokenの生成元](../../../docs/guest-fixed-source.md#実guest-tokenとresume前gateの所在)はinner sshdの方式判断と正規admission供給に依存する。
+別のLogonUser/S4U tokenを作って代用しない。製品caller/実OS変更/資格情報生成は追加せずgate閉鎖を維持する。
+最後の観測からresumeまでをOS側で原子的に封じるものではなく、token変更権限と対象DACLを守る正規ownerの成立は別の未達である。
+
+- [GetTokenInformation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation)
+- [TOKEN_GROUPS](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups)
+- [TOKEN_PRIVILEGES](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_privileges)
+- [LogonUserWの要件](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)
+
 ## 残る前提と検証境界
 
 Jobは権限隔離ではない。

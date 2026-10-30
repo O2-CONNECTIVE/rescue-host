@@ -24,6 +24,8 @@ type Prepared struct {
 	queryToken       uintptr
 	commitQueryToken uintptr
 	inspection       *Inspection
+	guestQueryToken  uintptr
+	guestObservation *GuestTokenObservation
 }
 
 type inspectionKernel interface {
@@ -110,6 +112,12 @@ func (p *Prepared) closeQuery(ctx context.Context) error {
 		return err
 	}
 	defer func() { p.child.gate <- struct{}{} }()
+	if p.guestQueryToken != 0 && (p.guestQueryToken == p.queryToken || p.guestQueryToken == p.commitQueryToken) {
+		p.guestQueryToken = 0
+	}
+	if p.child.release(&p.guestQueryToken) != nil {
+		return ErrUnconfirmed
+	}
 	if p.commitQueryToken != 0 && p.commitQueryToken == p.queryToken {
 		// A duplicate numeric reference is not closed twice. Real kernel opens
 		// provide distinct handles; keep test/failed-provider ownership bounded.
