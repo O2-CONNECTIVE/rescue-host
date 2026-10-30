@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -11,6 +12,46 @@ func TestPrepareRejectsInvalidInputBeforePlatformAccess(t *testing.T) {
 	if p, err := Prepare(nil, Spec{}); p != nil || !errors.Is(err, ErrConfig) {
 		t.Fatalf("invalid prepare reached platform: %v", err)
 	}
+}
+
+func TestFailedInspectionRejectsFreshCommitBeforeOwnerHandoff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Hour)
+		defer cancel()
+		api := &inspectionMemory{memoryKernel: &memoryKernel{failure: "inspect-target"}}
+		p, err := prepareWithKernel(ctx, approvedSpec(), api)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 制御したhandoffで、失敗したCommitがpermitを返す瞬間だけを止める。
+		// 公開Commitの拒否を検査し、stateの数値や実時間sleepをoracleにしない。
+		ownerGate := p.child.gate
+		<-ownerGate
+		handoff := make(chan struct{})
+		p.child.gate = handoff
+		finished := make(chan error, 1)
+		go func() { finished <- p.Commit(ctx) }()
+		handoff <- struct{}{}
+		synctest.Wait()
+		// 既に失敗したPreparedなら、別ownerのpermitを待って再入してはならない。
+		p.child.gate = make(chan struct{}, 1)
+		fresh, done := context.WithTimeout(ctx, time.Second)
+		retryErr := p.Commit(fresh)
+		done()
+		// 元の回収経路へpermitを戻してから、先行Commitの実終了を待つ。
+		p.child.gate = ownerGate
+		ownerGate <- struct{}{}
+		<-handoff
+		firstErr := <-finished
+		if !errors.Is(firstErr, ErrStart) || !errors.Is(retryErr, ErrStart) {
+			t.Fatalf("failed inspection allowed re-entry: first=%v retry=%v", firstErr, retryErr)
+		}
+		for _, call := range api.calls {
+			if call == "resume" {
+				t.Fatal("failed inspection executed")
+			}
+		}
+	})
 }
 
 func TestPrepareDoesNotExecuteBeforeInspectionAndCommit(t *testing.T) {

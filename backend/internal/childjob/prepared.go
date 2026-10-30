@@ -65,11 +65,14 @@ func (p *Prepared) Commit(ctx context.Context) error {
 		return ErrStart
 	}
 	err := p.commitHeld(ctx)
+	if err != nil {
+		// 検査失敗をpermit返却前に確定し、後続Commitの再検査と参照上書きを防ぐ。
+		p.state.Store(2)
+	}
 	p.child.gate <- struct{}{}
 	if err == nil {
 		return nil
 	}
-	p.state.Store(2)
 	cleanup, cancel := context.WithTimeout(context.Background(), p.spec.CleanupTimeout)
 	defer cancel()
 	if p.Close(cleanup) != nil {
