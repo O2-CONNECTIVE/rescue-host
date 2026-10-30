@@ -25,6 +25,12 @@ GUIと起動ワーカーの両方で開始を拒否し、設定や環境変数�
 モック試験の合格や利用者の承認だけで開始ゲートを解除しません。
 詳細な受け入れ条件は既存の[バックエンド契約](SECURITY_BACKEND_CONTRACT.md)に集約しています。
 
+認証helperの[採用範囲](adr/0004-localservice-auth-helper.md)に対応する受入では、非管理者guestによる認証偽造と監督・停止処理への干渉を対象にします。
+侵害済みの別Windows serviceからの完全防御は保証しませんが、専用SID、固定配置、実process/token、object owner/DACLの一致と、失効・停止回収の条件は維持します。
+processの照会許可だけでtokenの複製・偽装を許すことにはならず、token objectのDACLを独立に確認します。照会と停止・改変を同じ権利として扱いません。
+source/fake試験は検査と拒否・所有保持の確認、Windows compileはAPI宣言の確認です。実機の設定適合、実message認証、期限停止・撤去は別に実証します。
+この範囲明記によって既存44条件や未検証の合否を変更せず、実機操作の承認とも扱いません。
+
 | 資料 | 参照する内容 |
 |---|---|
 | [バックエンド契約](SECURITY_BACKEND_CONTRACT.md) | SSH権限、TCP宛先、失効と同一性、有効化判定 |

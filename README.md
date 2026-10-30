@@ -54,7 +54,7 @@ main `3b4a3ac75c1307071ad6c94f15f6a35330729d53` の[Go 3OS](https://github.com/O
 [基盤API](backend/internal/childjob/README.md)には、停止中targetの保持、token読取、保護記述子検査と承認後単回開始のsource候補があります。実装中の縦断は固定された無害workloadを対象にし、従来NETWORK契約とは別のBATCHログオンを明示します。
 固定評価のcommand入口はruntime構成へ接続し、同じ確認応答の書込み完了後にだけ保持中の承認から単回開始するsource経路を追加しました。明示runtime構成には有限のService要求受付を接続し、前要求の回収・worker終了後にだけ次要求へ進みます。previewは受付を始めません。設定は空のままで、通常の実行fileは取得前に拒否します。実message認証helperの起動資源、配布用固定値、実終了観測は未構成・未検証です。
 方式Bの[入力移譲と認証結果の回収](backend/internal/operatorauth/sole-input-batch.md#方式bの入力移譲)はBatch内のsource/fake結合であり、正規helper資源の供給や実Windows・SSHの接続完了ではありません。
-[利用中のLocalService認証helper分離](docs/adr/0004-localservice-auth-helper.md)を設計採用しました。共有ユーザーSIDと専用service SIDを分けて検査するsourceを整備し、正規token供給元の初期保護・寿命・実配置は未成立のままです。
+[利用中のLocalService認証helper分離](docs/adr/0004-localservice-auth-helper.md)を設計採用しました。専用service SID・ACLと非管理者guestからの認証・停止保護を維持し、侵害済みの別Windows serviceからの完全防御は保証範囲に含めません。共有ユーザーSIDと専用service SIDを分けて検査するsourceを整備していますが、正規token供給・寿命・実配置は未接続または未検証です。
 source/fakeの成功とWindows向けcompileを、実guestの生成・保護・停止や実SSHの成功には読み替えません。製品caller、実Windows配置、実SSH session処理と実機受入は未接続または未検証で、開始ゲートは閉鎖したままです。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。
