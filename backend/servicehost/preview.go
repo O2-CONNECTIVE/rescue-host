@@ -34,6 +34,7 @@ type servicePreview struct {
 	seen         map[string]struct{}
 	resolver     PreviewConfirmationResolver // fixed with the outer owner before use
 	runtime      *confirmationRuntimeSource  // private OS seam; product composition leaves nil
+	runtimeGuest *runtimeGuestActor          // fixed outer owner; registered before Service acquisition
 	excludedSIDs []string
 	targetOwner  *confirmationTargetOwner // frozen registration; independent of confirmation
 	grant        *confirmedGrant

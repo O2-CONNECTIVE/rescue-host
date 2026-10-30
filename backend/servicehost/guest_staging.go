@@ -46,7 +46,7 @@ func (s *Service) BindGuestStagingOwner(owner GuestStagingOwner) error {
 	if s.done == nil || s.preview == nil || s.control == nil || s.dispatch == nil || s.dispatch.service != s || s.auth == nil || s.auth.service != s || s.cfg.Launcher != nil || s.cfg.Provisioning != nil || !sameGuestOwner(s.outer, owner) {
 		return ErrProvisioningRejected
 	}
-	if s.used || s.started || s.stopping || s.guestOwner != nil {
+	if s.used || s.started || s.stopping || s.guestOwner != nil || s.preview.runtimeGuest != nil {
 		return ErrAlreadyUsed
 	}
 	s.guestOwner = owner

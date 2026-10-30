@@ -304,6 +304,11 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	}
 	s.issuer = issuer
 	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer}
+	if err := s.bindRuntimeGuestLocked(); err != nil {
+		s.mu.Unlock()
+		_ = issuer.Close()
+		return err
+	}
 	stopping = s.stopping
 	s.mu.Unlock()
 	if stopping {
