@@ -132,16 +132,26 @@ func (p *Prepared) reject(err error) error {
 	return err
 }
 
-// 固定entryの配置値は未設定。環境変数や実行pathから補完しない。
-func fixedAnchor() Anchor { return Anchor{} }
+// 固定評価entryの配置値と予算は未設定。対象をレビューしてsourceに固定する。
+// 環境変数、argv、UI、実行pathから補完する入口は設けない。
+func fixedEvaluationConfig() PreviewExecutionConfig { return PreviewExecutionConfig{} }
 
-// RunFixedは固定sourceによるnative ownerとSCM全回収を結ぶ専用入口。
+func newFixedExecution(c PreviewExecutionConfig) (*Execution, error) {
+	e, err := NewNativeRuntimeExecution(c)
+	if err != nil {
+		return nil, err
+	}
+	e.fixedEvaluation = true
+	return e, nil
+}
+
+// RunFixedは固定評価sourceによるruntime ownerとSCM全回収を結ぶ専用入口。
 // 既定は全値未設定でnative APIより前に拒否する。実行許可や設定を補完しない。
 func RunFixed(ctx context.Context) error {
 	if ctx == nil || ctx.Err() != nil {
 		return ErrApprovalUnconfigured
 	}
-	execution, err := NewNativePreviewExecution(PreviewExecutionConfig{Anchor: fixedAnchor()})
+	execution, err := newFixedExecution(fixedEvaluationConfig())
 	if err != nil {
 		return err
 	}

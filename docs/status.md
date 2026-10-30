@@ -14,6 +14,8 @@
 端末の一時guest・停止中target・同issuerの承認・停止ownerを結ぶsourceを開発中です。
 対象は固定された無害workloadで、SSH session処理や任意commandの製品入口は有効化しません。
 NETWORK用の既存設定とは別にBATCH用の保護runtime設定を明示し、未設定時は拒否します。
+固定評価entryのruntime選択と、同じ認証済み確認への実応答書込み後の単回開始をsourceで接続しました。応答は承認receiptであり実開始/終了成功の通知ではありません。
+固定設定は空、正規message認証helperの起動資源は未構成です。entry/SCMと認証/targetのprivate OS modelによる各層の試験を、単一の実native縦断として合成しません。
 実Windowsの資格情報生成、保護object、同ownerの停止/撤去、実SSHは未実証です。実機OS変更の許可や製品gate解除は含みません。
 以下の過去記録にあるinner sshd依存・方式未採用の記述は当時の境界であり、現在の設計方針は本節とADRを優先します。
 

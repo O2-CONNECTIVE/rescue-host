@@ -7,7 +7,7 @@ host operator/adminの既侵害とadmin guestは保証範囲に含めない。
 ## 入力と信頼根
 
 `Anchor`は保護された配布・配置側が固定するservice名、recordと独立digestの絶対path、期待volume、有限の読取り・回収予算である。
-`fixedAnchor`は全値未設定であり、環境変数、argv、UI、current directory、実行fileの所在から補完しない。
+`fixedEvaluationConfig`のAnchor・表示予算・回収間隔は全値未設定であり、環境変数、argv、UI、current directory、実行fileの所在から補完しない。
 実配置先、実SID、実volume serialをこのsourceで選定してはいない。
 
 この候補の信頼根はOSが保護する固定配置であり、runtimeでの署名検証ではない。
@@ -71,7 +71,7 @@ UI pollingを承認・renewへ変換しない。
 
 `NewNativeExecution`は固定Anchor、正の回収再確認間隔、認証済み承認sourceを必須とする純粋constructorである。
 `NewNativeExecution`は従来の承認・強token構成の専用入口として残す。
-`RunFixed`は下記のpreview専用入口へ接続するが、既定値は全て未設定のため取得前に拒否する。
+`RunFixed`は固定評価用のruntime入口へ接続するが、既定値は全て未設定のため取得前に拒否する。
 環境変数・argv・UIによる上書き、仮のSID/handle/承認sourceによる補完は行わない。
 
 `Execution.Run`は元callerのNoThreadTokenと実service SID所属を拒否検査した後、専用の元OS threadで`PrepareFixed`を行う。
@@ -120,7 +120,7 @@ LeaseDurationは既存の上限制約として保持し、wireへ独自fieldを�
 descriptorは構成時の表示snapshotであり、毎要求のfile再認証、認証済みoperator、承認、grantを表すcapabilityではない。
 認証/sequenceを通ったprepare-intentの表示までを扱い、ConfirmApprovalと実起動は未構成拒否を維持する。
 既存ComposeServiceの承認/launcher検査にpreviewへのfallbackを追加しない。
-`RunFixed → NewNativePreviewExecution → nativeExecutionStage.Initialize` は、表示専用modeを明示して `PrepareFixed → ComposePreviewService` へ接続する。
+単独の `NewNativePreviewExecution → nativeExecutionStage.Initialize` は、表示専用modeを明示して `PrepareFixed → ComposePreviewService` へ接続する。
 このmodeは強token取得・旧Approval・Launcherを呼ばず、同じrootのquery-only tokenだけを借りる。
 legacy `NewNativeExecution` のnil Approval拒否にfallbackを追加しない。
 PreviewLimitsと回収再確認間隔も固定供給元が明示する必須値で、現RunFixedでは未設定のままである。
@@ -165,3 +165,22 @@ source/fake試験と実Windows・実runtime/inner sshd・実SSHの成立を分�
 
 policyの再検査失敗や取消でServiceを公開しない場合も、inner Close workerと元threadのcleanup-only RPCを分離し、実inner proof→元Root回収→Close workerの実returnを待って起動エラーを返す。
 outer未登録の失敗では元threadがRootを回収し、fatalなthreadや未確認参照を再利用しない。
+
+
+## 固定評価入口と同じ確認からの単回開始
+
+`rescue-service-host → RunFixed → NewNativeRuntimeExecution` は、sourceに固定する評価構成だけを選ぶ。
+Anchor・表示予算・回収再確認間隔は未設定のままで、引数・環境変数・UI・現在の端末から補完しない。
+実機用の値を後から与える汎用CLIや暗黙fallbackは追加しない。
+設定が揃ったsource構成では、元Execution ownerを `BindRuntimeGuestEvaluationOwner` に固定し、runtime用の保護設定と同Serviceの認証・確認へ接続する。
+既存の `BindRuntimeGuestOwner` は準備専用のまま、preview/staging/legacyから評価開始へ自動昇格しない。
+
+評価modeは成功したconfirm応答にexact grantを内部保持し、同じauth workerの実書込み完了とdispatch完了後にだけ単回開始する。
+応答は承認receiptであって開始・終了成功の証明ではない。開始失敗・取消・失効は同じissuerとownerの停止・回収へ戻す。
+別要求、二重確認、書込み失敗、古い証拠を新しい開始へ利用しない。
+成功したresume観測を、固定 `exit 0` の実終了codeや全回収の確認へ読み替えない。
+
+試験は固定entryからSCM構成・元thread回収までと、合成message認証から実dispatch/issuer・target操作modelまでを分ける。
+両者を一つの実native認証成功へ合成しない。
+実message認証helperの正規起動資源は未構成で、SID policy付きnative factoryは取得前の拒否を維持する。
+評価用固定値・配布artifact・実OS保護・実終了観測・実SSH session処理と製品入口は未接続または未検証である。

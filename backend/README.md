@@ -12,7 +12,8 @@ Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI �
 ## C本線の固定workload候補
 
 [ADR-0003](../docs/adr/0003-owned-guest-workload.md)で端末内実行を製品が所有し、利用中だけLocalSystem監督serviceを使う設計を採用しました。
-保護runtime設定から正規guestと固定無害targetを準備するsourceを開発しています。
+保護runtime設定からguestと固定無害targetを準備するsourceを統合し、固定評価入口から同じ確認応答の書込み完了後に単回開始する接続を追加しています。
+既存の準備専用APIは開始へ昇格せず、評価用固定値は未設定で実message認証helperの起動資源も未構成です。
 これは既存forward-only基盤の宛先やsession拒否を変えず、実SSH dispatcherの実装・製品caller・実Windows保護の証明にはしません。
 公開entryの未設定拒否と製品gate閉鎖は維持します。
 

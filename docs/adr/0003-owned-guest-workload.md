@@ -55,3 +55,10 @@ source/fake試験とWindows向けcompileは、実Windowsのlogon、保護SD、�
 既存のforward-only SSH基盤やwireのliteral宛先を、この採用で暗黙に変更しない。
 
 公式要件: [LogonUserW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)、[account rights](https://learn.microsoft.com/en-us/windows/win32/secauthz/account-rights-constants)、[CreateProcessAsUserW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw)、[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。
+
+## 固定評価commandの開始境界
+
+固定評価entryだけが確認応答の実書込み完了後に、同じ要求・issuer・targetの承認を単回消費して開始する。
+準備専用のruntime API、preview、staging、legacy構成はこの継続を選ばない。
+応答の承認receiptは、開始・実終了・清掃成功を表さない。取消・書込み失敗・失効では開始を拒否し、開始中の競合では同じownerの停止と実回収完了を待つ。
+sourceの固定設定は空のまま、実message認証helperは未構成のままである。設定値の確定や実OS操作の許可をこの配線で代用しない。
