@@ -46,6 +46,27 @@ module import、resume、leader退出だけでは解放しない。
 終了未確認では最後のJob handleとprocess参照を保持する。
 同じOS handleを同時に二重閉鎖せず、PIDから他processを探索しない。
 
+## 起動前検査のsource候補
+
+`Prepare`は既存のsuspended作成とJob割当までで止まり、`Commit`が同じ保持process/thread/Jobを検査してから一度だけresumeする。
+Windows候補はprocess/threadの対応、同じJobへの所属、固定image path、実process tokenのSID/AuthId/sessionと観測中のtoken変更を調べる。
+SID/AuthId/sessionの一致だけで非admin権限を証明しない。
+ここでのAuthIdは渡されたtokenのWindows logonの連続性だけで、operatorの認証資格や承認Recordではない。
+正規guest logon/token生成、全group/privilege、承認Recordと接続認証、標準SSH機能への配線は含まない。
+新APIの製品callerはなく、既存の信頼済helper用`Start`契約と製品gate閉鎖は維持する。
+
+呼出側は承認済みprimary tokenを同じhandleで保持し、準備時のdeadline付きcontextを渡す。
+そのcontextの取消し、`Revoke`または`Close`後は、新しいcall contextでも同じPreparedを再利用できない。
+これはローカル準備物の単回性であり、正規承認Recordの発行・認証・再接続防止を代替しない。
+`Revoke`は受付ラッチだけを閉じる。期限/切断を監視して`Close`まで実行する所有者は別途必要で、context取消しが自動停止を意味しない。
+Commitとの順序はatomic状態遷移で定め、取消しが先ならresumeを拒否する。
+開始が先に成立した場合は同じtargetを回収し、観測できた取消し後の遅延結果を成功扱いしない。
+これは物理的な実行開始との完全同時性や、OS hang/sleep中の停止保証ではない。
+token属性の再読取りも、最後の観測からresumeまでの変更をOS側で原子的に封じるものではない。
+同じ対象の保護DACL、承認済みtokenの保持と変更権限の管理は未実装の保護所有者が満たす必要がある。
+開始/検査/閉鎖に失敗しても、部分取得したquery tokenを含む回収参照を保持する。
+`non-nil Prepared + error`を捨てず、独立した有効contextで`Close`を確認する。
+
 ## 残る前提と検証境界
 
 Jobは権限隔離ではない。

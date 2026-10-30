@@ -55,8 +55,10 @@ localcontrolは共通policy.go/boundary.go/wire.goと、go env GOOSに対応す�
 Linux/macOSはnative_other.go、Windowsはnative_windows.goとio_windows.goを選び、未知GOOSは拒否します。公開Openの接続ゲートは閉鎖中で、CIは実pipeや実token/ACL検証を行いません。
 現在のfixtureは`_test.go`だけで、特別なfixture用build tagはありません。
 OS別のテストファイル制約を尊重し、fixtureや注入adapterを通常buildへ混ぜません。
-runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.goと、非Windowsのnative_other.go、
-Windowsのnative_windows.go/artifact_windows.goだけを許可します。
+runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.go/prepared.goと、非Windowsのnative_other.go、
+Windowsのnative_windows.go/artifact_windows.go/prepared_windows.goだけを許可します。
+preparedは同一の停止中targetを検査してから単回開始するsource候補です。
+登録は製品入口への配線やC方式の採用を意味せず、実Windowsの検査・停止・期限執行の成立は未検証です。
 protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/validation.goと、
 非Windowsのnative_other.goまたはWindowsのnative_windows.goの1件だけを許可します。
 bootstrapはcodec.go/launch.go/native_receiver.go/strict.go/types.go/validate.goと、

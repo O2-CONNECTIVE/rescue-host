@@ -100,6 +100,32 @@ func Start(ctx context.Context, spec Spec) (*Child, error) {
 }
 
 func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
+	c, err := stage(ctx, spec, api)
+	if err != nil {
+		return c, err
+	}
+	if err := c.resumeOwned(ctx); err != nil {
+		cleanup, cancel := context.WithTimeout(context.Background(), spec.CleanupTimeout)
+		defer cancel()
+		if c.Close(cleanup) != nil {
+			return c, ErrUnconfirmed
+		}
+		return nil, ErrStart
+	}
+	return c, nil
+}
+
+func (c *Child) resumeOwned(ctx context.Context) error {
+	if ctx.Err() != nil || c.api.resume(c.thread) != nil || ctx.Err() != nil {
+		return ErrStart
+	}
+	if c.release(&c.thread) != nil || c.release(&c.image) != nil || ctx.Err() != nil {
+		return ErrStart
+	}
+	return nil
+}
+
+func stage(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 	spec = freezeSpec(spec)
 	if !bounded(ctx) || !configured(spec) || api == nil {
 		return nil, ErrConfig
@@ -142,15 +168,6 @@ func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 		return fail()
 	}
 	c.assigned = true
-	if err = api.resume(c.thread); err != nil || ctx.Err() != nil {
-		return fail()
-	}
-	if err = c.release(&c.thread); err != nil {
-		return fail()
-	}
-	if err = c.release(&c.image); err != nil || ctx.Err() != nil {
-		return fail()
-	}
 	return c, nil
 }
 
