@@ -26,6 +26,21 @@ func soleInputProfileSpec(s nativeBatchSpec, input *serviceready.SoleInput, poli
 	return s, nil
 }
 
+// SID mode retains the exact source and a fresh fixed-policy producer without
+// a candidate-query lease. This pure step supplies no helper token or launch
+// evidence and performs no Move, profile I/O or operator authentication.
+func soleInputSIDSpec(s nativeBatchSpec, input *serviceready.SoleInput, policy SIDPolicy) (nativeBatchSpec, error) {
+	if input == nil || s.input != 0 || s.soleInput != nil || s.inputLease != nil || s.producer != nil || s.sidPolicy != (SIDPolicy{}) || s.report.guestSID != policy.GuestSID {
+		return nativeBatchSpec{}, ErrUnconfigured
+	}
+	provider, err := newSIDProfileProvider(s.launch.launchID, policy, s.launch.cleanup)
+	if err != nil {
+		return nativeBatchSpec{}, err
+	}
+	s.soleInput, s.sidPolicy, s.producer = input, policy, provider
+	return s, nil
+}
+
 func (b *nativeBatch) moveInput(ctx context.Context) error {
 	if b.spec.soleInput == nil {
 		return nil
@@ -52,6 +67,11 @@ func (b *nativeBatch) moveInput(ctx context.Context) error {
 	}
 	if !b.admitted(ctx) {
 		return ErrDenied
+	}
+	// SID policy is fixed before Move. Only the helper's actual message token
+	// authenticates the operator; no legacy candidate projection is acquired.
+	if b.spec.sidPolicy != (SIDPolicy{}) {
+		return nil
 	}
 	return b.spec.inputLease.bindInput(h)
 }
