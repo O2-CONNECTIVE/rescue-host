@@ -14,3 +14,7 @@ func prepareNativeEndpointProfileBatch(nativeBatchSpec, *bootstrapauth.Factory, 
 func prepareNativeSoleInputProfileBatch(nativeBatchSpec, *serviceready.SoleInput, *bootstrapauth.Factory, uintptr, batchOwner, profileProviderPolicy) (*nativeBatch, error) {
 	return nil, ErrUnconfigured
 }
+
+func prepareNativeSoleInputSIDBatch(nativeBatchSpec, *serviceready.SoleInput, *bootstrapauth.Factory, uintptr, batchOwner, SIDPolicy) (*nativeBatch, error) {
+	return nil, ErrUnconfigured
+}

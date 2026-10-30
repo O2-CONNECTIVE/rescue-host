@@ -17,7 +17,7 @@ Move の非零実 return は、error・handle 値・alias の判定より先に�
 panic で return がない場合は元の具体 source を Batch に残し、未知の Endpoint/read 参照を回収済みへ変えない。
 事前 Close は Move しない。未移動 read は Endpoint / Service owner が回収する。
 
-Move が正常に戻り admission が継続している場合だけ、同じ実 input を既存 `endpointCandidateLease` に単回で bind する。
+profile/1互換経路では、Move が正常に戻り admission が継続している場合だけ、同じ実 input を既存 `endpointCandidateLease` に単回で bind する。
 bind 前の候補照会、再 bind、Close 後の bind は拒否する。
 provider はこの同じ lease から候補 process/token を取得し、取得後は保持参照だけを再検査する。
 Batch が親 read を閉じた後、古い handle 番号を再 query しない既存契約を維持する。
@@ -35,6 +35,17 @@ typed Move は所有移動であり、operator 認証や同じ Service/profile �
 B policy factoryは静的構成だけを保持し、正規helper token/runtime未構成ならMoveより前に拒否する。Root供給・Service登録は後続差分で検証する。
 欠けた policy を候補から補完せず、既存 provider の厳密な必須値検査を維持する。
 製品 gate は閉鎖したままで、OS/ACL/account/資格情報/実 SSH/P2 の操作や成功を今回の memory 試験へ含めない。
+
+## 方式Bの入力移譲
+
+privateな方式B用準備経路は、具体SoleInputと固定SID policyから、そのBatch専用のprofile/2 producerを構成する。
+Start前は入力を移さず、Start内で同じreadの実returnを保持し、既存profile配送・helper認証・report/2・Collectorの単回消費へ渡す。
+この経路ではoperator候補process/tokenの照会や独立AuthId期待値を必要としない。実message認証後の主体bindingは引き続き必要である。
+部分return、取消、失効、重複開始、回収再試行は同じBatchの所有規約を使う。
+
+これはprivate OS seamを用いたBatch内の結合であり、正規helper資源のproducerを実装したものではない。
+公開SID factoryの未構成拒否、専用helper tokenと保護された実行物の供給、子側の同launch証拠、Serviceの実要求loopは別の未接続境界として残る。
+argv・payload・Service tokenで不足を補完せず、実helperや実SSHを起動可能にしない。
 
 ## 今回の検証記録
 

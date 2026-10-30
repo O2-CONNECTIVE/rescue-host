@@ -27,3 +27,13 @@ func prepareNativeSoleInputProfileBatch(s nativeBatchSpec, input *serviceready.S
 	}
 	return prepareNativeBatch(s, factory, serviceToken, owner)
 }
+
+// SID mode uses the same retained Batch and native Move. Dedicated helper token
+// and protected launch/entry sources remain absent; no public factory calls it.
+func prepareNativeSoleInputSIDBatch(s nativeBatchSpec, input *serviceready.SoleInput, factory *bootstrapauth.Factory, serviceToken uintptr, owner batchOwner, policy SIDPolicy) (*nativeBatch, error) {
+	s, err := soleInputSIDSpec(s, input, policy)
+	if err != nil {
+		return nil, err
+	}
+	return prepareNativeBatch(s, factory, serviceToken, owner)
+}

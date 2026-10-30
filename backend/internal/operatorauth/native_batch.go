@@ -96,6 +96,9 @@ func (s nativeBatchSpec) valid() bool {
 	inputValid := helperHandle(s.input) && s.input != l.primaryToken && s.soleInput == nil && s.inputLease == nil
 	if s.soleInput != nil {
 		inputValid = s.input == 0 && s.inputLease != nil
+		if s.sidPolicy != (SIDPolicy{}) {
+			inputValid = s.input == 0 && s.inputLease == nil
+		}
 	}
 	return inputValid && l.operatorRead == 0 && l.reportWrite == 0 && l.profileRead == 0 &&
 		localHelperImage(l.imagePath) && l.imageSHA256 != ([32]byte{}) && profileLaunchID(l.launchID) && l.maxImageBytes > 0 && l.maxImageBytes <= 1<<30 &&
