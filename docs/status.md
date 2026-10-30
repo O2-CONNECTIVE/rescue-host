@@ -37,6 +37,7 @@ private OS/owner memory seamによる各層の正例と、製品の同一caller�
 profile/reportの明示v2と単回消費に、元Execution threadの保持Recordからのpolicy供給とService stop gate内のlogical channel登録を接続しました。
 各層のprivate memory modelで、同じSIDのAuthId変更は既存channel/Record/grantを引き継がず失効し、新しいServiceでも新規承認が必要なことを検証しました。
 helper tokenと保護sourceは未構成で、policy構成だけでは取得を開始しません。実機機能や実SSHの成功は増えていません。
+方式Bの具体入力移譲からprofile/report・単回認証結果の消費・回収までを既存Batch内で結びました。これはprivate OS modelによる限定結合で、正規資源producerやServiceの実要求loopが完成したことを意味しません。
 
 ## 提供段階と証拠の読み方
 

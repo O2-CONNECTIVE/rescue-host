@@ -112,3 +112,6 @@ Windows native sourceはcompile対象であり、実APIの成功・process終了
 Windows compileはnative APIの型/リンク境界だけを確認し、13組のnative受入試験を実行済みにしない。
 
 `cmd/rescue-auth-helper` の専用入口は `RunFixed` へ接続済みだが、固定保護sourceは未登録で既定拒否する。入口と所有回収の規約は [helper-entry.md](helper-entry.md) を参照する。
+
+方式Bの[具体入力の単回移譲](sole-input-batch.md#方式bの入力移譲)は、固定SID profileから既存Batchの認証・消費・回収へ接続するprivate sourceである。
+正例はOS境界を置き換えたmemory試験で、正規helper資源producer・同launchの子側証拠・Service要求loopの製品接続は未完了である。公開factoryは取得前の拒否を維持する。
