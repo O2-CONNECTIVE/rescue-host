@@ -26,7 +26,11 @@ type permissionEvidence struct {
 }
 
 func configurePermissionInspection(q *accountQuery, p permissionProfile, f permissionFactsKernel, g permissionGroupsKernel, o *permissionObjectReader) error {
-	if !q.valid() || !q.plan.validBinding(q.binding) || q.permission != nil || !permissionObjectsConfigured(q.binding, p.serviceSID, p.objects) || o.unsafe() || !containsPermissionSID(q.plan.policy.groups, "S-1-5-2") {
+	logonSID := "S-1-5-2"
+	if q.plan.policy.batch {
+		logonSID = "S-1-5-3"
+	}
+	if !q.valid() || !q.plan.validBinding(q.binding) || q.permission != nil || !permissionObjectsConfigured(q.binding, p.serviceSID, p.objects) || o.unsafe() || !containsPermissionSID(q.plan.policy.groups, logonSID) {
 		return ErrUnconfigured
 	}
 	facts, e := newPermissionFactsCollector(q, f)
@@ -90,7 +94,11 @@ func (i *permissionInspection) once(ctx context.Context, q *accountQuery, b bind
 		sort.Strings(out.graph[n].members)
 	}
 	sort.Slice(out.graph, func(a, b int) bool { return out.graph[a].sid < out.graph[b].sid })
-	out.closure, e = permissionClosure(b, out.graph, "S-1-5-2")
+	logonSID := "S-1-5-2"
+	if q.plan.policy.batch {
+		logonSID = "S-1-5-3"
+	}
+	out.closure, e = permissionLogonClosure(b, out.graph, logonSID)
 	if e != nil {
 		return out, e
 	}

@@ -21,6 +21,9 @@ func NewPlan(in ProtectedInputs) (Plan, error) {
 }
 func policyDigest(p limitedPolicy) [32]byte {
 	h := sha256.New()
+	if p.batch {
+		h.Write([]byte("rescue-host-local-batch/1\x00"))
+	}
 	for _, list := range [][]string{p.groups, p.privileges, p.logonRights} {
 		h.Write(binary.BigEndian.AppendUint64(nil, uint64(len(list))))
 		for _, v := range list {

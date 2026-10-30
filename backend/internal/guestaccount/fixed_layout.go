@@ -14,6 +14,7 @@ type FixedLayout struct {
 	policy                  limitedPolicy
 	digest                  [32]byte
 	configured              bool
+	runtime                 bool
 }
 
 // DecodeFixedLayout は固定配置JSONを検証して所有する。認証・digest照合・native取得は行わない。

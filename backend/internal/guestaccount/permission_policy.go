@@ -127,6 +127,10 @@ func permissionRights(p Plan, rights []string) (privileges, logons []string, err
 	privileges = []string{}
 	logons = []string{}
 	for _, r := range rights {
+		if p.policy.batch && r == "SeBatchLogonRight" {
+			logons = append(logons, r)
+			continue
+		}
 		switch r {
 		case "SeChangeNotifyPrivilege", "SeIncreaseWorkingSetPrivilege", "SeTimeZonePrivilege":
 			privileges = append(privileges, r)

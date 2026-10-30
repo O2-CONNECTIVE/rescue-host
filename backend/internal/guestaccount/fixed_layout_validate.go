@@ -3,15 +3,18 @@ package guestaccount
 import "strings"
 
 func validFixedLayout(w fixedLayoutWire, f *FixedLayout) bool {
+	return w.Protocol == "rescue-guest-provisioning/1" && validFixedLayoutFiles(f) && fixedLayoutPolicyAllowed(f.machine, f.policy)
+}
+func validFixedLayoutFiles(f *FixedLayout) bool {
 	c := f.profile
-	if w.Protocol != "rescue-guest-provisioning/1" || c.installation == ([32]byte{}) || !machineSID(f.machine) || !accountSID(f.operator) || !serviceIdentity(f.user) || !strings.HasPrefix(c.serviceSID, "S-1-5-80-") || !serviceIdentity(c.serviceSID) || !stagingServiceName(c.serviceName) {
+	if c.installation == ([32]byte{}) || !machineSID(f.machine) || !accountSID(f.operator) || !serviceIdentity(f.user) || !strings.HasPrefix(c.serviceSID, "S-1-5-80-") || !serviceIdentity(c.serviceSID) || !stagingServiceName(c.serviceName) {
 		return false
 	}
 	// token/stdioやsessionはまだ取得しない。純粋なfile配置の検査だけを共用する。
 	if c.native.image.SHA256 == ([32]byte{}) || c.native.manifest.SHA256 == ([32]byte{}) || c.native.assembly.SHA256 == ([32]byte{}) || !stagingFiles(c) || !fixedLayoutPowerShell(c.native) {
 		return false
 	}
-	return fixedLayoutPolicyAllowed(f.machine, f.policy)
+	return true
 }
 func fixedLayoutPolicyAllowed(machine string, p limitedPolicy) bool {
 	required := []string{machine + "-513", "S-1-1-0", "S-1-2-0", "S-1-5-11", "S-1-5-113", "S-1-5-15", "S-1-5-2", "S-1-5-32-545"}

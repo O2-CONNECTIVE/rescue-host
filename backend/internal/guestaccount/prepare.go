@@ -64,6 +64,11 @@ func (l *Lifecycle) Prepare(ctx context.Context) (result error) {
 		l.state = Cleaning
 		return ErrCleanup
 	}
+	if runtime, ok := l.sources.session.(ownedAccountPreparer); ok {
+		if err := runtime.prepareOwnedAccount(ctx, l.record.binding); err != nil {
+			return l.failure(err)
+		}
+	}
 	snapshot, err := l.sources.accounts.inspect(ctx, l.record.binding)
 	if err != nil || !finite(ctx) || l.stop.Load() || !l.limited(snapshot) {
 		l.state = Cleaning

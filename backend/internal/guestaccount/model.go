@@ -50,6 +50,7 @@ type binding struct {
 
 type limitedPolicy struct {
 	known                           bool
+	batch                           bool
 	groups, privileges, logonRights []string
 }
 
