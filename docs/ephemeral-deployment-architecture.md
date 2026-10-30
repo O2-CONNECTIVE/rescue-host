@@ -3,7 +3,8 @@
 [構成](architecture.md) / [安全要件](security.md) / [配置の受入計画](ephemeral-deployment-acceptance.md)
 
 上位配置は、運営中継をコンテナ、顧客端末を同梱ネイティブと一時非管理者guestにする方針を採用済みです。
-Windows認証と実行の具体方式、初版のSSH機能範囲は未決です。
+本人認証は[指定OperatorSIDと実message認証](adr/0002-operator-sid-policy.md)の方針Bを採用済みです。
+Windows実行方式、認証入口の実配置と初版のSSH機能範囲は未決または未実証です。
 配置の採用は実装済みや安全性の認定を意味せず、実SSHとWindows保護は未検証で、新規接続gateは閉鎖を維持します。
 本書は実機OS変更、資格情報作成、外部デプロイ、接続や公開を実行する指示ではありません。
 
