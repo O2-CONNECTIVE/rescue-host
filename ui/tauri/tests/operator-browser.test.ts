@@ -1,67 +1,6 @@
-import { after, test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import { readFile, readdir, mkdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-import { chromium, type Page } from 'playwright-core';
-
-declare global { interface Window { operatorCopied?: string[] } }
-const root = fileURLToPath(new URL('../operator/dist/', import.meta.url));
-const assets = new Set(['index.html', 'THIRD_PARTY_NOTICES.txt', ...(await readdir(path.join(root, 'assets'))).map(name => `assets/${name}`)]);
-const csp = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'; object-src 'none'";
-const server = createServer((request, response) => {
-  void (async () => {
-    const name = new URL(request.url ?? '/', 'http://127.0.0.1').pathname.slice(1) || 'index.html';
-    if (!assets.has(name)) { response.writeHead(404).end(); return; }
-    response.writeHead(200, { 'Content-Security-Policy': csp, 'Content-Type': name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : name.endsWith('.txt') ? 'text/plain' : 'text/html' });
-    response.end(await readFile(path.join(root, name)));
-  })().catch(() => { response.writeHead(500).end(); });
-});
-await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
-const browser = await chromium.launch({ channel: 'chrome', headless: true }).catch(async (error: unknown) => {
-  await new Promise<void>(resolve => server.close(() => { resolve(); })); throw error;
-});
-after(async () => { await browser.close(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); });
-const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-
-async function page() {
-  const instance = await browser.newPage({ viewport: { width: 1200, height: 1000 } });
-  await instance.addInitScript(() => {
-    window.operatorCopied = [];
-    window.__TAURI__ = { core: { invoke: () => { throw new Error('NATIVE_INVOKE_FORBIDDEN'); } } };
-    Object.defineProperty(navigator, 'clipboard', { value: { writeText: (text: string) => {
-      window.operatorCopied?.push(text); return Promise.resolve();
-    } } });
-  });
-  await instance.goto(url);
-  await instance.getByRole('heading', { name: 'サポート接続を準備する', exact: true }).waitFor();
-  return instance;
-}
-async function receive(instance: Page) {
-  await instance.getByRole('button', { name: 'サンプルを入力', exact: true }).click();
-  await instance.getByRole('button', { name: '接続内容を確認', exact: true }).click();
-  await instance.getByRole('checkbox').check();
-}
-async function details(instance: Page) {
-  const trigger = instance.getByRole('button', { name: '詳細を見る', exact: true });
-  if (await trigger.getAttribute('aria-expanded') !== 'true') await trigger.click();
-}
-async function respond(instance: Page, name: string) {
-  await details(instance); await instance.getByRole('button', { name, exact: true }).click();
-}
-async function prepared(instance: Page) {
-  await receive(instance);
-  await instance.getByRole('button', { name: '承認を依頼（サンプル）', exact: true }).click();
-  await respond(instance, '承認応答を再現');
-  await respond(instance, '接続情報の準備完了を再現');
-}
-async function screenshot(instance: Page, name: string) {
-  if (!process.env.OPERATOR_SCREENSHOT_DIR) return;
-  await mkdir(process.env.OPERATOR_SCREENSHOT_DIR, { recursive: true });
-  await instance.screenshot({ path: path.join(process.env.OPERATOR_SCREENSHOT_DIR, name), fullPage: true });
-}
+import { page, receive, details, respond, prepared, screenshot } from './operator-browser-fixture.ts';
 
 void test('操作側の確認・承認・コピー・接続・停止要求・終了確認を区別しkeyboard focusを保つ', async () => {
   const instance = await page();
@@ -88,10 +27,12 @@ void test('操作側の確認・承認・コピー・接続・停止要求・終
   assert.equal(copied?.length, 1); assert.match(copied?.[0] ?? '', /demo-host\.invalid/);
   assert.doesNotMatch(copied?.[0] ?? '', /DEMO-2486|rescue-client-v1|PRIVATE KEY|password/i);
   await respond(instance, '外部エージェントの接続を再現');
+  await screenshot(instance, 'operator-connected.png');
   await instance.getByRole('button', { name: '接続を停止（サンプル）', exact: true }).focus(); await instance.keyboard.press('Enter');
   assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).evaluate(node => node === document.activeElement), true);
   assert.equal(await instance.getByRole('heading', { name: '停止を要求しました（モック）', exact: true }).count(), 1);
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  await screenshot(instance, 'operator-stopping.png');
   await respond(instance, '終了確認の応答を再現');
   assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 1);
   await details(instance);
@@ -120,6 +61,9 @@ void test('停止未確認・履歴削除・read-only再確認・失効後の禁
   assert.equal(await instance.getByRole('heading', { name: '終了を確認できません（モック）', exact: true }).count(), 1);
   await respond(instance, '期限切れを再現');
   assert.equal(await instance.getByRole('heading', { name: '期限切れ・終了未確認（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('button', { name: '新しい接続の体験へ', exact: true }).isDisabled(), true);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  await screenshot(instance, 'operator-expired.png');
   assert.equal(await instance.getByRole('button', { name: '同じ接続の状態を再確認（モック）', exact: true }).count(), 0);
   await respond(instance, '終了確認の応答を再現');
   await details(instance);
@@ -131,6 +75,37 @@ void test('停止未確認・履歴削除・read-only再確認・失効後の禁
   await instance.getByRole('button', { name: '31日経過を再現（履歴のみ）', exact: true }).click();
   assert.equal(await instance.getByText('保存されたサンプル履歴はありません。', { exact: true }).count(), 1);
   assert.equal(await instance.getByRole('button', { name: '新しい接続の体験へ', exact: true }).isDisabled(), true);
+  await instance.close();
+});
+
+void test('承認待ち・準備失敗・拒否を区別し、終了未確認の間は新規接続を許可しない', async () => {
+  const instance = await page(); await receive(instance);
+  await instance.getByRole('button', { name: '承認を依頼（サンプル）', exact: true }).click();
+  assert.equal(await instance.getByRole('button', { name: '承認の返事を待っています', exact: true }).count(), 1);
+  await screenshot(instance, 'operator-waiting.png');
+  await respond(instance, '承認応答を再現');
+  assert.equal(await instance.getByRole('button', { name: '接続情報を準備しています', exact: true }).count(), 1);
+  await respond(instance, '接続失敗を再現');
+  assert.equal(await instance.getByRole('heading', { name: '接続の準備に失敗しました（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  const next = instance.getByRole('button', { name: '新しい接続の体験へ', exact: true });
+  assert.equal(await next.isDisabled(), true);
+  // aria-disabledでもcontrollerの境界で次の接続を拒否する。
+  await next.evaluate(button => (button as HTMLButtonElement).click());
+  assert.equal(await instance.getByLabel('サンプルの接続コード', { exact: true }).count(), 0);
+  await screenshot(instance, 'operator-preparation-failed.png');
+  await respond(instance, '終了確認の応答を再現');
+  await next.click(); await receive(instance);
+  await instance.getByRole('button', { name: '承認を依頼（サンプル）', exact: true }).click();
+  await respond(instance, '承認拒否を再現');
+  assert.equal(await instance.getByRole('heading', { name: '承認されませんでした（モック）', exact: true }).count(), 1);
+  assert.equal(await instance.getByRole('heading', { name: '終了確認済み（モック）', exact: true }).count(), 0);
+  assert.equal(await next.isDisabled(), false);
+  await screenshot(instance, 'operator-denied.png');
+  await details(instance);
+  const notice = instance.getByRole('region', { name: '重要な通知（モック）', exact: true });
+  assert.equal(await notice.getByText('承認されませんでした（モック）', { exact: true }).count(), 1);
+  await screenshot(instance, 'operator-denied-notice.png');
   await instance.close();
 });
 

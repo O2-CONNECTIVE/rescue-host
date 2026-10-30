@@ -31,6 +31,7 @@ PCや監督サービスの再起動後は許可をすべて失効させ、再承
 | 対象 | 現在の状態 |
 | --- | --- |
 | Tauri GUI | 未接続状態の表示、診断表示、状態の再確認を実装。開始と停止は無効 |
+| 操作側UIモック | 承認待ち・準備失敗・期限切れ・終了未確認を区別し、遅い応答による停止待ちの巻戻りを拒否。[#154](https://github.com/O2-CONNECTIVE/rescue-host/pull/154)のsource/browser回帰で確認。実通信は未配線 |
 | 既存Python版 | 操作範囲の設定保存、期限と失効のオフラインモデル、旧記録の回復補助を実装 |
 | Go基盤 | 認証、固定宛先、期限と失効、所有接続の管理、未配線の制御入口と認可モデルをmainへ統合済み |
 | 製品用の制御配線 | codec、coordinator、service host等の未接続準備コードを[#72](https://github.com/O2-CONNECTIVE/rescue-host/pull/72)でmainへ統合済み。UIからの製品接続は利用不可 |

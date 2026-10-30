@@ -50,7 +50,8 @@ export function createOperatorController({ adapter, onChange, history }: {
         if (state.phase === 'waiting') publish({ phase: 'failed', termination: 'not_started', validSession: false, diagnostic: 'DEMO_DENIED' });
         break;
       case 'failed':
-        if (live()) publish({ phase: 'failed', checkingStatus: false, diagnostic: 'DEMO_FAILED' });
+        if (live()) publish({ phase: 'failed', checkingStatus: false,
+          diagnostic: state.phase === 'connecting' ? 'DEMO_PREPARATION_FAILED' : 'DEMO_FAILED' });
         break;
       case 'lost':
         if (live() || state.checkingStatus) publish({ phase: 'unconfirmed', checkingStatus: false, diagnostic: 'DEMO_TERMINATION_UNCONFIRMED' });
@@ -75,7 +76,8 @@ export function createOperatorController({ adapter, onChange, history }: {
       if (operation === 'approval') await adapter.requestApproval(current);
       else await adapter.requestStop(current);
     } catch {
-      if (!disposed && flow === current && live()) publish({
+      // 観測で次の段階へ進んだ後は、古い要求の失敗で表示を巻き戻さない。
+      if (!disposed && flow === current && state.phase === (operation === 'approval' ? 'waiting' : 'stopping')) publish({
         phase: operation === 'approval' ? 'failed' : 'unconfirmed',
         diagnostic: operation === 'approval' ? 'DEMO_REQUEST_FAILED' : 'DEMO_TERMINATION_UNCONFIRMED'
       });

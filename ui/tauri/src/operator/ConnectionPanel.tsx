@@ -15,7 +15,8 @@ export function ConnectionPanel({ state, onApproval, onStop, onRetry, onReset, c
   const busy = ['waiting', 'connecting', 'stopping'].includes(state.phase);
   const reviewing = state.phase === 'review';
   const terminal = ['stopped', 'expired', 'failed', 'unconfirmed'].includes(state.phase);
-  const action = reviewing ? '承認を依頼（サンプル）' : state.phase === 'stopping' ? '終了確認の応答を待っています' : '接続完了までお待ちください';
+  const action = reviewing ? '承認を依頼（サンプル）' : state.phase === 'waiting' ? '承認の返事を待っています'
+    : state.phase === 'connecting' ? '接続情報を準備しています' : '終了確認の応答を待っています';
   return <Card className="operator-connection">
     <div><p className="operator-step-label">接続先</p><h2 id="review-heading" tabIndex={-1}>{preview.destination}</h2></div>
     <dl className="operator-permissions"><dt>操作する人</dt><dd>{preview.operator}</dd>

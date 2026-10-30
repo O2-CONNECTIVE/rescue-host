@@ -57,6 +57,16 @@ jobs:
         run: node operator/build.mjs
       - name: Test operator mock browser interactions
         run: node --test tests/operator-browser.test.ts
+        env:
+          OPERATOR_SCREENSHOT_DIR: ${{ runner.temp }}/operator-gui-mock-states
+      - name: Upload operator mock state screenshots
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: operator-gui-mock-states
+          path: ${{ runner.temp }}/operator-gui-mock-states
+          if-no-files-found: warn
+          retention-days: 7
       - name: Select official Rust on disposable runner
         run: rustup toolchain install 1.99.1 --profile minimal --component rustfmt --component clippy --no-self-update
       - name: Cache Rust compilation

@@ -4,7 +4,7 @@ import { Button } from '../components/ui/button.tsx';
 import { Card } from '../components/ui/card.tsx';
 import { createOperatorController } from './controller.ts';
 import { initialState, type Observation, type OperatorAdapter, type SampleId } from './model.ts';
-import { status } from './status.ts';
+import { statusFor } from './status.ts';
 import { ReceiveForm } from './ReceiveForm.tsx';
 import { ConnectionPanel } from './ConnectionPanel.tsx';
 import { OperatorDetails } from './OperatorDetails.tsx';
@@ -35,10 +35,9 @@ export function OperatorApp({ adapter, emit, copy, history, advanceHistoryClock 
   function reset() { if (state.termination === 'unconfirmed') return; focusAfterAction.current = 'sample-input'; setDetailsOpen(false); controller.current?.reset(); }
   function observe(event: Observation) { focusAfterAction.current = 'operator-status-title'; setDetailsOpen(false); emit(event); }
   function closeWindow() { focusAfterAction.current = 'tray-heading'; setDetailsOpen(false); controller.current?.minimizeToTray(); }
-  const view = status[state.phase];
+  const view = statusFor(state);
   const StatusIcon = view.icon;
-  const description = state.phase === 'failed' && state.termination === 'not_started' ? '承認されませんでした。入力を確認してやり直せます。'
-    : state.phase === 'unconfirmed' && !state.validSession ? '新しい接続は始められません。接続先へ終了状況を確認してください。'
+  const description = state.phase === 'unconfirmed' && !state.validSession ? '新しい接続は始められません。接続先へ終了状況を確認してください。'
     : state.phase === 'unconfirmed' && state.checkingStatus ? '同じ接続の状態を確認しています。終了はまだ未確認です。' : view.text;
   return <main className="operator">
     <header className="operator-header"><div className="operator-topbar"><p className="operator-brand"><Laptop className="icon" aria-hidden="true" focusable="false" />Rescue / 操作側クライアント</p>

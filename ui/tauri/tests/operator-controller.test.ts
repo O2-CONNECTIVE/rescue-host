@@ -127,6 +127,28 @@ void test('停止要求の受付と繰返し操作だけでは終了確認にせ
   assert.equal(controller.snapshot().termination, 'confirmed');
 });
 
+void test('承認要求の遅い失敗応答で停止待ちの表示を巻き戻さず、新規接続も許可しない', async () => {
+  let rejectApproval: (reason: Error) => void = () => {};
+  const approval = new Promise<void>((_resolve, reject) => { rejectApproval = reject; });
+  const { controller, raw, requests } = setup({ requestApproval: () => approval });
+  controller.acceptSample('code');
+  const pending = controller.requestApproval(true);
+  raw({ flow: 1, event: 'approved' });
+  raw({ flow: 1, event: 'prepared' });
+  raw({ flow: 1, event: 'connected' });
+  await controller.requestStop();
+  rejectApproval(new Error('private late approval failure'));
+  await pending;
+  assert.equal(controller.snapshot().phase, 'stopping');
+  assert.equal(controller.snapshot().diagnostic, 'DEMO_STOP_REQUESTED');
+  assert.equal(controller.snapshot().termination, 'unconfirmed');
+  controller.reset(); controller.acceptSample('definition');
+  await controller.requestApproval(true);
+  assert.deepEqual(requests, ['stop']);
+  raw({ flow: 1, event: 'stop_confirmed' });
+  assert.equal(controller.snapshot().phase, 'stopped');
+});
+
 void test('確認後の依頼受付・承認・接続完了をそれぞれ別の状態として扱う', async () => {
   const { controller, requests, emit } = setup();
   controller.acceptSample('definition');
@@ -144,6 +166,26 @@ void test('確認後の依頼受付・承認・接続完了をそれぞれ別の
   emit('connected');
   assert.equal(controller.snapshot().phase, 'connected');
   assert.equal(controller.snapshot().termination, 'unconfirmed');
+});
+
+void test('準備失敗と期限切れでは遅い接続応答で復帰せず、終了確認まで新規接続を禁止する', async () => {
+  // 既存の閉鎖動作を確認する回帰。先行redとは区別する。
+  for (const event of ['failed', 'expired'] as const) {
+    const { controller, emit, requests } = setup();
+    controller.acceptSample('code'); await controller.requestApproval(true);
+    emit('approved'); emit(event);
+    assert.equal(controller.snapshot().diagnostic, event === 'failed' ? 'DEMO_PREPARATION_FAILED' : 'DEMO_EXPIRED');
+    const terminal = controller.snapshot();
+    controller.reset(); controller.acceptSample('definition'); await controller.requestApproval(true);
+    emit('approved'); emit('prepared'); emit('connected'); emit('status_active');
+    assert.equal(controller.snapshot(), terminal);
+    assert.equal(controller.snapshot().termination, 'unconfirmed');
+    assert.deepEqual(requests, ['approval']);
+    emit('stop_confirmed');
+    assert.equal(controller.snapshot().termination, 'confirmed');
+    controller.reset();
+    assert.equal(controller.snapshot().phase, 'entry');
+  }
 });
 
 void test('トレイ格納は接続を維持し、停止未確認では次へ進まず有効な同一接続の状態だけ再確認する', async () => {

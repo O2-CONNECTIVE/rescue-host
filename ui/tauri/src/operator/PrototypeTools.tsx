@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import { Button } from '../components/ui/button.tsx';
 import { Card } from '../components/ui/card.tsx';
 import type { Observation, OperatorState, Phase } from './model.ts';
+import { statusFor } from './status.ts';
 
 const responses: Partial<Record<Phase, readonly (readonly [Observation, string])[]>> = {
   waiting: [['approved', '承認応答を再現'], ['denied', '承認拒否を再現'], ['expired', '期限切れを再現']],
@@ -25,7 +26,7 @@ export function PrototypeTools({ state, emit, closeWindow }: {
       {!choices.length && <p className="caption">接続フローを進めると、再現できる応答が表示されます。</p>}
       <Button variant="quiet" onClick={closeWindow}><X className="icon" aria-hidden="true" focusable="false" />閉じる（トレイのモック）</Button>
     </Card>
-    <Card><h2>重要な通知（モック）</h2><p>{state.notice ? ({ connecting: '承認応答が届きました。', ready: '接続情報の準備が完了しました。', connected: '外部エージェントの接続を観測しました。', stopped: '終了確認の応答が届きました。', expired: '期限切れです。終了確認は別に必要です。', failed: '接続準備に失敗しました。', unconfirmed: '通信の終了を確認できません。' } as Partial<Record<Phase, string>>)[state.notice] : '重要な変化があると、ここに表示します。'}</p>
+    <Card role="region" aria-label="重要な通知（モック）"><h2>重要な通知（モック）</h2><p>{state.notice ? ({ connecting: '承認応答が届きました。', ready: '接続情報の準備が完了しました。', connected: '外部エージェントの接続を観測しました。', stopped: '終了確認の応答が届きました。', expired: '期限切れです。終了確認は別に必要です。', failed: statusFor(state).title, unconfirmed: '通信の終了を確認できません。' } as Partial<Record<Phase, string>>)[state.notice] : '重要な変化があると、ここに表示します。'}</p>
       <p className="caption">OS通知は未配線です。状態確認の要求や毎秒の時刻は通知しません。</p></Card>
     <Card className="operator-diagnostics"><h2>診断情報</h2><div className="diagnostics"><p className="caption">表示の根拠はモックからの観測です。入力した情報や実環境のログは含みません。</p>
         <dl className="operator-diagnostic-values"><dt>最新の固定 code</dt><dd><code>{state.diagnostic}</code></dd><dt>実通信</dt><dd>一度も開始していません</dd>
