@@ -202,3 +202,32 @@ func TestExpiredInspectionCannotBorrowFreshContextBeforeCancelNotification(t *te
 		}
 	}
 }
+
+func TestCallDeadlineDuringReinspectionCannotStartUnderLongerLease(t *testing.T) {
+	lease, cancel := context.WithTimeout(context.Background(), time.Hour)
+	defer cancel()
+	call := &inspectionDeadlineContext{Context: context.Background(), deadline: time.Now().Add(time.Hour)}
+	api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, err := prepareWithKernel(lease, approvedSpec(), api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := p.Inspect(lease)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.onCall = func(name string) {
+		if name == "inspect-target" {
+			call.deadline = time.Now().Add(-time.Second)
+		}
+	}
+	if err := p.CommitInspected(call, receipt); err == nil {
+		t.Error("expired call borrowed the live preparation lease")
+	}
+	_ = p.Close(lease)
+	for _, name := range api.calls {
+		if name == "resume" {
+			t.Error("expired reinspection resumed")
+		}
+	}
+}

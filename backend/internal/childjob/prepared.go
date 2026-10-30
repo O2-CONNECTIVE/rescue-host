@@ -96,10 +96,10 @@ func (p *Prepared) commitHeld(ctx context.Context) error {
 	}
 	var err error
 	p.queryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-	if err != nil || !ordinaryHandle(p.queryToken) || ctx.Err() != nil || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedStarted) {
+	if err != nil || !ordinaryHandle(p.queryToken) || !bounded(ctx) || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedStarted) {
 		return ErrStart
 	}
-	if p.child.resumeOwned(ctx) != nil || p.state.Load() != preparedStarted || !bounded(p.lease) || ctx.Err() != nil {
+	if p.child.resumeOwned(ctx) != nil || p.state.Load() != preparedStarted || !bounded(p.lease) || !bounded(ctx) {
 		return ErrStart
 	}
 	return nil

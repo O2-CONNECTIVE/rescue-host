@@ -28,7 +28,7 @@ func (p *Prepared) Inspect(ctx context.Context) (*Inspection, error) {
 		err = ErrStart
 	} else {
 		p.queryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-		if err != nil || !ordinaryHandle(p.queryToken) || ctx.Err() != nil || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedInspected) {
+		if err != nil || !ordinaryHandle(p.queryToken) || !bounded(ctx) || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedInspected) {
 			err = ErrStart
 		}
 	}
@@ -61,13 +61,13 @@ func (p *Prepared) CommitInspected(ctx context.Context, receipt *Inspection) err
 		return err
 	}
 	err := ErrStart
-	if receipt == p.inspection && p.state.Load() == preparedInspected && ctx.Err() == nil && bounded(p.lease) {
+	if receipt == p.inspection && p.state.Load() == preparedInspected && bounded(ctx) && bounded(p.lease) {
 		// Reobserve the same retained target immediately before the admission CAS.
 		// Both query references remain owned even when the second inspection fails.
 		p.commitQueryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-		if err == nil && ordinaryHandle(p.commitQueryToken) && ctx.Err() == nil && bounded(p.lease) && p.state.CompareAndSwap(preparedInspected, preparedStarted) {
+		if err == nil && ordinaryHandle(p.commitQueryToken) && bounded(ctx) && bounded(p.lease) && p.state.CompareAndSwap(preparedInspected, preparedStarted) {
 			err = p.child.resumeOwned(ctx)
-			if err == nil && (p.state.Load() != preparedStarted || ctx.Err() != nil || !bounded(p.lease)) {
+			if err == nil && (p.state.Load() != preparedStarted || !bounded(ctx) || !bounded(p.lease)) {
 				err = ErrStart
 			}
 		} else {

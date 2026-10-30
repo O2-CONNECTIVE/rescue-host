@@ -44,14 +44,18 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
-	if registration := s.preview.targetOwner; registration != nil && (s.preview.intent == nil || s.preview.intent.confirmation == nil || s.preview.intent.confirmation.runtimeSource == nil) {
+	if registration := s.preview.targetOwner; registration != nil {
 		actual, ok := s.issuer.TrySnapshot()
 		valid := ok && actual.Closed && s.stopping && s.workload.sameWorkloadLocked(s) && s.workload.hostJoined
+		if s.preview.intent != nil && s.preview.intent.confirmation != nil {
+			r := s.preview.intent.confirmation
+			valid = valid && r.finished && (r.work.reservation == nil || s.reservation == r.work.reservation && s.reservation.finished)
+		}
 		s.mu.Unlock()
 		if !valid {
 			return ErrRuntimeUnconfirmed
 		}
-		return s.reclaimUnconfirmedTarget(ctx, registration)
+		return s.reclaimRegisteredTarget(ctx, registration)
 	}
 	r := s.preview.intent.confirmation
 	source, owner := r.runtimeSource, r.runtimeOwner

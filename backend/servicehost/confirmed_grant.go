@@ -100,7 +100,7 @@ func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, 
 	if err := r.inspectTarget(r.ctx); err != nil {
 		return r.failGrant(err)
 	}
-	proof, err := acquireConfirmationRuntime(r.request.worker, source.kernel, PreviewConfirmationTicket{record: r})
+	proof, err := acquireConfirmationRuntime(r.request.worker, r.runtimeKernel, PreviewConfirmationTicket{record: r})
 	// Preserve every returned partial reference before inspecting cancellation/error.
 	s.mu.Lock()
 	r.runtimeProof = proof
@@ -141,7 +141,7 @@ func (r *previewConfirmation) consumeRuntimeProof(p *confirmationRuntimeProof, d
 	if o.revoked || o.source != source || source.owner != o || o.service != r.service || o.issuer != r.issuer || o.auth != r.owner || o.outer != r.service.outerTicket || !validRuntimeGuestSID(o.expectedSID) || slices.Contains(r.service.preview.excludedSIDs, o.expectedSID) {
 		return ephemeral.Challenge{}, ErrProvisioningRejected
 	}
-	if (r.runtimeTarget != nil || source.target != nil || o.target != nil) && (r.runtimeTarget == nil || o.target != r.runtimeTarget || source.target != r.runtimeTarget || !r.runtimeTarget.inspected.Load() || r.runtimeTarget.revoked.Load() || p == nil || p.target != r.runtimeTarget) {
+	if (r.runtimeTarget != nil || source.target != nil || o.target != nil) && (r.runtimeTarget == nil || o.target != r.runtimeTarget || source.target != r.runtimeTarget || source.kernel == nil || !r.runtimeTarget.inspected.Load() || r.runtimeTarget.revoked.Load() || p == nil || p.target != r.runtimeTarget) {
 		return ephemeral.Challenge{}, ErrProvisioningRejected
 	}
 	if p == nil || p.self != p || p.source != source || p.owner != o || p.confirmation != r || p.service != r.service || p.issuer != r.issuer || p.auth != r.owner || p.outer != o.outer || p.consumed || p.stagingSID != o.expectedSID || p.runtimeSID != o.expectedSID || p.boundary != supervisor.SeparatedNonAdminGuest || !sameGrantDescriptor(p.descriptor, d) {

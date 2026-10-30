@@ -34,6 +34,7 @@ type confirmationTargetLaunch struct {
 type confirmationTargetOwner struct {
 	source *confirmationRuntimeSource
 	owner  *confirmationEvidenceOwner
+	kernel confirmationRuntimeKernel
 	target *confirmationTarget
 	launch *confirmationTargetLaunch // Service.mu
 	closed bool
@@ -50,7 +51,7 @@ func (s *Service) registerConfirmationTarget(source *confirmationRuntimeSource) 
 	if o == nil || o.self != o || o.source != source || o.service != s || o.issuer != s.issuer || o.auth != s.authOwner || o.outer != s.outerTicket || o.target != source.target {
 		return ErrProvisioningRejected
 	}
-	s.preview.targetOwner = &confirmationTargetOwner{source: source, owner: o, target: source.target}
+	s.preview.targetOwner = &confirmationTargetOwner{source: source, owner: o, kernel: source.kernel, target: source.target}
 	return nil
 }
 
@@ -87,7 +88,7 @@ func (r *previewConfirmation) inspectTarget(ctx context.Context) error {
 	} // legacy memory seam; no product constructor
 	t := r.runtimeTarget
 	registration := r.service.preview.targetOwner
-	if registration == nil || registration.source != source || registration.owner != o || registration.target != t || t == nil || source.target != t {
+	if registration == nil || registration.source != source || registration.owner != o || registration.target != t || t == nil || source.target != t || r.service.preview.runtime != registration.source {
 		return ErrProvisioningRejected
 	}
 	if o == nil || o.self != o || o.source != source || source.owner != o || o.target != t || t.ops == nil || t.revoked.Load() || t.inspected.Load() {
@@ -207,14 +208,14 @@ func (s *Service) awaitTargetBeforeReturn() {
 		<-done
 	} // memory-only actual join, including fatal; never retry native cleanup
 }
-func (s *Service) reclaimUnconfirmedTarget(ctx context.Context, registration *confirmationTargetOwner) error {
+func (s *Service) reclaimRegisteredTarget(ctx context.Context, registration *confirmationTargetOwner) error {
 	if registration.fatal != nil {
 		return registration.fatal
 	}
-	// This path owns a suspended target even before an approval record exists.
+	// The frozen original actor owns the suspended target even without approval.
 	err := s.closeRegisteredTarget(ctx)
 	if err == nil {
-		err = authCleanupCall(func() error { return registration.source.kernel.CloseOwned(ctx, registration.owner) })
+		err = authCleanupCall(func() error { return registration.kernel.CloseOwned(ctx, registration.owner) })
 	}
 	if err != nil {
 		if authFatal(err) {
@@ -230,6 +231,12 @@ func (s *Service) reclaimUnconfirmedTarget(ctx context.Context, registration *co
 	defer s.mu.Unlock()
 	if !authBudget(ctx) || !s.stopping || s.preview.targetOwner != registration || !s.workload.sameWorkloadLocked(s) || !s.workload.hostJoined {
 		return ErrRuntimeUnconfirmed
+	}
+	if s.preview.intent != nil && s.preview.intent.confirmation != nil {
+		r := s.preview.intent.confirmation
+		if r.runtimeTarget == registration.target {
+			r.runtimeCleanupConfirmed = true
+		}
 	}
 	if err := s.authWriter.ConfirmWorkloadLocked(); err != nil {
 		return ErrRuntimeUnconfirmed

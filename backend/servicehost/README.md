@@ -288,7 +288,7 @@ Issuer.Prepareのentropy/mutex待ちや非return OS callを、有限停止保証
 
 ### 同じ保持targetの未接続bridge
 
-対象は承認Recordより前にprivate SCM所有記録へ固定し、承認のない停止でもその対象を回収する。
+対象と元source/owner/kernelは承認Recordより前にprivate SCM所有記録へ固定し、承認のない停止でもその同じactorを回収する。
 source/owner/proofの後続報告がtargetを消去・差替えしても、旧経路へ降格せず、固定した元対象の失効/回収参照を保持する。
 検査receiptと独立nonadmin証拠の同対象性を消費し、元issuerのChallenge発行後だけprivate Launchへ進む。APIの成功だけから非admin証拠は生成しない。
 停止とfatal時も、元commit workerの実returnを最外側でjoinする。fatal後にnative cleanupを再試行したり、物理終了を確認したことにはしない。

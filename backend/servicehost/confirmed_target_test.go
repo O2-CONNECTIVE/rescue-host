@@ -132,7 +132,9 @@ func TestTargetInspectionFailureOrMismatchedProofCannotIssue(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			s, a, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return nil })
 			model := &confirmationTargetMemory{}
-			source := grantRuntimeFixture(t, s, &confirmationTarget{ops: model})
+			source := grantRuntimeFixture(t, s)
+			source.target = &confirmationTarget{ops: model}
+			source.owner.target = source.target
 			original := source.kernel
 			source.kernel = runtimeKernelModel(func(ctx context.Context, ticket PreviewConfirmationTicket) (*confirmationRuntimeProof, error) {
 				p, err := original.Acquire(ctx, ticket)
@@ -151,6 +153,9 @@ func TestTargetInspectionFailureOrMismatchedProofCannotIssue(t *testing.T) {
 			}
 			if kind == "inspect-cancel" {
 				model.onInspect = func() { s.requestStop() }
+			}
+			if err := s.registerConfirmationTarget(source); err != nil {
+				t.Fatal(err)
 			}
 			hello := previewExchange(t, a, dispatchHello)
 			intent := previewExchange(t, a, dispatchRequest(hello, 1, "22222222222222222222222222222222", servicecontrol.PrepareIntent))
@@ -236,22 +241,36 @@ func TestRegisteredTargetIsClosedWhenStoppedBeforeConfirmation(t *testing.T) {
 	}
 }
 func TestAcquireCannotClearOrReplaceOriginalTarget(t *testing.T) {
-	for _, kind := range []string{"clear", "replace"} {
+	for _, kind := range []string{"clear", "replace", "owner", "kernel", "preview-source"} {
 		t.Run(kind, func(t *testing.T) {
 			s, a, _ := confirmationFixture(t, func(context.Context, PreviewConfirmationTicket) error { return nil })
 			model, foreign := &confirmationTargetMemory{}, &confirmationTargetMemory{}
 			originalTarget := &confirmationTarget{ops: model}
-			source := grantRuntimeFixture(t, s, originalTarget)
+			source := grantRuntimeFixture(t, s)
+			source.target, source.owner.target = originalTarget, originalTarget
 			original := source.kernel
-			source.kernel = runtimeKernelModel(func(ctx context.Context, ticket PreviewConfirmationTicket) (*confirmationRuntimeProof, error) {
+			var originalJoins, foreignJoins atomic.Int32
+			source.kernel = &runtimeCleanupModel{confirmationRuntimeKernel: runtimeKernelModel(func(ctx context.Context, ticket PreviewConfirmationTicket) (*confirmationRuntimeProof, error) {
 				p, err := original.Acquire(ctx, ticket)
-				if kind == "clear" {
+				switch kind {
+				case "clear":
 					source.target = nil
-				} else {
+				case "replace":
 					source.target = &confirmationTarget{ops: foreign}
+				case "owner":
+					source.owner = &confirmationEvidenceOwner{}
+				case "kernel":
+					source.kernel = nil
 				}
 				return p, err
-			})
+			}), close: func(context.Context, *confirmationEvidenceOwner) error { originalJoins.Add(1); return nil }}
+			if err := s.registerConfirmationTarget(source); err != nil {
+				t.Fatal(err)
+			}
+			if kind == "preview-source" {
+				other := grantRuntimeFixture(t, s)
+				other.kernel = &runtimeCleanupModel{confirmationRuntimeKernel: other.kernel, close: func(context.Context, *confirmationEvidenceOwner) error { foreignJoins.Add(1); return nil }}
+			}
 			hello := previewExchange(t, a, dispatchHello)
 			intent := previewExchange(t, a, dispatchRequest(hello, 1, "22222222222222222222222222222222", servicecontrol.PrepareIntent))
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -260,11 +279,9 @@ func TestAcquireCannotClearOrReplaceOriginalTarget(t *testing.T) {
 			if s.issuer.Snapshot().Generation != 0 {
 				t.Error("acquisition downgraded into legacy authority")
 			}
-			if err := s.Close(ctx); err != nil {
-				t.Error(err)
-			}
-			if model.closes.Load() != 1 || !model.revoked.Load() || foreign.closes.Load() != 0 {
-				t.Error("cleanup retargeted or lost the originally registered target")
+			_ = s.Close(ctx)
+			if model.closes.Load() != 1 || !model.revoked.Load() || foreign.closes.Load() != 0 || originalJoins.Load() != 1 || foreignJoins.Load() != 0 {
+				t.Error("cleanup retargeted or lost the originally registered actor", model.closes.Load(), originalJoins.Load(), foreignJoins.Load())
 			}
 		})
 	}
