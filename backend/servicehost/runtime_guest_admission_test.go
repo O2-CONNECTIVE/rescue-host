@@ -10,6 +10,37 @@ import (
 	"github.com/O2-CONNECTIVE/rescue-host/backend/internal/serviceready"
 )
 
+func TestRuntimeGuestCanceledServiceParentClosesBeforeAnyAcquisition(t *testing.T) {
+	s, err := NewPreviewService(previewConfigFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := &runtimeGuestOwnerFixture{service: s}
+	if err := s.BindOuterFinalizer(o); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.BindRuntimeGuestOwner(o); err != nil {
+		t.Fatal(err)
+	}
+	s.control.prepare = func(context.Context) (serviceControlWitness, error) {
+		t.Error("canceled startup acquired native Service state")
+		return serviceControlWitness{}, ErrProvisioningRejected
+	}
+	parent, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := s.Serve(parent, nil, make(chan ServiceState, 32)); err == nil {
+		t.Fatal("canceled Service parent started")
+	}
+	cleanup, end := context.WithTimeout(context.Background(), time.Second)
+	defer end()
+	if err := s.Close(cleanup); err != nil {
+		t.Fatal("pre-acquisition cancellation left inner cleanup pending", err)
+	}
+	if !s.Snapshot().CleanupConfirmed || o.prepares.Load() != 0 || o.closes.Load() != 0 {
+		t.Fatal("canceled startup acquired a guest or lost cleanup acknowledgement")
+	}
+}
+
 func TestRuntimeGuestRequestCancellationRevokesCanonicalOwnerBeforeAdmission(t *testing.T) {
 	s, o := runtimeGuestServiceFixture(t, nil, runtimeGuestKernelFixture{lease: &serviceready.InspectionLease{}})
 	request, cancel := context.WithTimeout(context.Background(), 2*time.Second)

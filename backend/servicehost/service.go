@@ -311,11 +311,7 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 	}
 	s.issuer = issuer
 	s.workload = &serviceWorkloadReclaim{owner: s, issuer: issuer}
-	if err := s.bindRuntimeGuestLocked(root); err != nil {
-		s.mu.Unlock()
-		_ = issuer.Close()
-		return err
-	}
+	runtimeBindErr := s.bindRuntimeGuestLocked(root)
 	stopping = s.stopping
 	s.mu.Unlock()
 	if stopping {
@@ -453,6 +449,9 @@ func serveService[Request, Status any](ctx context.Context, s *Service, controls
 		}
 	}()
 
+	if runtimeBindErr != nil {
+		return runtimeBindErr // the existing canonical revocation/cleanup defers are now installed
+	}
 	startup, end := context.WithTimeout(root, cfg.Budgets.Startup)
 	if err := publish(startup, StartPending); err != nil {
 		end()
