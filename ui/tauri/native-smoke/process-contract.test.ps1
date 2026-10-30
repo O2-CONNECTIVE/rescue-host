@@ -113,6 +113,32 @@ Reject { Get-OwnedApp $driver $edge 'app.exe' @($lineageGraph + $duplicateGenera
 if (($lineageEvidence | ConvertTo-Json -Depth 5).Contains('ProcessId')) { throw 'LINEAGE_IDENTITY_LEAK' }
 Write-Output 'LINEAGE_CONTRACT_PASS checks=4 (fixtures only; not native evidence)'
 
+# 実際の差分を模した合成データ。再利用や時計変動の原因自体を再現するものではない。
+$observedOther = Entry 27 13 'PRIVATE_CHILD_PATH.exe' 'other.exe'
+$observedOther.CreationDate = $webview.CreationDate.AddTicks(-2720437740)
+$observedFacts = @()
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($driver, $edge, $app, $webview, $observedOther) ([ref]$observedFacts) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+if ($observedFacts.Count -ne 1) { throw 'LINEAGE_CONTEXT_MISSING' }
+$fact = $observedFacts[0]
+foreach ($name in @('searchRoot', 'parentRole', 'parentDepth', 'parentSnapshotIdentity', 'childSnapshotIdentity', 'timeOrder')) {
+    if ($null -eq $fact.PSObject.Properties[$name]) { throw 'LINEAGE_CONTEXT_MISSING' }
+}
+if ($fact.searchRoot -ne 'driver' -or $fact.parentRole -ne 'webview-name' -or $fact.parentDepth -ne 3 -or
+    $fact.parentSnapshotIdentity -ne 'same' -or $fact.childSnapshotIdentity -ne 'same' -or
+    $fact.timeOrder -ne 'child-older' -or $fact.childMinusParentCreationMs -ne -272043.774) { throw 'LINEAGE_CONTEXT_INCORRECT' }
+$factJson = $fact | ConvertTo-Json -Depth 5
+if ($factJson.Contains('PRIVATE_CHILD_PATH') -or $factJson.Contains('2026-10-27') -or $factJson.Contains('ProcessId')) { throw 'LINEAGE_CONTEXT_PRIVATE_DATA_LEAK' }
+$duplicateObserved = Entry 27 13 'PRIVATE_DUPLICATE_PATH.exe' 'other.exe'
+$duplicateObserved.CreationDate = $observedOther.CreationDate.AddSeconds(1)
+$duplicateFacts = @()
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($driver, $edge, $app, $webview, $observedOther, $duplicateObserved) ([ref]$duplicateFacts) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+if ($duplicateFacts.Count -ne 1 -or $duplicateFacts[0].reason -ne 'child-row-ambiguous' -or $duplicateFacts[0].childSnapshotIdentity -ne 'ambiguous') { throw 'LINEAGE_CONTEXT_DUPLICATE_LOST' }
+$observedOther.CreationDate = $null
+$missingFacts = @()
+Reject { Get-OwnedApp $driver $edge 'app.exe' @($driver, $edge, $app, $webview, $observedOther) ([ref]$missingFacts) } 'NATIVE_LINEAGE_OWNER_UNCONFIRMED'
+if ($missingFacts.Count -ne 1 -or $missingFacts[0].reason -ne 'child-creation-unavailable' -or $missingFacts[0].childSnapshotIdentity -ne 'unknown' -or $missingFacts[0].timeOrder -ne 'unknown') { throw 'LINEAGE_CONTEXT_UNKNOWN_LOST' }
+Write-Output 'LINEAGE_CONTEXT_CONTRACT_PASS checks=3 (fixtures only; not native evidence)'
+
 # session作成の失敗を通常closeや所有保証へ読み替えず、匿名の起動状態を残す。
 . "$PSScriptRoot/startup-observation.ps1"
 $startup = Get-StartupFacts $driver $edge 'app.exe' $valid @($loop4, $edge4, $edge6)
