@@ -1,15 +1,47 @@
 # 試験専用。UI/要求の期限を変えず、既存diagnostic waitの1秒budgetだけを共有する。
-function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+function Wait-ClosedStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget,
+    [ValidateSet('app-startup-stages.json', 'wry-startup-stages.json')][string]$FileName) {
     if (-not $Budget.IsRunning) { $Budget.Start() }
     try {
         [IO.File]::WriteAllText((Join-Path $Directory 'app-startup.finish'), 'finish')
-        $file = Join-Path $Directory 'app-startup-stages.json'
+        $file = Join-Path $Directory $FileName
         do {
             $stream = $null
             try {
                 # Rust writerが閉じるまで途中書込みを完成物として扱わない。
                 $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
                 return $stream.Length -gt 0 -and $stream.Length -le 2048
+            } catch [IO.IOException] { }
+            finally { if ($null -ne $stream) { $stream.Dispose() } }
+            if ($Budget.ElapsedMilliseconds -ge 1000) { break }
+            Start-Sleep -Milliseconds 20
+        } while ($Budget.ElapsedMilliseconds -lt 1000)
+        return $false
+    } catch { return $false }
+    finally { $Budget.Stop() }
+}
+function Wait-AppStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    return Wait-ClosedStartupTrace $Directory $Budget 'app-startup-stages.json'
+}
+function Wait-WryStartupTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    return Wait-ClosedStartupTrace $Directory $Budget 'wry-startup-stages.json'
+}
+
+# 同じ観測budgetを共有し、固定Driverの完全なfileだけを停止前に確認する。
+function Wait-DriverStageTrace([string]$Directory, [Diagnostics.Stopwatch]$Budget) {
+    if (-not $Budget.IsRunning) { $Budget.Start() }
+    try {
+        [IO.File]::WriteAllText((Join-Path $Directory 'driver-stage.finish'), 'finish')
+        $file = Join-Path $Directory 'driver-stage.jsonl'
+        if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
+        do {
+            if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
+            $stream = $null
+            try {
+                $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+                $length = $stream.Length
+                if ($Budget.ElapsedMilliseconds -ge 1000) { return $false }
+                return $length -gt 0 -and $length -le 8192
             } catch [IO.IOException] { }
             finally { if ($null -ne $stream) { $stream.Dispose() } }
             if ($Budget.ElapsedMilliseconds -ge 1000) { break }
