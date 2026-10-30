@@ -27,6 +27,14 @@ def require(condition, code):
         raise VerificationError(code)
 
 
+def strict_object(pairs):
+    result = {}
+    for key, value in pairs:
+        require(key not in result, "PACKAGE_JSON_DUPLICATE_FIELD")
+        result[key] = value
+    return result
+
+
 def safe_member(name):
     # 現行生成物のASCII名に限定。Windowsの別名・予約名を展開前に拒否する。
     for part in name.split("/"):
@@ -54,7 +62,8 @@ def check_licenses(bundle, prefix, files):
         data = bundle.read(prefix + name)
         require(not data.startswith(b"MZ"), "PACKAGE_COMPONENT_SET_UNSUPPORTED")
         require(bool(data.decode("utf-8-sig").strip()), code)
-    inventory = json.loads(bundle.read(prefix + "licenses/DEPENDENCIES.json"))
+    inventory = json.loads(bundle.read(prefix + "licenses/DEPENDENCIES.json"),
+                           object_pairs_hook=strict_object)
     require(inventory["tools"]["profile"] == "release" and bool(inventory["packages"]), code)
     notices = inventory["rustToolchainNotices"]
     require(set(notices) == {"COPYRIGHT.html", "COPYRIGHT-library.html"}, code)
@@ -95,7 +104,7 @@ def verify(archive, source, archive_sha256, exe_sha256):
                 and all((i.external_attr >> 16) & 0o170000 in {0, 0o100000}
                         and not i.flag_bits & 1 for i in infos), "PACKAGE_MEMBER_AMBIGUOUS")
         prefix = NAME + "/"
-        manifest = json.loads(bundle.read(prefix + "MANIFEST.json"))
+        manifest = json.loads(bundle.read(prefix + "MANIFEST.json"), object_pairs_hook=strict_object)
         fields = {"sourceRepository", "sourceCommit", "candidate", "platform", "buildProfile",
                   "integration", "canStart", "canStop", "productionGateClosed", "signature",
                   "webview2", "nativeValidation", "files"}

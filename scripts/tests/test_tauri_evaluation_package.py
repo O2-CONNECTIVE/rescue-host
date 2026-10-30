@@ -18,6 +18,28 @@ SOURCE = "6d5211bc76eec175c9fc53f40a26eb31c5502d1d"
 
 
 class EvaluationPackageTests(unittest.TestCase):
+    def test_duplicate_license_json_is_rejected_before_output_creation(self):
+        # 検証器修正後の生成入口回帰。fixtureは実行しない。
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            executable = folder / "gui.exe"
+            executable.write_bytes(b"abc")
+            licenses = folder / "licenses"
+            write_license_fixture(licenses)
+            inventory = licenses / "DEPENDENCIES.json"
+            inventory.write_text(inventory.read_text(encoding="utf-8").replace(
+                '"profile": "release"',
+                '"profile": "PRIVATE_GENERATOR_DUPLICATE", "profile": "release"', 1), encoding="utf-8")
+            output = folder / "output"
+            result = subprocess.run(
+                [sys.executable, "-B", str(COMMAND), "--exe", str(executable),
+                 "--licenses", str(licenses), "--source-sha", SOURCE, "--output", str(output)],
+                capture_output=True, text=True, timeout=15)
+            self.assertEqual(result.returncode, 1)
+            self.assertEqual(result.stdout, "PACKAGE_JSON_DUPLICATE_FIELD\n")
+            self.assertEqual(result.stderr, "")
+            self.assertFalse(output.exists())
+
     def test_generation_argument_error_does_not_repeat_private_values(self):
         marker = "PRIVATE_GENERATOR_ARGUMENT"
         result = subprocess.run(
