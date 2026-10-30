@@ -2,6 +2,9 @@
 
 [READMEへ戻る](../README.md)
 
+採用済みの上位配置は[単発版の配置と責任分担](ephemeral-deployment-architecture.md)、補助受入は[配置の受入計画](ephemeral-deployment-acceptance.md)を参照してください。
+配置の採用はWindows実行方式の採用や実接続の有効化を意味しません。
+
 新規接続は無効です。
 以下の図は公開済みソースの構成を示し、実GUIのスクリーンショットではありません。
 
