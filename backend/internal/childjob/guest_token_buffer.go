@@ -31,10 +31,13 @@ func guestTokenSIDAt(data []byte, base, address uint64, minimum int) (string, er
 	return value, nil
 }
 func guestTokenGroups(data []byte, base uint64) ([]guestTokenGroup, error) {
-	if len(data) < 8 {
+	if len(data) < 4 {
 		return nil, ErrStart
 	}
 	count := int(binary.LittleEndian.Uint32(data))
+	if count == 0 {
+		return []guestTokenGroup{}, nil
+	}
 	if count > 64 || len(data) < 8+16*count {
 		return nil, ErrStart
 	}

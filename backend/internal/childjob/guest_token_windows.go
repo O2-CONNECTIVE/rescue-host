@@ -107,12 +107,23 @@ func (windowsKernel) tokenFacts(handle uintptr) (guestTokenFacts, error) {
 	for _, field := range []struct {
 		class uint32
 		out   *bool
-	}{{windows.TokenElevation, &f.elevated}, {windows.TokenUIAccess, &f.uiAccess}, {windows.TokenHasRestrictions, &f.restricted}, {guestTokenIsAppContainer, &f.appContainer}} {
+	}{{windows.TokenElevation, &f.elevated}, {windows.TokenUIAccess, &f.uiAccess}, {guestTokenIsAppContainer, &f.appContainer}} {
 		value, e := guestTokenDWORD(token, field.class)
 		if e != nil || value > 1 {
 			return guestTokenFacts{}, ErrStart
 		}
 		*field.out = value == 1
+	}
+	// Restricting SIDs are a documented SID list, not the token's filter history.
+	// Do not infer TokenHasRestrictions from this observation or accept a short
+	// class-21 DWORD result as an undocumented compatibility representation.
+	err = withGuestTokenInfo(token, windows.TokenRestrictedSids, 65536, func(data []byte, base uint64) error {
+		groups, e := guestTokenGroups(data, base)
+		f.hasRestrictingSIDs = len(groups) != 0
+		return e
+	})
+	if err != nil {
+		return guestTokenFacts{}, ErrStart
 	}
 	err = withGuestTokenInfo(token, windows.TokenGroups, 65536, func(data []byte, base uint64) error {
 		var e error

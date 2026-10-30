@@ -73,3 +73,13 @@ func TestGuestTokenPrivilegeParserKeepsDisabledUnknownPresence(t *testing.T) {
 		})
 	}
 }
+
+func TestGuestTokenEmptyRestrictingSIDListHasCountOnlyHeader(t *testing.T) {
+	groups, err := guestTokenGroups([]byte{0, 0, 0, 0}, 0x1000)
+	if err != nil || groups == nil || len(groups) != 0 {
+		t.Fatal("empty restricting SID list required an absent array element")
+	}
+	if _, err := guestTokenGroups([]byte{1, 0, 0, 0}, 0x1000); err == nil {
+		t.Fatal("nonempty SID list accepted without array storage")
+	}
+}

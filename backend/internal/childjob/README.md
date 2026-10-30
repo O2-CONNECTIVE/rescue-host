@@ -89,7 +89,11 @@ source/owner/proof/retained grantが同じtargetを保持し、元の実issuer�
 `NewGuestTokenExpectation`は候補network profileの期待値を整形するだけで、保護された設定、guest作成来歴、正規ログオン、issuer承認を証明しない。
 未知group、管理者group、3種類の保守的許可集合以外のprivilegeを期待値へ指定しても拒否する。runtime profileの採用ではない。
 `ObserveGuestToken`は同じPrepared/Inspectionが保持した実targetと元の借用primary tokenをOSから独立に照会する。
-TokenUser/Owner/PrimaryGroup、AuthenticationId/session、TokenId/ModifiedId、group全体、present privilege全体、elevation/type/integrity/UIAccess/restriction/AppContainerを照合する。
+TokenUser/Owner/PrimaryGroup、AuthenticationId/session、TokenId/ModifiedId、group全体、present privilege全体、elevation/type/integrity/UIAccess/restricting SIDs/AppContainerを照合する。
+`TokenRestrictedSids`の全SIDを有限bufferから検査し、一つでも存在すれば拒否する。取得失敗・不完全bufferも拒否する。
+これは過去にfilter済みかを表す`TokenHasRestrictions`とは非同値で、filter履歴は不明のままである。
+最初の候補に加えた「過去にfilter済みなら拒否」から限定観測の条件を狭めた変更であり、同等なAPI置換とは扱わない。
+その履歴を正規token来歴や完全な非admin証拠へ読み替えず、未知・危険なgroup/privilegeの拒否は維持する。
 有効なAdministrators membershipだけで判定せず、disabled/deny-only管理者groupや、disabledでも存在する危険privilegeを拒否する。
 観測を最初の同targetへ固定し、開始直前に再照会してTokenId/ModifiedId等が変われば再基準化せず拒否する。部分取得query handleは元Preparedが保持・回収し、借用primary tokenを閉じない。
 opaqueな`GuestTokenObservation`は別target/copy/失効後へ移せず、元のadmission lifetimeを新しいcall contextで延長できない。
@@ -102,6 +106,7 @@ issuer/confirmationとのbindingは既存Serviceの固定ownerが引き続き強
 最後の観測からresumeまでをOS側で原子的に封じるものではなく、token変更権限と対象DACLを守る正規ownerの成立は別の未達である。
 
 - [GetTokenInformation](https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation)
+- [TOKEN_INFORMATION_CLASS](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-token_information_class)
 - [TOKEN_GROUPS](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_groups)
 - [TOKEN_PRIVILEGES](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-token_privileges)
 - [LogonUserWの要件](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)

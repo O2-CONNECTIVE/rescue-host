@@ -26,12 +26,12 @@ type guestTokenPrivilege struct {
 	luid       uint64
 }
 type guestTokenFacts struct {
-	user, owner, primaryGroup                    string
-	authentication, tokenID, modifiedID          uint64
-	kind, session, integrity, elevationType      uint32
-	elevated, uiAccess, restricted, appContainer bool
-	groups                                       []guestTokenGroup
-	privileges                                   []guestTokenPrivilege
+	user, owner, primaryGroup                            string
+	authentication, tokenID, modifiedID                  uint64
+	kind, session, integrity, elevationType              uint32
+	elevated, uiAccess, hasRestrictingSIDs, appContainer bool
+	groups                                               []guestTokenGroup
+	privileges                                           []guestTokenPrivilege
 }
 type guestTokenKernel interface {
 	tokenFacts(uintptr) (guestTokenFacts, error)
@@ -44,7 +44,7 @@ func cloneGuestTokenFacts(f guestTokenFacts) guestTokenFacts {
 }
 func sameGuestTokenFacts(a, b guestTokenFacts) bool {
 	ag, bg, ap, bp := a.groups, b.groups, a.privileges, b.privileges
-	return a.user == b.user && a.owner == b.owner && a.primaryGroup == b.primaryGroup && a.authentication == b.authentication && a.tokenID == b.tokenID && a.modifiedID == b.modifiedID && a.kind == b.kind && a.session == b.session && a.integrity == b.integrity && a.elevationType == b.elevationType && a.elevated == b.elevated && a.uiAccess == b.uiAccess && a.restricted == b.restricted && a.appContainer == b.appContainer && slices.Equal(ag, bg) && slices.Equal(ap, bp)
+	return a.user == b.user && a.owner == b.owner && a.primaryGroup == b.primaryGroup && a.authentication == b.authentication && a.tokenID == b.tokenID && a.modifiedID == b.modifiedID && a.kind == b.kind && a.session == b.session && a.integrity == b.integrity && a.elevationType == b.elevationType && a.elevated == b.elevated && a.uiAccess == b.uiAccess && a.hasRestrictingSIDs == b.hasRestrictingSIDs && a.appContainer == b.appContainer && slices.Equal(ag, bg) && slices.Equal(ap, bp)
 }
 func readGuestTokenFacts(k guestTokenKernel, h uintptr) (f guestTokenFacts, err error) {
 	defer func() {

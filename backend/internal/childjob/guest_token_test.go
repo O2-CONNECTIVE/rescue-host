@@ -100,7 +100,7 @@ func TestGuestTokenObservationIsReadOnlyUntilSingleInspectedCommit(t *testing.T)
 	}
 }
 func TestGuestTokenRejectsUnsafeObservedFacts(t *testing.T) {
-	for _, kind := range []string{"admin-enabled", "admin-disabled", "disabled-privilege", "unknown-group", "limited-elevation", "elevated", "high-integrity", "uiaccess", "restricted", "appcontainer", "wrong-user", "wrong-owner", "unknown-primary", "duplicate-group", "unknown-flags", "unknown-priv-flags", "empty-groups", "empty-privileges", "impersonation", "zero-token-id"} {
+	for _, kind := range []string{"admin-enabled", "admin-disabled", "disabled-privilege", "unknown-group", "limited-elevation", "elevated", "high-integrity", "uiaccess", "restricting-sids", "appcontainer", "wrong-user", "wrong-owner", "unknown-primary", "duplicate-group", "unknown-flags", "unknown-priv-flags", "empty-groups", "empty-privileges", "impersonation", "zero-token-id"} {
 		t.Run(kind, func(t *testing.T) {
 			p, i, e, api, ctx := guestTokenFixture(t)
 			switch kind {
@@ -120,8 +120,8 @@ func TestGuestTokenRejectsUnsafeObservedFacts(t *testing.T) {
 				api.facts.integrity = 0x3000
 			case "uiaccess":
 				api.facts.uiAccess = true
-			case "restricted":
-				api.facts.restricted = true
+			case "restricting-sids":
+				api.facts.hasRestrictingSIDs = true
 			case "appcontainer":
 				api.facts.appContainer = true
 			case "wrong-user":

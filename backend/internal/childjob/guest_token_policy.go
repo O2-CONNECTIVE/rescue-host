@@ -74,7 +74,7 @@ func NewGuestTokenExpectation(user string, groups, privileges []string) (GuestTo
 }
 func (e GuestTokenExpectation) accepts(f guestTokenFacts) bool {
 	machine, ok := guestAccountSID(e.user)
-	if !e.valid || !ok || f.kind != 1 || f.user != e.user || f.owner != e.user || f.primaryGroup != machine+"-513" || f.authentication == 0 || f.tokenID == 0 || f.modifiedID == 0 || f.integrity != 0x2000 || f.elevationType != 1 || f.elevated || f.uiAccess || f.restricted || f.appContainer || f.groups == nil || f.privileges == nil || len(f.groups) > 64 || len(f.privileges) > 64 {
+	if !e.valid || !ok || f.kind != 1 || f.user != e.user || f.owner != e.user || f.primaryGroup != machine+"-513" || f.authentication == 0 || f.tokenID == 0 || f.modifiedID == 0 || f.integrity != 0x2000 || f.elevationType != 1 || f.elevated || f.uiAccess || f.hasRestrictingSIDs || f.appContainer || f.groups == nil || f.privileges == nil || len(f.groups) > 64 || len(f.privileges) > 64 {
 		return false
 	}
 	allowed := map[string]bool{}
