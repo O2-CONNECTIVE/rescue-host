@@ -51,6 +51,10 @@ type reportOperation interface {
 }
 
 func (s reportConfig) valid() bool {
+	// Shared service accounts cannot be the helper's report access principal.
+	if s.helperSID == "S-1-5-18" || s.helperSID == "S-1-5-19" || s.helperSID == "S-1-5-20" {
+		return false
+	}
 	ids := []string{s.ownerSID, s.serviceSID, s.helperSID, s.guestSID}
 	for i, sid := range ids {
 		if !reportSIDValid(sid) {

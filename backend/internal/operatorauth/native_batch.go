@@ -102,7 +102,7 @@ func (s nativeBatchSpec) valid() bool {
 	}
 	return inputValid && l.operatorRead == 0 && l.reportWrite == 0 && l.profileRead == 0 &&
 		localHelperImage(l.imagePath) && l.imageSHA256 != ([32]byte{}) && profileLaunchID(l.launchID) && l.maxImageBytes > 0 && l.maxImageBytes <= 1<<30 &&
-		helperHandle(l.primaryToken) && l.cleanup > 0 && l.processSDDL != "" && l.threadSDDL != "" && l.helperUserSID == s.report.helperSID && s.report.valid()
+		helperHandle(l.primaryToken) && l.cleanup > 0 && l.processSDDL != "" && l.threadSDDL != "" && l.helperIdentityValid() && l.helperReportSID() == s.report.helperSID && s.report.valid()
 }
 
 // prepareBatch only validates and constructs the retained owner. It performs no native I/O.

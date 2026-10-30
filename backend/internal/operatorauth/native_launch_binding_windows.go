@@ -5,6 +5,7 @@ package operatorauth
 import (
 	"context"
 	"encoding/binary"
+	"runtime"
 	"time"
 	"unsafe"
 
@@ -48,6 +49,49 @@ func launchPrimaryProjection(t windows.Token) (launchPrimaryToken, error) {
 		return launchPrimaryToken{}, ErrDenied
 	}
 	return launchPrimaryToken{tokenProjection: tokenProjection{user: user, authentication: binary.LittleEndian.Uint64(data[8:16]), session: session, integrity: integrity, kind: kind, restricted: restricted != 0, appContainer: app != 0}, tokenID: binary.LittleEndian.Uint64(data[:8]), modifiedID: binary.LittleEndian.Uint64(data[48:56])}, nil
+}
+
+// Query the held token with a fixed, pinned buffer. No unbounded realloc or
+// membership approximation may replace the actual SID_AND_ATTRIBUTES value.
+func launchServiceGroup(t windows.Token, serviceSID string) (helperServiceGroup, error) {
+	var storage [8192]uint64
+	data := unsafe.Slice((*byte)(unsafe.Pointer(&storage[0])), 64*1024)
+	var pins runtime.Pinner
+	pins.Pin(&storage[0])
+	defer pins.Unpin()
+	var returned uint32
+	if windows.GetTokenInformation(t, windows.TokenGroups, &data[0], uint32(len(data)), &returned) != nil || returned < 4 || returned > uint32(len(data)) {
+		return helperServiceGroup{}, ErrDenied
+	}
+	groups := (*windows.Tokengroups)(unsafe.Pointer(&data[0]))
+	end := unsafe.Offsetof(groups.Groups) + uintptr(groups.GroupCount)*unsafe.Sizeof(windows.SIDAndAttributes{})
+	if groups.GroupCount > 1024 || end > uintptr(returned) {
+		return helperServiceGroup{}, ErrDenied
+	}
+	seen := make(map[string]bool, groups.GroupCount)
+	var result helperServiceGroup
+	for _, group := range groups.AllGroups() {
+		base, address := uintptr(unsafe.Pointer(&data[0])), uintptr(unsafe.Pointer(group.Sid))
+		if address < base || address%4 != 0 || address-base < end || address-base > uintptr(returned)-8 {
+			return helperServiceGroup{}, ErrDenied
+		}
+		sid := data[address-base : uintptr(returned)]
+		if sid[0] != 1 || sid[1] > 15 || 8+4*int(sid[1]) > len(sid) || !group.Sid.IsValid() {
+			return helperServiceGroup{}, ErrDenied
+		}
+		name := group.Sid.String()
+		if !reportSIDValid(name) || seen[name] {
+			return helperServiceGroup{}, ErrDenied
+		}
+		seen[name] = true
+		if name == serviceSID {
+			result = helperServiceGroup{name, group.Attributes}
+		}
+	}
+	if !result.matches(serviceSID) {
+		return helperServiceGroup{}, ErrDenied
+	}
+	return result, nil
 }
 
 // Each query uses the originally held process/image handles. It never opens a
@@ -95,7 +139,22 @@ func (nativeHelperKernel) inspect(ctx context.Context, process, image uintptr, s
 	if err != nil || actual.tokenProjection != expected.tokenProjection || actual.user != s.helperUserSID || !finite(ctx) {
 		return out, ErrDenied
 	}
-	return helperBinding{pid: pid, creation: uint64(creation.HighDateTime)<<32 | uint64(creation.LowDateTime), tokenID: actual.tokenID, childModifiedID: actual.modifiedID, sourceTokenID: expected.tokenID, sourceModifiedID: expected.modifiedID, user: actual.user, imagePath: s.imagePath, primary: actual.tokenProjection}, nil
+	var sourceGroup, childGroup helperServiceGroup
+	if s.helperServiceSID != "" {
+		childGroup, err = launchServiceGroup(token, s.helperServiceSID)
+		if err != nil {
+			return out, ErrDenied
+		}
+		sourceGroup, err = launchServiceGroup(windows.Token(s.primaryToken), s.helperServiceSID)
+		if err != nil || !finite(ctx) {
+			return out, ErrDenied
+		}
+	}
+	out = helperBinding{pid: pid, creation: uint64(creation.HighDateTime)<<32 | uint64(creation.LowDateTime), tokenID: actual.tokenID, childModifiedID: actual.modifiedID, sourceTokenID: expected.tokenID, sourceModifiedID: expected.modifiedID, user: actual.user, imagePath: s.imagePath, primary: actual.tokenProjection, sourceServiceGroup: sourceGroup, childServiceGroup: childGroup}
+	if !out.valid(s) {
+		return helperBinding{}, ErrDenied
+	}
+	return out, nil
 }
 
 type launchJobAccounting struct {

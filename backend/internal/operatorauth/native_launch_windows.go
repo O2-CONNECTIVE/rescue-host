@@ -53,7 +53,7 @@ func launchHandleAccess(h uintptr, inherit bool, exact uint32) error {
 	return nil
 }
 func (nativeHelperKernel) validate(ctx context.Context, s nativeLaunchSpec) error {
-	if !finite(ctx) || s.helperUserSID == "S-1-5-18" {
+	if !finite(ctx) || !s.helperIdentityValid() {
 		return ErrDenied
 	}
 	// The token is borrowed; no logon, privilege adjustment or fallback occurs.
@@ -63,6 +63,11 @@ func (nativeHelperKernel) validate(ctx context.Context, s nativeLaunchSpec) erro
 	p, err := launchPrimaryProjection(windows.Token(s.primaryToken))
 	if err != nil || p.user != s.helperUserSID {
 		return ErrDenied
+	}
+	if s.helperServiceSID != "" {
+		if _, err = launchServiceGroup(windows.Token(s.primaryToken), s.helperServiceSID); err != nil {
+			return ErrDenied
+		}
 	}
 	var own windows.Token
 	if windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_QUERY, &own) != nil {

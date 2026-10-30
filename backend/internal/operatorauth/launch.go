@@ -19,6 +19,7 @@ type nativeLaunchSpec struct {
 	primaryToken, operatorRead, reportWrite, profileRead uintptr
 	cleanup                                              time.Duration
 	processSDDL, threadSDDL, helperUserSID               string
+	helperServiceSID                                     string
 }
 type helperBinding struct {
 	pid                                              uint32
@@ -26,7 +27,22 @@ type helperBinding struct {
 	childModifiedID, sourceTokenID, sourceModifiedID uint64
 	user, imagePath                                  string
 	primary                                          tokenProjection
+	sourceServiceGroup, childServiceGroup            helperServiceGroup
 }
+type helperServiceGroup struct {
+	sid        string
+	attributes uint32
+}
+
+func (g helperServiceGroup) matches(sid string) bool {
+	if sid == "" {
+		return g == (helperServiceGroup{})
+	}
+	// Service SIDs may have mandatory, enabled-by-default, enabled and OWNER.
+	// OWNER is a group attribute, not evidence of any kernel object's owner.
+	return g.sid == sid && g.attributes&4 != 0 && g.attributes & ^uint32(15) == 0
+}
+
 type helperLaunchKernel interface {
 	validate(context.Context, nativeLaunchSpec) error
 	pinImage(context.Context, nativeLaunchSpec) (uintptr, error)
@@ -65,8 +81,22 @@ func localHelperImage(path string) bool {
 	}
 	return true
 }
+func (s nativeLaunchSpec) helperIdentityValid() bool {
+	if s.helperUserSID == "S-1-5-19" {
+		// A service SID has authority 5, subauthority 80 and five hash words.
+		// S-1-5-80-0 (ALL SERVICES) is not an isolated service identity.
+		return reportSIDValid(s.helperServiceSID) && strings.HasPrefix(s.helperServiceSID, "S-1-5-80-") && len(strings.Split(s.helperServiceSID, "-")) == 9
+	}
+	return reportSIDValid(s.helperUserSID) && s.helperUserSID != "S-1-5-18" && s.helperUserSID != "S-1-5-20" && s.helperServiceSID == ""
+}
+func (s nativeLaunchSpec) helperReportSID() string {
+	if s.helperServiceSID != "" {
+		return s.helperServiceSID
+	}
+	return s.helperUserSID
+}
 func (s nativeLaunchSpec) valid() bool {
-	return localHelperImage(s.imagePath) && s.imageSHA256 != ([32]byte{}) && profileLaunchID(s.launchID) && s.maxImageBytes > 0 && s.maxImageBytes <= 1<<30 && helperHandle(s.primaryToken) && helperHandle(s.operatorRead) && helperHandle(s.reportWrite) && helperHandle(s.profileRead) && s.primaryToken != s.operatorRead && s.primaryToken != s.reportWrite && s.primaryToken != s.profileRead && s.operatorRead != s.reportWrite && s.operatorRead != s.profileRead && s.reportWrite != s.profileRead && s.cleanup > 0 && s.cleanup <= time.Minute && s.processSDDL != "" && s.threadSDDL != "" && s.helperUserSID != ""
+	return localHelperImage(s.imagePath) && s.imageSHA256 != ([32]byte{}) && profileLaunchID(s.launchID) && s.maxImageBytes > 0 && s.maxImageBytes <= 1<<30 && helperHandle(s.primaryToken) && helperHandle(s.operatorRead) && helperHandle(s.reportWrite) && helperHandle(s.profileRead) && s.primaryToken != s.operatorRead && s.primaryToken != s.reportWrite && s.primaryToken != s.profileRead && s.operatorRead != s.reportWrite && s.operatorRead != s.profileRead && s.reportWrite != s.profileRead && s.cleanup > 0 && s.cleanup <= time.Minute && s.processSDDL != "" && s.threadSDDL != "" && s.helperIdentityValid()
 }
 
 // startHelper returns a suspended, assigned child. The outer owner must release
@@ -118,7 +148,7 @@ func startHelper(ctx context.Context, s nativeLaunchSpec, k helperLaunchKernel) 
 	return c, nil
 }
 func (b helperBinding) valid(s nativeLaunchSpec) bool {
-	return b.pid != 0 && b.creation != 0 && b.tokenID != 0 && b.childModifiedID != 0 && b.sourceTokenID != 0 && b.sourceModifiedID != 0 && b.user == s.helperUserSID && b.imagePath == s.imagePath
+	return b.pid != 0 && b.creation != 0 && b.tokenID != 0 && b.childModifiedID != 0 && b.sourceTokenID != 0 && b.sourceModifiedID != 0 && b.user == s.helperUserSID && b.imagePath == s.imagePath && b.sourceServiceGroup.matches(s.helperServiceSID) && b.childServiceGroup == b.sourceServiceGroup
 }
 
 // Go lock contention is bounded separately from the native operation itself.
