@@ -61,4 +61,3 @@ export async function screenshot(instance: Page, name: string) {
   await mkdir(process.env.OPERATOR_SCREENSHOT_DIR, { recursive: true });
   await instance.screenshot({ path: path.join(process.env.OPERATOR_SCREENSHOT_DIR, name), fullPage: true });
 }
-
