@@ -137,6 +137,21 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(self.model.evidence["unclosed_owners"], 1)
         self.process.fail = False
         self.assertEqual(self.model.poll(), State.TERMINATED)
+    def test_close_error_evidence_excludes_credentials_and_device_details(self):
+        # 既存の例外分類を確認する回帰。実credentialや端末情報は使わない。
+        canaries = ("-----BEGIN OPENSSH PRIVATE KEY-----", "token=synthetic-canary",
+                    "password=synthetic-canary", "HOST-SYNTHETIC", "192.0.2.45",
+                    r"C:\Users\synthetic\log.txt")
+        for canary in canaries:
+            with self.subTest(canary=canary):
+                self.setUp(); self.start()
+                def close(): raise OSError(canary)
+                self.process.close = close
+                self.model.revoke()
+                self.assertEqual(self.model.state, State.REVOKING)
+                self.assertEqual(self.model.evidence["unclosed_owners"], 1)
+                self.assertEqual(self.model.evidence["close_errors"], ("OSError",))
+                self.assertNotIn(canary, repr(self.model.evidence))
     def test_dial_failure_revokes(self):
         self.start()
         def dial(): raise OSError("unavailable")
