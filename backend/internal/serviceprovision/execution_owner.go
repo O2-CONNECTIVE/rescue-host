@@ -33,6 +33,9 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 		if err == nil && e.staging {
 			err = service.BindGuestStagingOwner(e)
 		}
+		if err == nil && e.runtimeGuest {
+			err = service.BindRuntimeGuestOwner(e)
+		}
 		if err == nil && e.preview != nil {
 			if policyStage, ok := e.stage.(operatorSIDPolicyStage); ok {
 				err = policyStage.BindOperatorSIDPolicy(ctx, service, e)
@@ -78,6 +81,17 @@ func (e *Execution) own(ctx context.Context, factory func() executionStage, read
 	}
 	ready <- executionReady{service: service}
 	for request := range e.requests {
+		if request.runtime != nil {
+			result := e.runtimeOnOwner(request.ctx, *request.runtime, request.lease, request.closeGuest)
+			request.runtimeReply <- result
+			if errors.Is(result.err, ErrRootFatal) {
+				healthy = false
+				for {
+					time.Sleep(e.cfg.CleanupRetry)
+				}
+			}
+			continue
+		}
 		if request.guest != nil {
 			guestErr := e.guestOnOwner(request.ctx, *request.guest, request.lease, request.closeGuest)
 			request.reply <- guestErr
@@ -138,6 +152,10 @@ func (e *Execution) closeUnpublishedService(service *servicehost.Service) {
 		case <-joined:
 			return // outer未登録なら、呼出元が元threadでRootを回収する。
 		case request := <-e.requests:
+			if request.runtime != nil {
+				request.runtimeReply <- runtimeGuestResult{err: ErrRootUnconfirmed}
+				continue
+			}
 			if request.guest != nil || request.confirmation != nil || !rootLive(request.ctx) || !request.proof.Confirms(service) {
 				request.reply <- ErrRootUnconfirmed
 				continue
