@@ -47,10 +47,10 @@ Job内のprocessとquery参照の回収が揃っても、Go close応答、実SSH
 
 Goの版、依存の固定、通常とrace、結果件数とskipの扱いは[既存のGo CI手順](go-ci.md)に従います。
 対象packageは `./internal/childjob` と `./servicehost` です。
-追加2件だけを確認する場合は、同じGo環境で次を使います。
+追加2件だけを確認する場合は、同じGo環境でrepository rootから次を使います。
 
 ```sh
-go test -count=1 -timeout=30s -run '^TestObservedGuest' ./internal/childjob
+go -C backend test -count=1 -timeout=30s -run '^TestObservedGuest' ./internal/childjob
 ```
 
 既存のGo CIはtest sourceを探索するため、テストの除外、skip、製品実装inventoryの拡張は不要です。
