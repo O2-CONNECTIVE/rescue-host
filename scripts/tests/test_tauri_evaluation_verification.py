@@ -56,6 +56,60 @@ class EvaluationVerificationTests(unittest.TestCase):
             for name, data in entries.items():
                 bundle.writestr(name, data)
 
+    def test_duplicate_manifest_field_is_rejected_instead_of_last_value_winning(self):
+        def inject(entries):
+            name = PREFIX + "MANIFEST.json"
+            entries[name] = entries[name].replace(
+                b'{', b'{"productionGateClosed": false,', 1)
+        self.rewrite(inject)
+        result = self.verify()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout), {
+            "check": "tauri-unwired-package", "status": "fail",
+            "code": "PACKAGE_JSON_DUPLICATE_FIELD"})
+        self.assertEqual(result.stderr, "")
+
+    def test_duplicate_nested_license_field_is_rejected_without_echoing_values(self):
+        marker = "PRIVATE_FIXTURE_DUPLICATE_VALUE"
+        def inject(entries):
+            name = PREFIX + "licenses/DEPENDENCIES.json"
+            entries[name] = entries[name].replace(
+                b'"profile": "release"',
+                b'"profile": "PRIVATE_FIXTURE_DUPLICATE_VALUE", "profile": "release"', 1)
+            manifest = json.loads(entries[PREFIX + "MANIFEST.json"])
+            manifest["files"]["licenses/DEPENDENCIES.json"] = hashlib.sha256(entries[name]).hexdigest()
+            entries[PREFIX + "MANIFEST.json"] = json.dumps(manifest).encode()
+        self.rewrite(inject)
+        result = self.verify()
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(json.loads(result.stdout), {
+            "check": "tauri-unwired-package", "status": "fail",
+            "code": "PACKAGE_JSON_DUPLICATE_FIELD"})
+        self.assertEqual(result.stderr, "")
+        self.assertNotIn(marker, result.stdout)
+        self.assertNotIn(str(self.folder), result.stdout)
+
+    def test_escaped_and_nested_manifest_duplicates_remain_ambiguous(self):
+        # 厳密読取の実装後の回帰。先行REDとは区別する。
+        original = self.archive.read_bytes()
+        for mutation in ("escaped-key", "nested-file"):
+            with self.subTest(mutation=mutation):
+                def inject(entries):
+                    name = PREFIX + "MANIFEST.json"
+                    if mutation == "escaped-key":
+                        entries[name] = entries[name].replace(
+                            b'{', b'{"productionGate\\u0043losed": true,', 1)
+                    else:
+                        entries[name] = entries[name].replace(
+                            b'"LICENSE":', b'"LICENSE": "PRIVATE_FIXTURE_DUPLICATE", "LICENSE":', 1)
+                self.rewrite(inject)
+                result = self.verify()
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(json.loads(result.stdout)["code"], "PACKAGE_JSON_DUPLICATE_FIELD")
+                self.assertEqual(result.stderr, "")
+                self.assertNotIn("PRIVATE_FIXTURE_DUPLICATE", result.stdout)
+                self.archive.write_bytes(original)
+
     def test_non_distribution_compression_is_rejected_before_reading_members(self):
         # 未許可methodをheaderに宣言するfixture。LZMA実装を必要とせず、本文読取前の拒否を試す。
         data = bytearray(self.archive.read_bytes())

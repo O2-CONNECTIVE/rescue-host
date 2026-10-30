@@ -20,6 +20,8 @@ source、ZIP、EXEの対応、manifestの未接続・gate閉・release・unsigne
 Rust compiler/library noticeとfrontend noticeを確認する。
 現行で許可していないbackendをmanifestへ追記しても拒否する。
 backend欠落を許す将来の接続版モードは追加していない。
+manifestと依存一覧JSONは、入れ子とUnicode escapeで同じ名前に復号されるキーも含め、重複フィールドを`PACKAGE_JSON_DUPLICATE_FIELD`で拒否する。
+後の値が正しくても先の値を無視して合格にせず、生成入口も出力先作成前の検証で拒否する。キー名や値は診断へ複製しない。
 license集合もinventory参照と固定noticeに限定し、現行の本文拡張子・UTF-8テキストだけを許可する。
 inventoryで追認したEXE等も拒否し、PEのMZ headerをlicense本文として受理しない。
 新しい正当なlicense形式が必要なら、原本と用途を確認して配布契約と試験を更新する。
@@ -84,4 +86,6 @@ Windows曖昧path、重複/別名/symlink拒否は、それぞれ失敗を先に
 未許可圧縮methodをheaderに宣言する負例も、本文読取前の固定code拒否を確認する。
 このfixtureはLZMAの正常圧縮・展開試験ではなく、追加依存の導入を必要としない。
 fixture bytesは実行物ではなく、実EXE/backend試験の件数に加算しない。
+manifestと入れ子の依存一覧JSONの重複は、CLIが終了値0で受理するREDを個別に観測して修正した。
+Unicode escapeの同名キー、manifest内のファイルhash重複、生成入口の出力先未作成は修正後の回帰として確認する。
 既存評価ZIPのread-only検証とCIの実native起動結果も分けて記録する。
