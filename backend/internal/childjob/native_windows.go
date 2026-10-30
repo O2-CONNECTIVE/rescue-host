@@ -28,7 +28,12 @@ func platformStart(ctx context.Context, spec Spec) (*Child, error) {
 }
 
 func (windowsKernel) newJob() (uintptr, error) {
-	h, err := windows.CreateJobObject(nil, nil)
+	return createOwnedJob(nil)
+}
+
+func createOwnedJob(attributes *windows.SecurityAttributes) (uintptr, error) {
+	h, err := windows.CreateJobObject(attributes, nil)
+	runtime.KeepAlive(attributes)
 	if err != nil {
 		return 0, ErrStart
 	}
@@ -86,9 +91,19 @@ func (windowsKernel) createSuspended(spec Spec) (uintptr, uintptr, error) {
 	startup.StdInput, startup.StdOutput, startup.StdErr = handles[0], handles[1], handles[2]
 	startup.ProcThreadAttributeList = attributes.List()
 	process := windows.ProcessInformation{}
+	processAttributes, err := protectedAttributes(spec.Protection, protectedProcess)
+	if err != nil {
+		return 0, 0, err
+	}
+	threadAttributes, err := protectedAttributes(spec.Protection, protectedThread)
+	if err != nil {
+		return 0, 0, err
+	}
 	// 親の秘密環境、cwd、検索pathを継承せず、明示tokenでのみ起動する。
 	// CreateProcess/CreateProcessWithLogonやLocalSystemへのfallbackはない。
-	err = windows.CreateProcessAsUser(windows.Token(spec.PrimaryToken), image, &command[0], nil, nil, true, plan.flags, &plan.environment[0], directory, &startup.StartupInfo, &process)
+	err = windows.CreateProcessAsUser(windows.Token(spec.PrimaryToken), image, &command[0], processAttributes, threadAttributes, true, plan.flags, &plan.environment[0], directory, &startup.StartupInfo, &process)
+	runtime.KeepAlive(processAttributes)
+	runtime.KeepAlive(threadAttributes)
 	runtime.KeepAlive(handles)
 	runtime.KeepAlive(plan)
 	return uintptr(process.Process), uintptr(process.Thread), err

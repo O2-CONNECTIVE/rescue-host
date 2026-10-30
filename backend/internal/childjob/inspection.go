@@ -65,7 +65,7 @@ func (p *Prepared) CommitInspected(ctx context.Context, receipt *Inspection) err
 		// Reobserve the same retained target immediately before the admission CAS.
 		// Both query references remain owned even when the second inspection fails.
 		p.commitQueryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-		if err == nil && ordinaryHandle(p.commitQueryToken) && p.recheckGuestToken(ctx, p.commitQueryToken) == nil && bounded(ctx) && bounded(p.lease) && p.state.CompareAndSwap(preparedInspected, preparedStarted) {
+		if err == nil && ordinaryHandle(p.commitQueryToken) && p.recheckGuestToken(ctx, p.commitQueryToken) == nil && p.recheckProtectedGuest(ctx, p.commitQueryToken) == nil && bounded(ctx) && bounded(p.lease) && p.state.CompareAndSwap(preparedInspected, preparedStarted) {
 			err = p.child.resumeOwned(ctx)
 			if err == nil && (p.state.Load() != preparedStarted || !bounded(ctx) || !bounded(p.lease)) {
 				err = ErrStart

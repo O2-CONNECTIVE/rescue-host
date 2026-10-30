@@ -16,16 +16,17 @@ const (
 // Prepared is a spike-only candidate. It is not wired into product authority.
 // Do not copy it after first use; Close owns cleanup even when Commit fails.
 type Prepared struct {
-	child            *Child
-	lease            context.Context
-	spec             Spec
-	api              inspectionKernel
-	state            atomic.Uint32 // admission states are monotonic; never reset.
-	queryToken       uintptr
-	commitQueryToken uintptr
-	inspection       *Inspection
-	guestQueryToken  uintptr
-	guestObservation *GuestTokenObservation
+	child                *Child
+	lease                context.Context
+	spec                 Spec
+	api                  inspectionKernel
+	state                atomic.Uint32 // admission states are monotonic; never reset.
+	queryToken           uintptr
+	commitQueryToken     uintptr
+	inspection           *Inspection
+	guestQueryToken      uintptr
+	guestObservation     *GuestTokenObservation
+	protectedObservation *ProtectedGuestObservation
 }
 
 type inspectionKernel interface {
@@ -62,6 +63,9 @@ func prepareWithKernel(ctx context.Context, spec Spec, api inspectionKernel) (*P
 func (p *Prepared) Commit(ctx context.Context) error {
 	if p == nil || p.child == nil || !bounded(ctx) {
 		return ErrConfig
+	}
+	if p.spec.Protection != nil {
+		return ErrStart
 	}
 	if p.state.Load() != preparedStaged {
 		return ErrStart
