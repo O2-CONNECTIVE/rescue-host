@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/O2-CONNECTIVE/rescue-host/backend"
@@ -581,30 +582,44 @@ func TestOwnerControlEOFStageRejectsTailTimeoutAndPanic(t *testing.T) {
 	wire := ownerApprovedConfig(t).Wire
 	for _, fault := range []string{"tail", "missing-eof", "read-panic", "stdin-close-panic", "stdout-close-panic"} {
 		t.Run(fault, func(t *testing.T) {
-			input := &ownerPanicInput{closePanic: fault == "stdin-close-panic"}
-			data := ownerNormalResponses(t, wire)
-			if fault == "tail" {
-				data = append(data, 'x')
-			}
-			output := &ownerEOFOutput{script: bytes.NewReader(data), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{}), readPanic: fault == "read-panic", closePanic: fault == "stdout-close-panic"}
-			if fault != "missing-eof" {
-				close(output.peerEOF)
-			}
-			client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: 30 * time.Millisecond})
-			if err != nil {
-				t.Fatal(err)
-			}
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-			defer cancel()
-			if err := client.Start(ctx); err != nil {
-				t.Fatal(err)
-			}
-			if err := client.Stop(ctx); !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) {
-				t.Fatalf("EOF/IO未確認を成功へ変換しました: %v", err)
-			}
-			if input.closes.Load() != 1 || output.closes.Load() != 1 {
-				t.Fatalf("失敗回収でpipeを二重閉鎖しました: stdin=%d stdout=%d", input.closes.Load(), output.closes.Load())
-			}
+			// 正常Startの実時間遅延をEOF故障へ混ぜず、有限予算はそのまま保つ。
+			synctest.Test(t, func(t *testing.T) {
+				input := &ownerPanicInput{closePanic: fault == "stdin-close-panic"}
+				data := ownerNormalResponses(t, wire)
+				if fault == "tail" {
+					data = append(data, 'x')
+				}
+				output := &ownerEOFOutput{script: bytes.NewReader(data), readEOF: make(chan struct{}), peerEOF: make(chan struct{}), closed: make(chan struct{}), readPanic: fault == "read-panic", closePanic: fault == "stdout-close-panic"}
+				if fault != "missing-eof" {
+					close(output.peerEOF)
+				}
+				client, err := servicehost.NewOwnedControl(servicehost.OwnedControlConfig{Wire: wire, Input: input, Output: output, PollInterval: time.Millisecond, OperationTimeout: 30 * time.Millisecond})
+				if err != nil {
+					t.Fatal(err)
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+				defer cancel()
+				started := time.Now()
+				if err := client.Start(ctx); err != nil {
+					t.Fatal(err)
+				}
+				if elapsed := time.Since(started); elapsed != 0 {
+					t.Fatalf("正常準備が故障用予算を消費しました: %v", elapsed)
+				}
+				if err := client.Stop(ctx); !errors.Is(err, servicehost.ErrRuntimeUnconfirmed) {
+					t.Fatalf("EOF/IO未確認を成功へ変換しました: %v", err)
+				}
+				wantElapsed := time.Duration(0)
+				if fault == "missing-eof" {
+					wantElapsed = 30 * time.Millisecond
+				}
+				if elapsed := time.Since(started); elapsed != wantElapsed {
+					t.Fatalf("EOF故障の有限予算が変わりました: got=%v want=%v", elapsed, wantElapsed)
+				}
+				if input.closes.Load() != 1 || output.closes.Load() != 1 {
+					t.Fatalf("失敗回収でpipeを二重閉鎖しました: stdin=%d stdout=%d", input.closes.Load(), output.closes.Load())
+				}
+			})
 		})
 	}
 }
