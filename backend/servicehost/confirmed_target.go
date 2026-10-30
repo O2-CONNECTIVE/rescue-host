@@ -165,8 +165,8 @@ func (r *previewConfirmation) inspectTarget(ctx context.Context) error {
 	return nil
 }
 
-// launchConfirmedTarget is an unconnected owner operation, not a dispatcher or
-// product activation entry. It accepts only the retained exact actual challenge;
+// launchConfirmedTarget consumes the retained target for an explicit fixed
+// evaluation continuation. It accepts only the retained exact actual challenge;
 // callers cannot supply an approval bool, callback or reconstructed binding.
 func (s *Service) launchConfirmedTarget(ctx context.Context, g *confirmedGrant) error {
 	if s == nil || !authBudget(ctx) {

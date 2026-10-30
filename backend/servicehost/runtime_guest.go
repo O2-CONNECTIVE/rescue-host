@@ -138,6 +138,17 @@ func (t RuntimeGuestTicket) RevokeRuntimeGuest(ctx context.Context, owner Runtim
 // BindRuntimeGuestOwner fixes the outer actor before Service use. The actor is
 // registered with the actual issuer/auth owner inside Serve, before acquisition.
 func (s *Service) BindRuntimeGuestOwner(owner RuntimeGuestOwner) error {
+	return s.bindRuntimeGuestOwner(owner, false)
+}
+
+// BindRuntimeGuestEvaluationOwner selects the fixed evaluation continuation.
+// The same authenticated confirmation must finish its response write before
+// the already owned target can start once. Binding itself grants no authority.
+func (s *Service) BindRuntimeGuestEvaluationOwner(owner RuntimeGuestOwner) error {
+	return s.bindRuntimeGuestOwner(owner, true)
+}
+
+func (s *Service) bindRuntimeGuestOwner(owner RuntimeGuestOwner, evaluation bool) error {
 	if s == nil || owner == nil {
 		return ErrProvisioningUnconfigured
 	}
@@ -149,7 +160,7 @@ func (s *Service) BindRuntimeGuestOwner(owner RuntimeGuestOwner) error {
 	if s.used || s.started || s.stopping || s.guestOwner != nil || s.executionClosed || s.preview.runtimeGuest != nil || s.preview.runtime != nil || s.preview.targetOwner != nil {
 		return ErrAlreadyUsed
 	}
-	a := &runtimeGuestActor{service: s, owner: owner, kernel: runtimeGuestNativeKernel{}}
+	a := &runtimeGuestActor{service: s, owner: owner, kernel: runtimeGuestNativeKernel{}, evaluation: evaluation}
 	a.self = a
 	s.preview.runtimeGuest = a
 	return nil

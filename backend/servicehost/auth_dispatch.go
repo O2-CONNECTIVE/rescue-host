@@ -240,7 +240,7 @@ func (r *serviceAuthRequest) exchangeBody(write func(context.Context, []byte) er
 	if err = a.dispatch.complete(reply, writeErr); err != nil {
 		return authFailure(errors.Join(writeErr, err), ErrRuntimeUnconfirmed)
 	}
-	return nil
+	return r.continueRuntimeGuestEvaluation(reply)
 }
 
 func (r *serviceAuthRequest) liveLocked() bool {
