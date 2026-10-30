@@ -140,7 +140,7 @@ func (e *Execution) Run(ctx context.Context) error {
 	}
 	if calls.stage == nil {
 		calls.stage = func() executionStage {
-			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging}
+			return &nativeExecutionStage{cfg: e.cfg, preview: e.preview, staging: e.staging, runtimeGuest: e.runtimeGuest}
 		}
 	}
 	if calls.runSCM == nil {

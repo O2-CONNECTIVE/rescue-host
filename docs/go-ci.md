@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは234実装、Windowsでは258実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは256実装、Windowsでは283実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -58,7 +58,7 @@ OS別のテストファイル制約を尊重し、fixtureや注入adapterを通�
 runbackendはruntime.goだけ、childjobは共通child.go/plan.go/fixed_command.go/prepared.go/inspection.go/guest_token.go/guest_token_policy.go/guest_token_buffer.goと、非Windowsのnative_other.go、
 Windowsのnative_windows.go/artifact_windows.go/prepared_windows.goだけを許可します。
 preparedは同一の停止中targetを検査してから単回開始するsource候補です。
-登録は製品入口への配線やC方式の採用を意味せず、実Windowsの検査・停止・期限執行の成立は未検証です。
+方式Cは[ADR-0003](adr/0003-owned-guest-workload.md)で設計採用済みですが、登録成功は製品入口への有効化や実Windowsの検査・停止・期限執行の成立を意味しません。
 protectedkeyは共通acl.go/format.go/loader.go/profile.go/scope.go/source.go/validation.goと、
 非Windowsのnative_other.goまたはWindowsのnative_windows.goの1件だけを許可します。
 bootstrapはcodec.go/launch.go/native_receiver.go/strict.go/types.go/validate.goと、
@@ -184,3 +184,19 @@ childjobのguest_token.go/guest_token_policy.go/guest_token_buffer.goを共通�
 OSから取得するgroup/privilege/identity等の有限bufferと、同じ保持target/元token/観測receipt/期限の照合をsource/fakeで検証します。
 Windowsの追加試験はテスト自身のprocess tokenをTOKEN_QUERYで読むだけで、guest logonやaccount/credential/privilege変更を実行しません。観測SIDやtoken値は出力しません。
 生成元はinner sshdで未決のまま、別のLogonUser/S4U/Go tokenは生成せず、実guest token producerやSeparatedNonAdminGuest成立を検証したとは扱いません。
+
+## 固定された無害workloadの実行準備
+
+方式Cのsourceでは、従来NETWORK用の契約を残し、別の保護runtime設定からBATCH期待値を選びます。
+同Serviceの確認要求と元thread所有RPCを通して、一時guestの実receipt、権利差分、秘密入力、保持token、保護された停止中targetを同じownerに束縛します。
+対象は固定PowerShellの`exit 0`で、SSH sessionや任意commandの製品入口ではありません。
+
+追加登録はchildjobの共通`protected_guest.go`とWindowsの`protected_guest_windows.go`、
+servicehostの共通`runtime_guest.go`、`runtime_guest_actor.go`、`runtime_guest_native.go`、`runtime_guest_prepare.go`、`runtime_guest_admission.go`、
+serviceprovisionの共通`runtime_execution.go`、`runtime_native.go`、`runtime_source.go`です。
+guestaccountは共通`runtime_close.go`、`runtime_credential_io.go`、`runtime_credential_run.go`、`runtime_credential_script.go`、
+`runtime_expectation.go`、`runtime_guest.go`、`runtime_layout.go`、`runtime_native.go`、`runtime_ops.go`、`runtime_probe.go`、`runtime_rights.go`、`runtime_session.go`を追加し、
+非Windowsでは`runtime_native_other.go`、Windowsでは`runtime_native_windows.go`、`runtime_rights_windows.go`、`runtime_token_windows.go`だけを選択します。
+失効後の新規取得を拒否しつつ、元の回収scopeと部分取得参照を保持する試験を含みます。
+source/fake・compile・CIの成功は、実Windowsでのaccount作成、BATCH logon、権利や保護SD、物理停止・撤去の証拠へ広げません。
+実機操作と製品callerは有効化していません。

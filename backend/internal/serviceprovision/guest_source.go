@@ -22,19 +22,23 @@ type GuestConfiguration struct {
 	loaded                     *Loaded
 	layout                     *guestaccount.FixedLayout
 	baseDigest                 [32]byte
+	runtimeGuest               bool
 	mu                         sync.Mutex
 	accepted, closed, poisoned atomic.Bool
 }
 
 // 追加配置は既存固定anchorのsiblingだけ。UI/env/実行場所からpathを受けない。
 func guestAnchor(base Anchor) (Anchor, error) {
+	return guestAnchorPair(base, guestRecordName, guestDigestName)
+}
+func guestAnchorPair(base Anchor, recordName, digestName string) (Anchor, error) {
 	if e := base.Validate(); e != nil {
 		return Anchor{}, e
 	}
 	parent := base.RecordPath[:strings.LastIndex(base.RecordPath, `\`)+1]
 	out := base
-	out.RecordPath = parent + guestRecordName
-	out.DigestPath = parent + guestDigestName
+	out.RecordPath = parent + recordName
+	out.DigestPath = parent + digestName
 	for _, a := range []string{out.RecordPath, out.DigestPath} {
 		for _, b := range []string{base.RecordPath, base.DigestPath} {
 			if strings.EqualFold(a, b) {
@@ -61,11 +65,17 @@ func (p *Prepared) LoadFixedGuest(ctx context.Context) (*GuestConfiguration, err
 	}
 	return p.loadFixedGuest(ctx, root)
 }
-func (p *Prepared) loadFixedGuest(ctx context.Context, root *Root) (owner *GuestConfiguration, result error) {
+func (p *Prepared) loadFixedGuest(ctx context.Context, root *Root) (*GuestConfiguration, error) {
+	return p.loadGuestConfiguration(ctx, root, false)
+}
+func (p *Prepared) loadGuestConfiguration(ctx context.Context, root *Root, runtimeGuest bool) (owner *GuestConfiguration, result error) {
 	if p == nil || p.loaded == nil || p.scope == nil || !p.accepted.Load() || p.poisoned.Load() || !rootLive(ctx) || root == nil {
 		return nil, ErrRootDenied
 	}
 	expected, e := guestAnchor(p.loaded.anchor)
+	if runtimeGuest {
+		expected, e = runtimeGuestAnchor(p.loaded.anchor)
+	}
 	if e != nil || root.anchor != expected {
 		return nil, ErrRootConfig
 	}
@@ -83,7 +93,7 @@ func (p *Prepared) loadFixedGuest(ctx context.Context, root *Root) (owner *Guest
 	if e != nil {
 		return nil, e
 	}
-	g := &GuestConfiguration{prepared: p, baseDigest: sha256.Sum256(base)}
+	g := &GuestConfiguration{prepared: p, baseDigest: sha256.Sum256(base), runtimeGuest: runtimeGuest}
 	g.self = g
 	owner = g
 	defer func() {
@@ -101,7 +111,11 @@ func (p *Prepared) loadFixedGuest(ctx context.Context, root *Root) (owner *Guest
 	if e != nil {
 		return g, g.reject(e)
 	}
-	g.layout, e = guestaccount.DecodeFixedLayout(data)
+	if runtimeGuest {
+		g.layout, e = guestaccount.DecodeRuntimeFixedLayout(data)
+	} else {
+		g.layout, e = guestaccount.DecodeFixedLayout(data)
+	}
 	clear(data)
 	if e != nil {
 		return g, g.reject(e)
@@ -203,7 +217,11 @@ func (g *GuestConfiguration) Digest(ctx context.Context) ([32]byte, error) {
 	if e := g.recheck(ctx); e != nil {
 		return [32]byte{}, g.reject(e)
 	}
-	data := append([]byte("rescue-fixed-guest-bundle/1\x00"), g.baseDigest[:]...)
+	domain := "rescue-fixed-guest-bundle/1\x00"
+	if g.runtimeGuest {
+		domain = "rescue-runtime-guest-bundle/1\x00"
+	}
+	data := append([]byte(domain), g.baseDigest[:]...)
 	other := g.layout.Digest()
 	data = append(data, other[:]...)
 	return sha256.Sum256(data), nil
