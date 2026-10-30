@@ -6,15 +6,24 @@ import (
 	"sync/atomic"
 )
 
+const (
+	preparedStaged uint32 = iota
+	preparedStarted
+	preparedRevoked
+	preparedInspected
+)
+
 // Prepared is a spike-only candidate. It is not wired into product authority.
 // Do not copy it after first use; Close owns cleanup even when Commit fails.
 type Prepared struct {
-	child      *Child
-	lease      context.Context
-	spec       Spec
-	api        inspectionKernel
-	state      atomic.Uint32 // 0: staged, 1: commit won, 2: revoked; never reset.
-	queryToken uintptr
+	child            *Child
+	lease            context.Context
+	spec             Spec
+	api              inspectionKernel
+	state            atomic.Uint32 // admission states are monotonic; never reset.
+	queryToken       uintptr
+	commitQueryToken uintptr
+	inspection       *Inspection
 }
 
 type inspectionKernel interface {
@@ -40,7 +49,7 @@ func prepareWithKernel(ctx context.Context, spec Spec, api inspectionKernel) (*P
 	}
 	p := &Prepared{child: c, lease: ctx, spec: spec, api: api}
 	if err != nil {
-		p.state.Store(2)
+		p.state.Store(preparedRevoked)
 	}
 	return p, err
 }
@@ -52,7 +61,7 @@ func (p *Prepared) Commit(ctx context.Context) error {
 	if p == nil || p.child == nil || !bounded(ctx) {
 		return ErrConfig
 	}
-	if p.state.Load() != 0 {
+	if p.state.Load() != preparedStaged {
 		return ErrStart
 	}
 	runtime.LockOSThread()
@@ -60,14 +69,14 @@ func (p *Prepared) Commit(ctx context.Context) error {
 	if err := p.child.take(ctx); err != nil {
 		return err
 	}
-	if p.state.Load() != 0 {
+	if p.state.Load() != preparedStaged {
 		p.child.gate <- struct{}{}
 		return ErrStart
 	}
 	err := p.commitHeld(ctx)
 	if err != nil {
 		// 検査失敗をpermit返却前に確定し、後続Commitの再検査と参照上書きを防ぐ。
-		p.state.Store(2)
+		p.state.Store(preparedRevoked)
 	}
 	p.child.gate <- struct{}{}
 	if err == nil {
@@ -82,15 +91,15 @@ func (p *Prepared) Commit(ctx context.Context) error {
 }
 
 func (p *Prepared) commitHeld(ctx context.Context) error {
-	if p.state.Load() != 0 || p.lease.Err() != nil {
+	if p.state.Load() != preparedStaged || !bounded(p.lease) {
 		return ErrStart
 	}
 	var err error
 	p.queryToken, err = p.api.inspectTarget(p.spec, p.child.process, p.child.thread, p.child.job)
-	if err != nil || !ordinaryHandle(p.queryToken) || ctx.Err() != nil || p.lease.Err() != nil || !p.state.CompareAndSwap(0, 1) {
+	if err != nil || !ordinaryHandle(p.queryToken) || !bounded(ctx) || !bounded(p.lease) || !p.state.CompareAndSwap(preparedStaged, preparedStarted) {
 		return ErrStart
 	}
-	if p.child.resumeOwned(ctx) != nil || p.state.Load() != 1 || p.lease.Err() != nil || ctx.Err() != nil {
+	if p.child.resumeOwned(ctx) != nil || p.state.Load() != preparedStarted || !bounded(p.lease) || !bounded(ctx) {
 		return ErrStart
 	}
 	return nil
@@ -101,6 +110,14 @@ func (p *Prepared) closeQuery(ctx context.Context) error {
 		return err
 	}
 	defer func() { p.child.gate <- struct{}{} }()
+	if p.commitQueryToken != 0 && p.commitQueryToken == p.queryToken {
+		// A duplicate numeric reference is not closed twice. Real kernel opens
+		// provide distinct handles; keep test/failed-provider ownership bounded.
+		p.commitQueryToken = 0
+	}
+	if p.child.release(&p.commitQueryToken) != nil {
+		return ErrUnconfirmed
+	}
 	return p.child.release(&p.queryToken)
 }
 
@@ -108,7 +125,7 @@ func (p *Prepared) Close(ctx context.Context) error {
 	if p == nil || p.child == nil {
 		return ErrConfig
 	}
-	p.state.Store(2)
+	p.state.Store(preparedRevoked)
 	if err := p.child.Close(ctx); err != nil {
 		return err
 	}
@@ -120,12 +137,12 @@ func (p *Prepared) Revoke() error {
 	if p == nil || p.child == nil {
 		return ErrConfig
 	}
-	p.state.Store(2)
+	p.state.Store(preparedRevoked)
 	return nil
 }
 
 func (p *Prepared) Wait(ctx context.Context) error {
-	if p == nil || p.child == nil || p.state.Load() != 1 {
+	if p == nil || p.child == nil || p.state.Load() != preparedStarted {
 		return ErrConfig
 	}
 	err := p.child.Wait(ctx)

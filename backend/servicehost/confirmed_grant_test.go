@@ -18,12 +18,16 @@ func (f runtimeKernelModel) CloseOwned(context.Context, *confirmationEvidenceOwn
 
 // This models an OS capability returned only after runtime inspection. It is not
 // a native provider, staging receipt, operator authentication, or Windows proof.
-func grantRuntimeFixture(t *testing.T, s *Service) *confirmationRuntimeSource {
+func grantRuntimeFixture(t *testing.T, s *Service, targets ...*confirmationTarget) *confirmationRuntimeSource {
 	t.Helper()
 	source := &confirmationRuntimeSource{}
 	source.self = source
+	if len(targets) == 1 {
+		source.target = targets[0]
+	}
 	owner := &confirmationEvidenceOwner{source: source, service: s, issuer: s.issuer, auth: s.authOwner, outer: s.outerTicket, expectedSID: "S-1-5-21-7-8-9-2048", proofs: make(map[*confirmationRuntimeProof]struct{})}
 	owner.self, source.owner = owner, owner
+	owner.target = source.target
 	source.kernel = runtimeKernelModel(func(ctx context.Context, ticket PreviewConfirmationTicket) (*confirmationRuntimeProof, error) {
 		descriptor, err := ticket.PreviewFor(s)
 		if err != nil {
@@ -31,6 +35,9 @@ func grantRuntimeFixture(t *testing.T, s *Service) *confirmationRuntimeSource {
 		}
 		proof := &confirmationRuntimeProof{source: source, owner: owner, confirmation: ticket.record, service: s, issuer: s.issuer, auth: s.authOwner, outer: s.outerTicket, descriptor: descriptor, stagingSID: owner.expectedSID, runtimeSID: owner.expectedSID, boundary: supervisor.SeparatedNonAdminGuest}
 		proof.self = proof
+		// This explicit package fake models independent same-target nonadmin evidence.
+		// Inspection continuity never supplies this boundary in production.
+		proof.target = source.target
 		owner.mu.Lock()
 		owner.proofs[proof] = struct{}{}
 		owner.mu.Unlock()
@@ -39,6 +46,11 @@ func grantRuntimeFixture(t *testing.T, s *Service) *confirmationRuntimeSource {
 	s.mu.Lock()
 	s.preview.runtime = source
 	s.mu.Unlock()
+	if source.target != nil {
+		if err := s.registerConfirmationTarget(source); err != nil {
+			t.Fatal(err)
+		}
+	}
 	return source
 }
 

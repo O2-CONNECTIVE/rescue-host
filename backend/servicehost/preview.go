@@ -35,6 +35,7 @@ type servicePreview struct {
 	resolver     PreviewConfirmationResolver // fixed with the outer owner before use
 	runtime      *confirmationRuntimeSource  // private OS seam; product composition leaves nil
 	excludedSIDs []string
+	targetOwner  *confirmationTargetOwner // frozen registration; independent of confirmation
 	grant        *confirmedGrant
 }
 type previewIntent struct {

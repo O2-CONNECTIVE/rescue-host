@@ -32,6 +32,8 @@ type previewConfirmation struct {
 	ctx                     context.Context
 	runtimeSource           *confirmationRuntimeSource
 	runtimeOwner            *confirmationEvidenceOwner
+	runtimeTarget           *confirmationTarget
+	runtimeKernel           confirmationRuntimeKernel
 	partialOwner            *confirmationEvidenceOwner
 	runtimeProof            *confirmationRuntimeProof
 	runtimeCleanupConfirmed bool
@@ -144,8 +146,11 @@ func (s *Service) confirmPreviewIntent(ctx context.Context, d *serviceDispatcher
 		// Take per-confirm actor responsibility only with a real claimed work
 		// ticket. This remains before Record/Acquire, under the same stop gate.
 		if source != nil {
-			r.runtimeSource = source
-			r.runtimeOwner = source.owner
+			r.runtimeSource, r.runtimeOwner, r.runtimeKernel = source, source.owner, source.kernel
+			if registration := s.preview.targetOwner; registration != nil {
+				r.runtimeSource, r.runtimeOwner, r.runtimeKernel = registration.source, registration.owner, registration.kernel
+				r.runtimeTarget = registration.target
+			}
 		}
 	}
 	resolver := p.resolver

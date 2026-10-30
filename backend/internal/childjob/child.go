@@ -73,8 +73,8 @@ func bounded(ctx context.Context) bool {
 	if ctx == nil || ctx.Err() != nil {
 		return false
 	}
-	_, ok := ctx.Deadline()
-	return ok
+	deadline, ok := ctx.Deadline()
+	return ok && time.Now().Before(deadline)
 }
 
 func configured(spec Spec) bool {
@@ -116,10 +116,10 @@ func start(ctx context.Context, spec Spec, api kernel) (*Child, error) {
 }
 
 func (c *Child) resumeOwned(ctx context.Context) error {
-	if ctx.Err() != nil || c.api.resume(c.thread) != nil || ctx.Err() != nil {
+	if !bounded(ctx) || c.api.resume(c.thread) != nil || !bounded(ctx) {
 		return ErrStart
 	}
-	if c.release(&c.thread) != nil || c.release(&c.image) != nil || ctx.Err() != nil {
+	if c.release(&c.thread) != nil || c.release(&c.image) != nil || !bounded(ctx) {
 		return ErrStart
 	}
 	return nil
