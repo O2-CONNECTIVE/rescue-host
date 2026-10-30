@@ -10,17 +10,7 @@ import (
 )
 
 func runtimePlatform(r *RuntimeGuest) (runtimeOps, error) {
-	guard := func() bool {
-		s, ok := r.stage.(*stagingOwner)
-		if !ok || s == nil || s.blocked || s.fatal {
-			return false
-		}
-		if s.accounts != nil && stagingQueryUnsafe(s.accounts) {
-			s.blocked = true
-			return false
-		}
-		return s.rawScope()
-	}
+	guard := r.nativeScope
 	return runtimeOps{scope: guard, random: runtimeRandom,
 		rights: func() runtimeRights { return newRuntimeRightsOwner(&runtimeRightsWindows{}, guard) },
 		credential: func() runtimeCredential {

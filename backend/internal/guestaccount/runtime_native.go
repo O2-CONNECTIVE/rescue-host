@@ -72,3 +72,16 @@ func (a *runtimeTicketAuthority) bind(ctx context.Context, b binding) error {
 func (a *runtimeTicketAuthority) revoke(ctx context.Context, b binding) error {
 	return a.ticket.RevokeRuntimeGuest(ctx, a.owner, a.namespace, b.sid)
 }
+
+// nativeScope checks the original owner thread independently of admission.
+func (r *RuntimeGuest) nativeScope() bool {
+	s, ok := r.stage.(*stagingOwner)
+	if !ok || s == nil || s.blocked || s.fatal {
+		return false
+	}
+	if s.accounts != nil && !s.accountsClosing && stagingQueryUnsafe(s.accounts) {
+		s.blocked = true
+		return false
+	}
+	return s.rawScope()
+}
