@@ -71,6 +71,19 @@ token属性の再読取りも、最後の観測からresumeまでの変更をOS�
 検査失敗の失効ラッチは所有permitを返す前に確定し、新しいcall contextでも後続Commitの再検査へ入らない。
 `non-nil Prepared + error`を捨てず、独立した有効contextで`Close`を確認する。
 
+## 検査と承認後開始の分離
+
+`Inspect(ctx)`は同じ停止中targetを検査し、opaqueな`Inspection`をPrepared自身に保持して返す。resumeは行わない。
+保護所有者が別途正規承認を得た後だけ`CommitInspected(ctx, observation)`を呼ぶ。receiptの同一性と元Preparedを照合し、同じ対象を再検査して一度だけ開始する。
+新しいcontext、receiptのcopy、別target、失効/Close、期限切れから再利用できない。初回/再検査のquery handleは同じPreparedが回収する。
+旧`Commit(ctx)`は既存generic契約用であり、承認bridgeから呼ばない。inspectionと旧Commitの開始経路を混在させない。
+
+Serviceのprivate bridgeは認証済み確認要求と独立した同対象nonadmin証拠を必要とし、検査だけから非admin属性を生成しない。
+source/owner/proof/retained grantが同じtargetを保持し、元の実issuerが発行したchallengeだけをLaunchで単回消費する。
+停止はtarget受付を閉じ、canonical issuerを失効させてからworkerを取り消し、実commit返却をjoinして同対象をCloseする。
+ローカルのCloseをwhole-workload成功にはせず、既存SCM回収順を維持する。
+この経路はsource/fake限定、製品constructor/dispatcherの起動呼出しはない。正規guest token・同targetの非admin保護証拠のnative producer、C方式採用、実SSHは未実装または未実証。
+
 ## 残る前提と検証境界
 
 Jobは権限隔離ではない。

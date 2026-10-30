@@ -1,0 +1,172 @@
+package childjob
+
+import (
+	"context"
+	"testing"
+	"time"
+)
+
+func TestInspectRetainsSameSuspendedTargetWithoutExecuting(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, err := prepareWithKernel(ctx, approvedSpec(), api)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close(ctx)
+	observation, err := p.Inspect(ctx)
+	if err != nil || observation == nil {
+		t.Fatal("missing inspection", err)
+	}
+	for _, call := range api.calls {
+		if call == "resume" {
+			t.Fatal("inspection executed before any issuer approval")
+		}
+	}
+}
+
+func TestInspectedTargetRejectsForeignReceiptAndSingleUseReplay(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	a := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	b := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, _ := prepareWithKernel(ctx, approvedSpec(), a)
+	q, _ := prepareWithKernel(ctx, approvedSpec(), b)
+	defer p.Close(ctx)
+	defer q.Close(ctx)
+	receipt, err := p.Inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.CommitInspected(ctx, receipt) == nil {
+		t.Fatal("foreign target used the observation")
+	}
+	if p.Commit(ctx) == nil {
+		t.Fatal("legacy combined path bypassed the inspected-only path")
+	}
+	if err := p.CommitInspected(ctx, receipt); err != nil {
+		t.Fatal(err)
+	}
+	if p.CommitInspected(ctx, receipt) == nil {
+		t.Fatal("same observation executed twice")
+	}
+	resumes := 0
+	for _, call := range a.calls {
+		if call == "resume" {
+			resumes++
+		}
+	}
+	if resumes != 1 {
+		t.Fatal("not exactly one execution", resumes)
+	}
+	for _, call := range b.calls {
+		if call == "resume" {
+			t.Fatal("foreign target executed")
+		}
+	}
+}
+
+func TestInspectedTargetRejectsCancellationAndRevokedReceipt(t *testing.T) {
+	for _, kind := range []string{"cancel", "revoke", "close", "copy"} {
+		t.Run(kind, func(t *testing.T) {
+			admission, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			fresh, done := context.WithTimeout(context.Background(), time.Second)
+			defer done()
+			api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+			p, _ := prepareWithKernel(admission, approvedSpec(), api)
+			receipt, err := p.Inspect(admission)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch kind {
+			case "cancel":
+				cancel()
+			case "revoke":
+				p.Revoke()
+			case "close":
+				p.Close(fresh)
+			case "copy":
+				copy := *receipt
+				receipt = &copy
+			}
+			if p.CommitInspected(fresh, receipt) == nil {
+				t.Fatal("dead or copied evidence resumed")
+			}
+			if err := p.Close(fresh); err != nil {
+				t.Fatal(err)
+			}
+			for _, call := range api.calls {
+				if call == "resume" {
+					t.Fatal("invalid evidence executed")
+				}
+			}
+		})
+	}
+}
+
+func TestRevocationDuringSecondInspectionRejectsCommitAndRetainsCleanup(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, _ := prepareWithKernel(ctx, approvedSpec(), api)
+	receipt, err := p.Inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	api.onCall = func(name string) {
+		if name == "inspect-target" {
+			close(entered)
+			<-release
+		}
+	}
+	result := make(chan error, 1)
+	go func() { result <- p.CommitInspected(ctx, receipt) }()
+	<-entered
+	p.Revoke()
+	close(release)
+	if err := <-result; err == nil {
+		t.Fatal("revoked second inspection committed")
+	}
+	if err := p.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range api.calls {
+		if call == "resume" {
+			t.Fatal("revocation did not forbid resume")
+		}
+	}
+}
+
+func TestFailedSecondInspectionRetainsBothQueryReferencesUntilClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	api := &inspectionMemory{memoryKernel: &memoryKernel{}}
+	p, _ := prepareWithKernel(ctx, approvedSpec(), api)
+	receipt, err := p.Inspect(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	api.failure = "close-query"
+	api.onCall = func(name string) {
+		if name == "inspect-target" {
+			p.Revoke()
+		}
+	}
+	if err := p.CommitInspected(ctx, receipt); err != ErrUnconfirmed {
+		t.Fatal("uncertain cleanup was lost", err)
+	}
+	if p.queryToken == 0 || p.commitQueryToken == 0 {
+		t.Fatal("one of the same-target query references was discarded")
+	}
+	api.failure = ""
+	api.onCall = nil
+	if err := p.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if p.queryToken != 0 || p.commitQueryToken != 0 {
+		t.Fatal("query references not reclaimed")
+	}
+}

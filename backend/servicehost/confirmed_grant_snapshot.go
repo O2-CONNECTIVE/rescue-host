@@ -63,7 +63,10 @@ func (s *Service) reclaimConfirmationRuntime(ctx context.Context) error {
 		if actual, ok := r.issuer.TrySnapshot(); !ok || !actual.Closed {
 			return ErrRuntimeUnconfirmed
 		}
-		err := authCleanupCall(func() error { return source.kernel.CloseOwned(ctx, owner) })
+		err := r.closeTarget(ctx)
+		if err == nil {
+			err = authCleanupCall(func() error { return source.kernel.CloseOwned(ctx, owner) })
+		}
 		if err != nil || !authBudget(ctx) {
 			err = authFailure(err, ErrRuntimeUnconfirmed)
 			if authFatal(err) {

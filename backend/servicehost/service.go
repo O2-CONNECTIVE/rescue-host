@@ -193,6 +193,18 @@ func (s *Service) stopFor(cause error) bool {
 	if s.auth != nil && s.auth.active != nil && !s.auth.active.finished {
 		authCancel = s.auth.active.cancel
 	}
+	var targetCancel context.CancelFunc
+	if s.preview != nil && s.preview.runtime != nil && s.preview.runtime.target != nil {
+		if err := s.preview.runtime.target.revoke(); err != nil {
+			s.stopCause = serviceFailure(s.stopCause, err)
+		}
+		if s.preview.intent != nil && s.preview.intent.confirmation != nil {
+			g := s.preview.intent.confirmation.grant
+			if g != nil && g.launch != nil {
+				targetCancel = g.launch.cancel
+			}
+		}
+	}
 	if s.authWriter != nil {
 		_ = s.authWriter.RevokeLocked()
 	}
@@ -202,6 +214,9 @@ func (s *Service) stopFor(cause error) bool {
 		s.finish.Do(func() { close(unusedDone) })
 	}
 	// 同issuerの失効より先にworker取消callbackを走らせない。
+	if targetCancel != nil {
+		targetCancel()
+	}
 	if reservationCancel != nil {
 		reservationCancel()
 	}

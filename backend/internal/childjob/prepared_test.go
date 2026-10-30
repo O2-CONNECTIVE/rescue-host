@@ -206,10 +206,13 @@ func TestRevocationDuringInspectionCannotResumeOrReplay(t *testing.T) {
 	}
 }
 
-type inspectionMemory struct{ *memoryKernel }
+type inspectionMemory struct {
+	*memoryKernel
+	queries uintptr
+}
 
 func (m *inspectionMemory) close(handle uintptr) error {
-	if handle == 5 {
+	if handle >= 5 {
 		return m.record("close-query")
 	}
 	return m.memoryKernel.close(handle)
@@ -218,7 +221,8 @@ func (m *inspectionMemory) inspectTarget(_ Spec, process, thread, job uintptr) (
 	if process != 3 || thread != 4 || job != 2 {
 		panic("different target")
 	}
-	return 5, m.record("inspect-target")
+	m.queries++
+	return 4 + m.queries, m.record("inspect-target")
 }
 
 func TestRevocationDuringResumeReturnIsReclaimedNotReportedReady(t *testing.T) {

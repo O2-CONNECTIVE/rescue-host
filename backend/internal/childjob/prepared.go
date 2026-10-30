@@ -9,12 +9,14 @@ import (
 // Prepared is a spike-only candidate. It is not wired into product authority.
 // Do not copy it after first use; Close owns cleanup even when Commit fails.
 type Prepared struct {
-	child      *Child
-	lease      context.Context
-	spec       Spec
-	api        inspectionKernel
-	state      atomic.Uint32 // 0: staged, 1: commit won, 2: revoked; never reset.
-	queryToken uintptr
+	child            *Child
+	lease            context.Context
+	spec             Spec
+	api              inspectionKernel
+	state            atomic.Uint32 // 0: staged, 1: commit won, 2: revoked; never reset.
+	queryToken       uintptr
+	commitQueryToken uintptr
+	inspection       *Inspection
 }
 
 type inspectionKernel interface {
@@ -101,6 +103,14 @@ func (p *Prepared) closeQuery(ctx context.Context) error {
 		return err
 	}
 	defer func() { p.child.gate <- struct{}{} }()
+	if p.commitQueryToken != 0 && p.commitQueryToken == p.queryToken {
+		// A duplicate numeric reference is not closed twice. Real kernel opens
+		// provide distinct handles; keep test/failed-provider ownership bounded.
+		p.commitQueryToken = 0
+	}
+	if p.child.release(&p.commitQueryToken) != nil {
+		return ErrUnconfirmed
+	}
 	return p.child.release(&p.queryToken)
 }
 

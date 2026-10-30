@@ -27,6 +27,7 @@ type confirmationRuntimeSource struct {
 	self   *confirmationRuntimeSource
 	kernel confirmationRuntimeKernel
 	owner  *confirmationEvidenceOwner
+	target *confirmationTarget
 }
 type confirmationEvidenceOwner struct {
 	mu          sync.Mutex // evidence gate -> actual issuer only; never Service.mu
@@ -37,6 +38,7 @@ type confirmationEvidenceOwner struct {
 	auth        *serviceauthowner.Owner
 	outer       *innerCleanupTicket
 	expectedSID string // immutable actual creation receipt, not the initial auth profile
+	target      *confirmationTarget
 	revoked     bool
 	proofs      map[*confirmationRuntimeProof]struct{} // retained by the original OS owner
 }
@@ -52,6 +54,7 @@ type confirmationRuntimeProof struct {
 	descriptor   PreviewDescriptor
 	stagingSID   string
 	runtimeSID   string
+	target       *confirmationTarget
 	boundary     supervisor.GuestBoundary
 	consumed     bool // evidence owner gate
 }
@@ -61,11 +64,17 @@ type confirmedGrant struct {
 	challenge    ephemeral.Challenge
 	binding      supervisor.Binding
 	approvalID   string
+	target       *confirmationTarget
+	proof        *confirmationRuntimeProof
+	launch       *confirmationTargetLaunch
 }
 
 func (o *confirmationEvidenceOwner) revoke() error {
 	if o == nil || o.self != o || o.issuer == nil || o.auth == nil {
 		return ErrRuntimeUnconfirmed
+	}
+	if o.target != nil {
+		_ = o.target.revoke()
 	}
 	o.mu.Lock()
 	o.revoked = true
@@ -88,6 +97,9 @@ func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, 
 	if source == nil || source.self != source || source.kernel == nil {
 		return "SERVICE_NOT_READY", nil
 	}
+	if err := r.inspectTarget(r.ctx); err != nil {
+		return r.failGrant(err)
+	}
 	proof, err := acquireConfirmationRuntime(r.request.worker, source.kernel, PreviewConfirmationTicket{record: r})
 	// Preserve every returned partial reference before inspecting cancellation/error.
 	s.mu.Lock()
@@ -108,7 +120,7 @@ func (r *previewConfirmation) prepareConfirmedGrant(approvalID string) (string, 
 	}
 	s.mu.Lock()
 	// Real Prepare has already consumed the actual generation. Never roll it back.
-	r.grant = &confirmedGrant{confirmation: r, challenge: challenge, binding: challenge.Binding(), approvalID: approvalID}
+	r.grant = &confirmedGrant{confirmation: r, challenge: challenge, binding: challenge.Binding(), approvalID: approvalID, target: source.target, proof: proof}
 	live = r.liveLocked(time.Now())
 	if live {
 		s.preview.grant = r.grant
@@ -127,6 +139,9 @@ func (r *previewConfirmation) consumeRuntimeProof(p *confirmationRuntimeProof, d
 	}
 	defer o.mu.Unlock()
 	if o.revoked || o.source != source || source.owner != o || o.service != r.service || o.issuer != r.issuer || o.auth != r.owner || o.outer != r.service.outerTicket || !validRuntimeGuestSID(o.expectedSID) || slices.Contains(r.service.preview.excludedSIDs, o.expectedSID) {
+		return ephemeral.Challenge{}, ErrProvisioningRejected
+	}
+	if source.target != nil && (o.target != source.target || !source.target.inspected.Load() || source.target.revoked.Load() || p == nil || p.target != source.target) {
 		return ephemeral.Challenge{}, ErrProvisioningRejected
 	}
 	if p == nil || p.self != p || p.source != source || p.owner != o || p.confirmation != r || p.service != r.service || p.issuer != r.issuer || p.auth != r.owner || p.outer != o.outer || p.consumed || p.stagingSID != o.expectedSID || p.runtimeSID != o.expectedSID || p.boundary != supervisor.SeparatedNonAdminGuest || !sameGrantDescriptor(p.descriptor, d) {
