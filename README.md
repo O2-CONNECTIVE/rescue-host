@@ -52,6 +52,7 @@ main `3b4a3ac75c1307071ad6c94f15f6a35330729d53` の[Go 3OS](https://github.com/O
 このCIは実機SSH、停止の強制力、OS保護、製品接続の成功や保証ではありません。
 端末内実行は[方式Cと利用中のLocalSystem監督service](docs/adr/0003-owned-guest-workload.md)を設計採用しました。既存Windows OpenSSHの設定やportに依存せず、一時非管理者guestと同じtargetの検査・承認・停止を製品が所有する方針です。
 [基盤API](backend/internal/childjob/README.md)には、停止中targetの保持、token読取、保護記述子検査と承認後単回開始のsource候補があります。実装中の縦断は固定された無害workloadを対象にし、従来NETWORK契約とは別のBATCHログオンを明示します。
+固定評価のcommand入口はruntime構成へ接続し、同じ確認応答の書込み完了後にだけ保持中の承認から単回開始するsource経路を追加しました。設定は空のままで、通常の実行fileは取得前に拒否します。実message認証helperの起動資源、配布用固定値、実終了観測は未構成・未検証です。
 source/fakeの成功とWindows向けcompileを、実guestの生成・保護・停止や実SSHの成功には読み替えません。製品caller、実Windows配置、実SSH session処理と実機受入は未接続または未検証で、開始ゲートは閉鎖したままです。
 旧mainの配布CIの終了確認失敗は履歴として保持し、#72で更新した終了観測契約と分けて扱います。
 過去の統合版で通常nativeと展開EXEの限定した終了確認が成功しました。各版のCI結果は固定したsourceごとに確認します。

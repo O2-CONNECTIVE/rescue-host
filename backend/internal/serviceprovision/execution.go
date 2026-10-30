@@ -55,18 +55,19 @@ type executionRequest struct {
 // Executionは一つのservice起動の外側所有者であり、利用後にコピーしない。
 // partial ownerは元OS threadに保持し、回収不明をmainのos.Exitへ落とさない。
 type Execution struct {
-	configured     bool
-	cfg            ExecutionConfig
-	staging        bool           // explicit disabled-guest mode; never selects runtime grants
-	runtimeGuest   bool           // separate explicit runtime candidate; staging remains independent
-	preview        *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
-	calls          executionCalls
-	used           atomic.Bool
-	service        atomic.Pointer[servicehost.Service]
-	requests       chan executionRequest
-	cleaned        chan struct{}
-	stage          executionStage       // native owner threadだけが操作する。失敗時も参照を保持する。
-	runtimeAttempt *runtimeGuestAttempt // original owner thread only
+	configured      bool
+	cfg             ExecutionConfig
+	staging         bool           // explicit disabled-guest mode; never selects runtime grants
+	runtimeGuest    bool           // separate explicit runtime candidate; staging remains independent
+	fixedEvaluation bool           // 固定評価entryだけが同じ確認応答後の単回開始を選ぶ
+	preview         *PreviewLimits // constructor-owned copy; nil selects the original legacy stage
+	calls           executionCalls
+	used            atomic.Bool
+	service         atomic.Pointer[servicehost.Service]
+	requests        chan executionRequest
+	cleaned         chan struct{}
+	stage           executionStage       // native owner threadだけが操作する。失敗時も参照を保持する。
+	runtimeAttempt  *runtimeGuestAttempt // original owner thread only
 }
 
 // NewNativeExecutionは値検査だけを行い、token/SCM/ファイルを開かない。
@@ -98,7 +99,7 @@ func NewNativePreviewExecution(c PreviewExecutionConfig) (*Execution, error) {
 }
 
 // NewNativeStagingExecution explicitly prepares a disabled guest after an
-// authenticated confirmation. Query-only preview and RunFixed remain unchanged.
+// authenticated confirmation. Query-only preview remains unchanged.
 func NewNativeStagingExecution(c PreviewExecutionConfig) (*Execution, error) {
 	e, err := NewNativePreviewExecution(c)
 	if err != nil {

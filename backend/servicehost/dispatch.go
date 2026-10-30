@@ -42,10 +42,11 @@ type serviceDispatcher struct {
 	reads         map[*authenticatedReadTicket]struct{}
 }
 type serviceDispatchReply struct {
-	owner *serviceDispatcher
-	frame []byte
-	ctx   context.Context
-	hello bool
+	owner      *serviceDispatcher
+	frame      []byte
+	ctx        context.Context
+	hello      bool
+	evaluation *confirmedGrant // exact successful confirmation only; never wire authority
 }
 
 func newServiceDispatcher(s *Service, p serviceDispatchProfile, v serviceReadVerifier) (*serviceDispatcher, error) {
@@ -112,6 +113,7 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 	}
 	boot := hex.EncodeToString(owner.InstanceEpoch[:])
 	response := servicecontrol.UntrustedResponse{BootEpoch: boot, ChannelNonce: d.profile.ChannelNonce, RequestID: request.RequestID, Sequence: request.Sequence, Command: request.Command}
+	var evaluation *confirmedGrant
 	if !d.hello {
 		if request.Type != servicecontrol.Hello || owner.Closed {
 			return d.rejectLocked()
@@ -157,6 +159,10 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 				return nil, err
 			}
 			if code == "" {
+				evaluation, err = s.runtimeGuestEvaluationGrant(d, request.RequestID)
+				if err != nil {
+					return d.rejectLocked()
+				}
 				response.Result = "approval-accepted"
 				response.Approval = &servicecontrol.UntrustedApproval{ApprovalRequestID: request.RequestID}
 			} else {
@@ -182,7 +188,7 @@ func (d *serviceDispatcher) begin(ctx context.Context, frame []byte) (*serviceDi
 	if err != nil {
 		return d.rejectLocked()
 	}
-	reply := &serviceDispatchReply{owner: d, frame: encoded, ctx: ctx, hello: request.Type == servicecontrol.Hello}
+	reply := &serviceDispatchReply{owner: d, frame: encoded, ctx: ctx, hello: request.Type == servicecontrol.Hello, evaluation: evaluation}
 	d.pending = reply
 	return reply, nil
 }

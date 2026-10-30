@@ -38,7 +38,7 @@ accept側の受信準備後に固定65536 byteを送り、同じ初回TCP Write�
 偽clockでは5秒直前・到達・壁時計だけの前進と失効後の復活拒否を確認しますが、実OSの時刻変更を再現したものではありません。
 これは試験の時計領域を揃える変更で、製品の5秒期限・lease・maximumは変更しません。
 
-通常buildに選択される26package、Linux/macOSでは256実装、Windowsでは283実装ファイルを照合します。
+通常buildに選択される26package、Linux/macOSでは257実装、Windowsでは284実装ファイルを照合します。
 guestaccountは下記の共通・OS別実装を限定登録し、memory/native API seamで準備・失効・清掃順序を検査します。実account・保護rootからのjournal供給・動的GuestSID・有効化は未接続です。
 同じdeep snapshotからの制御用Factory pair、SCM所有threadのfresh Witness照合、応答write bridgeの共通3実装を限定登録します。正常縦断は既存memory auth/write fixtureの証拠で、実Native入力の認証・実SSH成功には広げません。
 operatorauthのsole_input_batch.goは具体SoleInputの単回Moveと部分所有保持を追加します。Moveや候補取得を認証proofにはせず、Serviceへの正規factory供給と実Windows保護は未実証です。
@@ -79,7 +79,7 @@ servicecontrolは全OSでrequest.go/strict.goと応答専用response.go/response
 native receiver・認証・所有I/OのsourceとAPI seam試験を、実Windowsでの保護主体・ACL・実EOF後PID照会の成立へ広げません。
 保護stdio/stderrの所有・取消・EOF回収にはsourceとAPI seam試験がありますが、実Windowsでの保護成立や期限内回収は未実証です。
 許可0のSCM readyとservice全体のissuer所有はsource候補とAPI seam試験の対象です。
-固定provisioning読取りのsource候補は追加されていますが、実配置とfixedAnchorは未設定です。
+固定provisioning読取りのsource候補は追加されていますが、実配置と`fixedEvaluationConfig`は未設定です。
 保護preflight、強token取得、SCMの内側回収と元threadの外側回収ackを接続したsource/API seam試験を含みます。
 固定実値、正規operator認証・承認source、受理transportは未設定・未接続で、既定の入口と製品接続gateは閉鎖を維持します。
 実service/process ACLやlistenerの保護成立、元thread退役とOS上の物理停止をCIだけで確認済みとは扱いません。

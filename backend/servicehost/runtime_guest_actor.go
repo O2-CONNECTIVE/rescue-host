@@ -15,6 +15,7 @@ type runtimeGuestActor struct {
 	service         *Service
 	owner           RuntimeGuestOwner
 	kernel          runtimeGuestKernel
+	evaluation      bool // frozen before Serve; preparation-only binding leaves false
 	admission       context.Context
 	cancelAdmission context.CancelFunc
 	admissionWatch  *runtimeGuestWatch
