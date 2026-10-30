@@ -45,6 +45,11 @@ func runtimeGuestServiceFixture(t *testing.T, resolve func(context.Context, Prev
 	t.Helper()
 	c := previewConfigFixture(t)
 	c.RequestLimit, c.LaunchLimit = 8, 9
+	return runtimeGuestServiceFixtureWithParent(t, context.Background(), c, resolve, kernels...)
+}
+
+func runtimeGuestServiceFixtureWithParent(t *testing.T, parent context.Context, c PreviewServiceConfig, resolve func(context.Context, PreviewConfirmationTicket) error, kernels ...runtimeGuestKernel) (*Service, *runtimeGuestOwnerFixture) {
+	t.Helper()
 	s, err := NewPreviewService(c)
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +69,7 @@ func runtimeGuestServiceFixture(t *testing.T, resolve func(context.Context, Prev
 	}
 	s.cfg.Budgets.Observe = time.Hour
 	done := make(chan struct{})
-	go func() { defer close(done); _ = s.Serve(context.Background(), nil, make(chan ServiceState, 32)) }()
+	go func() { defer close(done); _ = s.Serve(parent, nil, make(chan ServiceState, 32)) }()
 	ctx, end := context.WithTimeout(context.Background(), 2*time.Second)
 	defer end()
 	for s.Snapshot().State != Running {

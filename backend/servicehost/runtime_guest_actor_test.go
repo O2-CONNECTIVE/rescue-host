@@ -41,8 +41,10 @@ func TestRuntimeGuestActorMaterializesSameTargetBeforeRealIssuerPrepare(t *testi
 	s, o := runtimeGuestServiceFixture(t, nil, runtimeGuestKernelFixture{lease: lease, target: material})
 	source, owner, target := s.preview.runtime, s.preview.runtime.owner, s.preview.runtime.target
 	var saved RuntimeGuestTicket
+	var admission context.Context
 	o.prepare = func(ctx context.Context, ticket RuntimeGuestTicket, got *serviceready.InspectionLease) (*childjob.Prepared, childjob.GuestTokenExpectation, error) {
 		saved = ticket
+		admission = ctx
 		if got != lease || material.inspections.Load() != 0 || s.issuer.Snapshot().Generation != 0 {
 			t.Error("preparation used another endpoint or followed inspection/issuance")
 		}
@@ -65,6 +67,10 @@ func TestRuntimeGuestActorMaterializesSameTargetBeforeRealIssuerPrepare(t *testi
 	if s.preview.runtime != source || source.owner != owner || source.target != target || s.preview.targetOwner.target != target || saved.record.actor != s.preview.runtimeGuest {
 		t.Fatal("materialization replaced the registered actor or target")
 	}
+	deadline, bounded := admission.Deadline()
+	if !bounded || deadline.After(s.preview.descriptor.HardDeadline) || admission.Err() != nil {
+		t.Fatal("normal confirmation request completion canceled or extended runtime admission")
+	}
 	ctx, end := context.WithTimeout(context.Background(), time.Second)
 	defer end()
 	if err := s.launchConfirmedTarget(ctx, s.preview.grant); err != nil {
@@ -81,6 +87,9 @@ func TestRuntimeGuestActorMaterializesSameTargetBeforeRealIssuerPrepare(t *testi
 	}
 	if o.closes.Load() != 1 || material.closes.Load() != 1 || !material.revoked.Load() || !s.Snapshot().CleanupConfirmed {
 		t.Fatal("original runtime actor did not close")
+	}
+	if admission.Err() == nil {
+		t.Fatal("actual runtime close left admission live")
 	}
 	if err := saved.BindCreatedGuest(ctx, o, saved.record.descriptor.Namespace, sid); err == nil {
 		t.Fatal("closed runtime accepted a new receipt")

@@ -28,22 +28,42 @@ type runtimeGuestRecord struct {
 	lease                                            *serviceready.InspectionLease
 	sid                                              string
 	prepareReplyReturned, inspectionReturned, closed bool // Service.mu; RPC return is not native worker completion
+	requestWatch                                     *runtimeGuestWatch
+}
+
+// The fixed registration retains this borrow even after an error RPC returns or
+// confirmation ends. Only the owner's successful reply or actual Close returns
+// it; neither cancellation nor an absent material pointer is an acknowledgement.
+func (s *Service) runtimeGuestOwnsInspectionLocked(lease *serviceready.InspectionLease) bool {
+	if lease == nil || s.preview == nil || s.preview.targetOwner == nil {
+		return false
+	}
+	a, ok := s.preview.targetOwner.kernel.(*runtimeGuestActor)
+	if !ok || a == nil || a.record == nil {
+		return false
+	}
+	r := a.record
+	return r.lease == lease && !r.inspectionReturned && !r.closed
 }
 
 func (r *runtimeGuestRecord) matchesLocked(owner RuntimeGuestOwner) bool {
-	if r == nil || r.self != r || r.actor == nil {
+	if !r.ownsLocked(owner) {
 		return false
 	}
 	a, s := r.actor, r.actor.service
-	if a.self != a || s == nil || s.preview == nil || s.preview.runtimeGuest != a || a.record != r || !sameGuestOwner(a.owner, owner) || !sameGuestOwner(s.outer, owner) || s.guestOwner != nil || s.executionClosed {
+	return a.matchesRegistrationLocked() && authBudget(a.admission) && sameGrantDescriptor(r.descriptor.Preview, s.preview.descriptor) && s.preview.intent == r.confirmation.intent
+}
+
+func (r *runtimeGuestRecord) ownsLocked(owner RuntimeGuestOwner) bool {
+	if r == nil || r.self != r || r.actor == nil {
 		return false
 	}
-	source, registration := a.source, s.preview.targetOwner
-	if source == nil || source.self != source || source != s.preview.runtime || source.kernel != a || registration == nil || registration.source != source || registration.kernel != a || registration.owner != source.owner || registration.target != source.target {
+	a, c := r.actor, r.confirmation
+	if !a.ownsRegistrationLocked() || a.record != r || !sameGuestOwner(a.owner, owner) || c == nil || c.intent == nil {
 		return false
 	}
-	o, c := source.owner, r.confirmation
-	return o != nil && o.self == o && o.source == source && o.target == registration.target && o.service == s && o.issuer == s.issuer && o.auth == s.authOwner && o.outer == s.outerTicket && c != nil && c.intent != nil && c.service == s && c.issuer == s.issuer && c.owner == s.authOwner && c.runtimeSource == source && c.runtimeOwner == o && c.runtimeTarget == registration.target && s.preview.intent == c.intent && c.intent.confirmation == c && s.reservation == c.work.reservation && s.reservation != nil && s.reservation.claimed
+	s := a.service
+	return c.service == s && c.issuer == a.evidence.issuer && c.owner == a.evidence.auth && c.runtimeSource == a.source && c.runtimeOwner == a.evidence && c.runtimeTarget == a.target && c.runtimeKernel == a && c.intent.confirmation == c && s.reservation == c.work.reservation && s.reservation != nil && s.reservation.claimed
 }
 
 func (t RuntimeGuestTicket) MatchesService(s *Service) bool {
@@ -73,10 +93,10 @@ func (t RuntimeGuestTicket) BindCreatedGuest(_ context.Context, owner RuntimeGue
 	s := r.actor.service
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !r.matchesLocked(owner) || r.closed || r.descriptor.Namespace != ns || !validRuntimeGuestSID(sid) || slices.Contains(s.preview.excludedSIDs, sid) {
+	if !r.ownsLocked(owner) || r.closed || r.descriptor.Namespace != ns || !validRuntimeGuestSID(sid) || slices.Contains(s.preview.excludedSIDs, sid) {
 		return ErrProvisioningRejected
 	}
-	o := r.actor.source.owner
+	o := r.actor.evidence
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if r.sid != "" {
@@ -101,14 +121,15 @@ func (t RuntimeGuestTicket) RevokeRuntimeGuest(ctx context.Context, owner Runtim
 	}
 	s := r.actor.service
 	s.mu.Lock()
-	valid := r.matchesLocked(owner) && r.descriptor.Namespace == ns && r.sid == sid
+	valid := r.ownsLocked(owner) && r.descriptor.Namespace == ns && r.sid == sid
 	if !valid {
 		s.mu.Unlock()
 		return ErrRuntimeUnconfirmed
 	}
-	o := r.actor.source.owner
+	o := r.actor.evidence
 	s.mu.Unlock()
-	if !valid || o.revoke() != nil || !authBudget(ctx) {
+	s.stopFor(nil) // canonical issuer/auth close precedes actor/worker cancellation
+	if o.auth.Revoke() != nil || !authBudget(ctx) {
 		return ErrRuntimeUnconfirmed
 	}
 	return nil

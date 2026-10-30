@@ -9,7 +9,7 @@ import (
 )
 
 func (a *runtimeGuestActor) PrepareTarget(ctx context.Context, ticket PreviewConfirmationTicket) error {
-	if a == nil || a.self != a || a.service == nil || a.kernel == nil || !authBudget(ctx) {
+	if a == nil || a.self != a || a.service == nil || a.kernel == nil || !authBudget(ctx) || !authBudget(a.admission) {
 		return ErrProvisioningRejected
 	}
 	var ns GuestStagingNamespace
@@ -20,9 +20,12 @@ func (a *runtimeGuestActor) PrepareTarget(ctx context.Context, ticket PreviewCon
 		return ErrProvisioningRejected
 	}
 	ns.Generation = 1 // fresh guest namespace, independent of the canonical issuer generation
+	if ns.Epoch == ([32]byte{}) || ns.Intent == ([32]byte{}) {
+		return ErrProvisioningRejected
+	}
 	s, c := a.service, ticket.record
 	s.mu.Lock()
-	if c == nil || c.service != s || a.record != nil || a.source == nil || s.preview == nil || s.preview.runtimeGuest != a || c.runtimeSource != a.source || c.runtimeOwner != a.source.owner || c.runtimeTarget != a.source.target || !sameGuestOwner(s.outer, a.owner) || !c.liveLocked(time.Now()) || a.revoked.Load() || s.executionClosed || s.guestOwner != nil {
+	if !a.matchesRegistrationLocked() || c == nil || c.service != s || a.record != nil || c.runtimeSource != a.source || c.runtimeOwner != a.source.owner || c.runtimeTarget != a.source.target || !c.liveLocked(time.Now()) || a.revoked.Load() {
 		s.mu.Unlock()
 		return ErrProvisioningRejected
 	}
@@ -33,8 +36,11 @@ func (a *runtimeGuestActor) PrepareTarget(ctx context.Context, ticket PreviewCon
 	}
 	r := &runtimeGuestRecord{actor: a, confirmation: c, descriptor: cloneGuestDescriptor(GuestStagingDescriptor{Preview: s.preview.descriptor, Namespace: ns}), lease: lease}
 	r.self, a.record = r, r // ownership precedes the outer owner's first callback
+	r.requestWatch = newRuntimeGuestWatch(ctx, func() { s.stopFor(ErrRuntimeUnconfirmed) })
 	s.mu.Unlock()
-	p, expectation, prepareErr := callRuntimeGuestPrepare(ctx, a, RuntimeGuestTicket{record: r})
+	defer r.requestWatch.stopWatching()
+	p, expectation, prepareErr := callRuntimeGuestPrepare(a.admission, a, RuntimeGuestTicket{record: r})
+	requestDetached := r.requestWatch.stopWatching()
 	var materialErr error
 	if p != nil {
 		m, err := runtimeGuestMaterialFor(a.kernel, p, expectation)
@@ -48,10 +54,8 @@ func (a *runtimeGuestActor) PrepareTarget(ctx context.Context, ticket PreviewCon
 	r.inspectionReturned = prepareErr == nil && p != nil
 	live := r.matchesLocked(a.owner) && !r.closed && r.sid != "" && c.liveLocked(time.Now())
 	s.mu.Unlock()
-	if prepareErr != nil || materialErr != nil || p == nil || !live || a.revoked.Load() || !authBudget(ctx) {
-		if p != nil {
-			_ = p.Revoke()
-		} // memory latch only; outer Close still owns actual worker cleanup
+	if prepareErr != nil || materialErr != nil || p == nil || !live || a.revoked.Load() || !authBudget(ctx) || !authBudget(a.admission) || !requestDetached {
+		_ = a.revoke() // same target's memory latch; outer Close still owns actual worker cleanup
 		if prepareErr != nil {
 			return prepareErr
 		}

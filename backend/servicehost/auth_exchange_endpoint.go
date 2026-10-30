@@ -104,7 +104,7 @@ func (r *serviceAuthRequest) closeEndpoint(ctx context.Context) error {
 	}
 	cleaned, acquiring, uncertain, ops := held.cleaned, held.acquiring, held.uncertain, held.ops
 	inspection := held.inspection
-	guestOwnsInspection := s.staging != nil && s.staging.lease == inspection && s.staging.transferred && !s.staging.prepareJoined && !s.staging.closed
+	guestOwnsInspection := s.staging != nil && s.staging.lease == inspection && s.staging.transferred && !s.staging.prepareJoined && !s.staging.closed || s.runtimeGuestOwnsInspectionLocked(inspection)
 	inspectionReturned, closeInspection := held.inspectionReturned, held.inspectionClose
 	s.mu.Unlock()
 	if acquiring {
