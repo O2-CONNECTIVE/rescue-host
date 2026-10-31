@@ -21,7 +21,7 @@ class GoEventTests(unittest.TestCase):
         for target in ('linux', 'darwin', 'windows'):
             with self.subTest(target=target):
                 self.assertEqual(go_ci.product_files_for(target)[package],
-                                 {'activity.go', 'session.go', 'transport.go'})
+                                 {'activity.go', 'duplex.go', 'inner.go', 'session.go', 'transport.go'})
 
     def events(self):
         module = 'github.com/O2-CONNECTIVE/rescue-host/backend'

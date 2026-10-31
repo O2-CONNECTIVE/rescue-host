@@ -14,6 +14,11 @@ nonce/hashはbinding識別子であって認証ではない。
 部分生成のruntimeではこの参照はnilとなる。
 
 `New`はlistener、relay、SSH接続を開始しない。
+本体Sessionは`backend.NewOwned`で作り、外側のliteral一致を物理TCPではなく同じSessionの所有内側SSH endpointへ渡す。旧`backend.New`と`DialFixed`は呼ばない（[ADR-0003の追補](../../../docs/adr/0003-owned-guest-workload.md#追補-wireのliteral宛先と所有内側endpoint)）。
+fullは`InnerShell`が必須で、nilなら`ErrConfig`とする。restrictedはhelper未定義のため`InnerShell`を受け取らない。
+`AcceptedSource`と`InnerShell`は最後のfallible stepで同時に一度だけ移し、`New`がerrorなら両方ともcaller所有に残る。
+`InnerShell`の存在や戻り値は認証・所有証明ではなく、同じlaunchのgrantと一緒に保護bootstrapから届くことだけを前提とする。その供給（継承handleからの構成）は未実装で、現行の保護bootstrapはfullを開始できない。
+callerの`cmd/rescue-backend`は未移転`InnerShell`の回収をまだ持たず、shellを供給する前に同じ所有規則を追加する必要がある。
 `Runtime.Serve`は将来の保護された受理済みtransportを本体Sessionへ渡す入口だけで、待受/dial先/接続設定を追加しない。
 runbackend packageのmemory試験ではServe、SSH handshake、listener、child processを実行していない。
 PR全体では既存の閉鎖command process試験を別に実行し、未設定の実commandが拒否することを確認する。

@@ -213,3 +213,9 @@ guestaccountは共通`runtime_close.go`、`runtime_credential_io.go`、`runtime_
 失効後の新規取得を拒否しつつ、元の回収scopeと部分取得参照を保持する試験を含みます。
 source/fake・compile・CIの成功は、実Windowsでのaccount作成、BATCH logon、権利や保護SD、物理停止・撤去の証拠へ広げません。
 実機操作と製品callerは有効化していません。
+
+## 所有する内側SSH endpoint
+
+[ADR-0003の追補](adr/0003-owned-guest-workload.md#追補-wireのliteral宛先と所有内側endpoint)に対応し、backendへ共通の`duplex.go`と`inner.go`だけを追加登録します。
+試験はmemory duplex、合成鍵、memory pipeのfake shellだけで、listener、TCP dial、guest process、ConPTYを作りません。
+外側→literal `direct-tcpip`→同鍵の内側認証→shell→fake streamの往復と失効・回収の成功は、実guest shell、実Windowsの継承handle、実SSH接続の証拠ではありません。

@@ -30,7 +30,7 @@ PRODUCT_FILES = {
         'staging_profile.go', 'staging_query.go', 'never_created.go', 'never_created_session.go',
         'fixed_layout.go', 'fixed_layout_strict.go', 'fixed_layout_validate.go', 'fixed_layout_wire.go',
         'runtime_close.go', 'runtime_credential_io.go', 'runtime_credential_run.go', 'runtime_credential_script.go', 'runtime_expectation.go', 'runtime_guest.go', 'runtime_layout.go', 'runtime_native.go', 'runtime_ops.go', 'runtime_probe.go', 'runtime_rights.go', 'runtime_session.go'},
-    'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'session.go', 'transport.go'},
+    'github.com/O2-CONNECTIVE/rescue-host/backend': {'activity.go', 'duplex.go', 'inner.go', 'session.go', 'transport.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-backend': {'main.go', 'native.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-service-host': {'main.go'},
     'github.com/O2-CONNECTIVE/rescue-host/backend/cmd/rescue-auth-helper': {'main.go'},

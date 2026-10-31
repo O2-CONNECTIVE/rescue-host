@@ -36,6 +36,11 @@ type ApprovedConfig struct {
 	Backend        backend.Config
 	Wire           control.WireContext
 	Limits         stdio.Limits
+
+	// InnerShellはfull modeの唯一のguest shell stdio端。保護bootstrapが同じlaunchのgrantと
+	// 一緒に渡す。fullでnilなら拒否し、固定TCPへfallbackしない。restrictedではnil必須。
+	// Newがerrorなら所有はcallerに残る。値の存在や戻り値は認証・所有証明ではない。
+	InnerShell backend.ShellStreams `json:"-"`
 }
 
 // KeySetDigest は生Ed25519鍵の集合を一意に表す候補規則。
@@ -91,6 +96,10 @@ func New(c ApprovedConfig) (*Runtime, error) {
 	if g.Binding.Generation == 0 || !id.Valid() || b.Identity != id || wireID != id || c.Wire.Generation != strconv.FormatUint(g.Binding.Generation, 10) || g.GuestBoundary != supervisor.SeparatedNonAdminGuest || g.KeySetDigest == ([32]byte{}) || g.BackendLeaseCeiling <= 0 || b.LeaseDuration <= 0 || b.LeaseDuration > g.BackendLeaseCeiling || b.MaximumDuration <= 0 || !withinDeadline(g.HardDeadline, b.MaximumDuration) || c.Limits.FrameBytes != control.FrameBytes || c.Limits.Frames < 1 || c.Limits.CleanupTimeout <= 0 {
 		return nil, ErrConfig
 	}
+	// fullの通常shellを欠いたままexec専用や固定TCP 22へ縮退しない。restrictedのhelperは未定義。
+	if (b.OperationMode == "full") != (c.InnerShell != nil) {
+		return nil, ErrConfig
+	}
 	if _, err := control.NewState(c.Wire); err != nil {
 		return nil, ErrConfig
 	}
@@ -110,7 +119,8 @@ func New(c ApprovedConfig) (*Runtime, error) {
 	if err != nil || digest != g.KeySetDigest {
 		return nil, ErrConfig
 	}
-	session, err := backend.New(b)
+	// 承認済runtimeは所有内側endpointだけを使い、旧Newの固定TCP dialを持たない。
+	session, err := backend.NewOwned(b)
 	if err != nil {
 		return nil, ErrConfig
 	}
@@ -135,10 +145,10 @@ func New(c ApprovedConfig) (*Runtime, error) {
 	if err != nil {
 		return reject()
 	}
-	// 所有移転は最後のfallible step。Newがerrorならsourceは常にcallerの所有に残る。
-	// 部分Runtimeが返る場合も、そのruntimeが持つのは既存Sessionだけである。
-	if c.AcceptedSource != nil {
-		if err := session.AttachAcceptedSource(c.AcceptedSource, g.HardDeadline, c.Limits.CleanupTimeout); err != nil {
+	// 所有移転は最後のfallible step。sourceとshellを同時に一度だけ移し、
+	// Newがerrorなら両方とも常にcallerの所有に残る。部分Runtimeが持つのは既存Sessionだけである。
+	if c.AcceptedSource != nil || c.InnerShell != nil {
+		if err := session.AttachOwned(c.AcceptedSource, c.InnerShell, g.HardDeadline, c.Limits.CleanupTimeout); err != nil {
 			return reject()
 		}
 	}

@@ -40,6 +40,7 @@ type Snapshot struct {
 	CutoffPending, CutoffFailures                              int
 	Transports                                                 int
 	Forwarding                                                 int // I/O処理数。未確認ownerが保持するActive容量とは別。
+	ShellPending, ShellCloseFailures                           int // 内側shell streamの終了未確認。guest processの終了ではない。
 	State, Reason                                              string
 	Identity                                                   Identity
 	Pending, Active, Handshakes, Owned, Closing, CloseFailures int
@@ -84,7 +85,8 @@ type Session struct {
 	authority                 *lease.Authority
 	policy                    forward.Policy
 	config                    *ssh.ServerConfig
-	dial                      targetDial
+	dial                      targetDial     // 旧Newと試験だけ。NewOwnedではnil。
+	inner                     *innerEndpoint // NewOwnedだけが設定し、dialへfallbackしない。
 	owners                    map[*owned]struct{}
 	closing                   bool
 	accepted                  *acceptedTransportOwner
@@ -152,11 +154,19 @@ func newSession(c Config, dial func(context.Context) (net.Conn, error)) (*Sessio
 }
 
 func newSessionWithCutoff(c Config, dial targetDial) (*Session, error) {
+	if dial == nil {
+		return nil, ErrInvalidConfig
+	}
+	return newSessionCore(c, dial, false)
+}
+
+// ownedはdialを持たず、外側の許可channelを同じSessionの内側endpointだけへ渡す。
+func newSessionCore(c Config, dial targetDial, owned bool) (*Session, error) {
 	p, e := forward.NewPolicy(c.OperationMode)
 	if c.MaxTransports == 0 {
 		c.MaxTransports = 8
 	}
-	if c.MaxTransports < 1 || c.MaxTransports > 64 || e != nil || p.Digest() != c.Identity.PolicyDigest || c.MaxHandshakes < 1 || c.MaxHandshakes > 64 || dial == nil {
+	if c.MaxTransports < 1 || c.MaxTransports > 64 || e != nil || p.Digest() != c.Identity.PolicyDigest || c.MaxHandshakes < 1 || c.MaxHandshakes > 64 || (dial == nil) != owned {
 		return nil, ErrInvalidConfig
 	}
 	keys, e := auth.New(c.Identity.LaunchID, c.AllowedKeys)
@@ -174,6 +184,9 @@ func newSessionWithCutoff(c Config, dial targetDial) (*Session, error) {
 		return nil, e
 	}
 	s := &Session{authority: a, policy: p, config: server, dial: dial, owners: make(map[*owned]struct{}), workers: newActivity(), activated: make(chan struct{}), acceptedAttached: make(chan struct{}), maxHandshakes: c.MaxHandshakes, maxTransports: c.MaxTransports}
+	if owned {
+		s.inner = &innerEndpoint{keys: keys, host: c.HostKey, full: c.OperationMode == "full"}
+	}
 	s.workers.Add(1)
 	go s.watchAcceptedAndAuthority()
 	return s, nil
@@ -187,7 +200,7 @@ func (s *Session) Ready(id Identity) error {
 func (s *Session) Activate(id Identity) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.accepted != nil {
+	if s.accepted != nil || !s.innerReadyLocked() {
 		return ErrNotAccepted
 	}
 	if err := s.authority.Transition(id, lease.Ready, lease.Active); err != nil {
@@ -216,7 +229,7 @@ func (s *Session) ActivateForStart(ctx context.Context, id Identity, hardDeadlin
 			return ErrNotAccepted
 		}
 	}
-	if s.closing || ctx.Err() != nil || !time.Now().Before(requestDeadline) || !time.Now().Before(hardDeadline) {
+	if s.closing || !s.innerReadyLocked() || ctx.Err() != nil || !time.Now().Before(requestDeadline) || !time.Now().Before(hardDeadline) {
 		_ = s.authority.Revoke(id)
 		return ErrNotAccepted
 	}
@@ -250,6 +263,12 @@ func (s *Session) Snapshot() Snapshot {
 		}
 		if h.failed {
 			r.CloseFailures++
+		}
+	}
+	if s.inner != nil && s.inner.shell != nil && !s.inner.shell.closed {
+		r.ShellPending = 1
+		if s.inner.shell.failed {
+			r.ShellCloseFailures = 1
 		}
 	}
 	return r
@@ -334,6 +353,7 @@ func (s *Session) closeOwned() {
 	for h := range s.owners {
 		s.closeOneLocked(h)
 	}
+	s.closeShellLocked()
 }
 
 // Serve の ErrNotAccepted だけは所有を移さない。呼び出し元が conn を閉じる。
@@ -451,6 +471,8 @@ func (s *Session) serveBound(conn net.Conn, cutoff func() error, sourceOwner *ac
 	if e = conn.SetDeadline(time.Time{}); e != nil {
 		return e
 	}
+	// 内側endpointは同じ署名検証済み鍵だけで認証する。clientの申告値は使わない。
+	key, _ := auth.AuthenticatedKey(transport.Permissions)
 	for channel := range channels {
 		if !s.policy.Permit(channel.ChannelType(), channel.ExtraData()) {
 			channel.Reject(ssh.Prohibited, "要求を拒否しました")
@@ -462,7 +484,7 @@ func (s *Session) serveBound(conn net.Conn, cutoff func() error, sourceOwner *ac
 			continue
 		}
 		s.workers.Add(1)
-		go s.forward(channel, reservation)
+		go s.forward(channel, reservation, key)
 	}
 	return nil
 }
@@ -483,7 +505,7 @@ func (w authorityWriter) Write(p []byte) (int, error) {
 	return w.dst.Write(p)
 }
 
-func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
+func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation, key []byte) {
 	defer s.workers.Done()
 	transferred := false
 	defer func() {
@@ -493,7 +515,15 @@ func (s *Session) forward(open ssh.NewChannel, reservation *lease.Reservation) {
 	}()
 	ctx, cancel := context.WithTimeout(s.authority.Context(), time.Second)
 	defer cancel()
-	target, cutoff, e := s.dial(ctx)
+	var target net.Conn
+	var cutoff func() error
+	var e error
+	// wireのliteral宛先は同じ方針で照合済み。所有endpointでは物理TCPへ変換しない。
+	if s.inner != nil {
+		target, cutoff, e = s.dialInner(key)
+	} else {
+		target, cutoff, e = s.dial(ctx)
+	}
 	if e != nil {
 		open.Reject(ssh.ConnectionFailed, "接続を完了できません")
 		return
@@ -610,7 +640,7 @@ func (s *Session) Close(ctx context.Context) error {
 			s.mu.Unlock()
 			continue
 		}
-		if len(s.owners) != 0 {
+		if len(s.owners) != 0 || (s.inner != nil && s.inner.shell != nil && !s.inner.shell.closed) {
 			s.mu.Unlock()
 			return ErrUnconfirmed
 		}

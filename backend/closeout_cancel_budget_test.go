@@ -109,7 +109,7 @@ func TestCloseoutN5AcceptFailureClosesRealTarget(t *testing.T) {
 	open := &failedAccept{}
 	s.workers.Add(1)
 	trigger := time.Now()
-	s.forward(open, reservation)
+	s.forward(open, reservation, nil)
 	awaitSnapshot(t, s, func(x Snapshot) bool { return x.Active == 0 && x.Pending == 0 && x.Owned == 0 })
 	select {
 	case err := <-ended:

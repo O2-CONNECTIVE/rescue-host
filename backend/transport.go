@@ -44,13 +44,18 @@ func (s *Session) AttachAcceptedSource(source AcceptedSource, hardDeadline time.
 	if s.closing || s.accepted != nil || s.authority.Snapshot().State != lease.Prepared {
 		return ErrNotAccepted
 	}
+	s.attachSourceLocked(source, ctx, cancel, cleanupTimeout)
+	keep = true
+	return nil
+}
+
+// attachSourceLockedは検査済みの移転だけを行い、失敗しない。
+func (s *Session) attachSourceLocked(source AcceptedSource, ctx context.Context, cancel context.CancelFunc, cleanupTimeout time.Duration) {
 	owner := &acceptedTransportOwner{source: source, ctx: ctx, cancel: cancel, cleanup: cleanupTimeout, pending: make(map[*acceptedTransport]struct{}), changed: make(chan struct{})}
 	s.accepted = owner
 	s.workers.Add(1)
 	close(s.acceptedAttached)
-	keep = true
 	go owner.accept(s)
-	return nil
 }
 
 type acceptedTransport struct {

@@ -27,9 +27,22 @@ Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI �
 | 接続所有 | `Session` | 認証中と転送先の接続、worker を保持。取消と close、失敗参照の保持、期限付き終了確認 |
 
 `Config` に任意宛先、dial、fixture ポート、ゲート解除の項目はありません。
-公開 `New` は固定の `tcp4 127.0.0.1:22` を選び、生成だけでは接続しません。
+公開 `New` は固定の `tcp4 127.0.0.1:22` を選び、生成だけでは接続しません。これは評価・試験用の旧経路です。
 高位 fixture は非公開の構築関数を使う `_test.go` の中だけにあります。
 通常のモジュールへ試験の listener や設定選択は入りません。
+
+## 所有する内側SSH endpoint
+
+[ADR-0003の追補](../docs/adr/0003-owned-guest-workload.md#追補-wireのliteral宛先と所有内側endpoint)に従い、`NewOwned` は外側のliteral一致を物理TCPへ変換しません。
+同じSessionが所有するmemory duplex（`duplex.go`）の内側SSH（`inner.go`）だけへ渡し、`DialFixed`やstock sshdへfallbackしません。
+内側は同じhost signer・Authority・LaunchID・鍵集合を使い、外側で署名検証した同一鍵だけを認証します。
+承認ごとにtransport・session・引数なし`shell`を各1回だけ許し、PTY、exec、subsystem、env、x11、agent、転送要求、追加channelを拒否します。
+restrictedはhelper未定義のため内側sessionを開かず、fullは`AttachOwned`でshellを受け取るまで開始を拒否します。
+
+`ShellStreams` はguest shellのstdio端とCloseだけを運び、戻り値を認証・所有証明に使いません。
+`AttachOwned` は受理sourceとshellを全検査後に同時に一度だけ移し、errorなら両方ともcallerに残ります。同じshell objectは別Sessionへ再移転できません。
+失効・stop・shell終了ではSession workerが期限付きでCloseし、error/panic/期限切れでは失効・参照保持・再試行します。`Snapshot.ShellPending`と`ShellCloseFailures`はstream端の未確認を示し、guest processやJobの終了ではありません。
+memory duplexの切断は物理TCP遮断の証明ではありません。guest stdioの継承handle供給と実guest shellは未接続です。
 
 ## 呼び出し条件
 
@@ -45,7 +58,7 @@ Python と GUI の開始拒否は変更せず、CLI、listener の生成、GUI �
 
 鍵照会を認証成功と数えず、ライブラリの署名検証後とハンドシェイク完了後にも有効性を検査します。
 session チャネル、global request、TCP チャネル内の制御要求は既定拒否です。
-内側 SSH のヘルパーや shell の認可は実装していません。
+内側 SSH は上記の所有endpointのsource候補だけで、restricted helperの実体と実guest shellの供給は実装していません。
 
 `Serve(conn)` の `ErrNotAccepted` は所有を移さない拒否です。
 その場合は呼び出し元が接続を閉じます。

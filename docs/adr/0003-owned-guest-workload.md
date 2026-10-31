@@ -52,7 +52,7 @@ targetのadmissionは同Serviceが所有し、固定HardDeadlineとService寿命
 
 source/fake試験とWindows向けcompileは、実Windowsのlogon、保護SD、継承、Job停止、TTLや撤去の証拠ではない。
 製品caller、GUI承認から実実行、実SSH dispatcher、配布と実機受入は未接続または未検証で、製品gateは閉鎖する。
-既存のforward-only SSH基盤やwireのliteral宛先を、この採用で暗黙に変更しない。
+既存のforward-only SSH基盤やwireのliteral宛先を、この採用で暗黙に変更しない。明示的な変更は下記の追補に限る。
 
 公式要件: [LogonUserW](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-logonuserw)、[account rights](https://learn.microsoft.com/en-us/windows/win32/secauthz/account-rights-constants)、[CreateProcessAsUserW](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createprocessasuserw)、[Job Objects](https://learn.microsoft.com/en-us/windows/win32/procthread/job-objects)。
 
@@ -62,3 +62,37 @@ source/fake試験とWindows向けcompileは、実Windowsのlogon、保護SD、�
 準備専用のruntime API、preview、staging、legacy構成はこの継続を選ばない。
 応答の承認receiptは、開始・実終了・清掃成功を表さない。取消・書込み失敗・失効では開始を拒否し、開始中の競合では同じownerの停止と実回収完了を待つ。
 sourceの固定設定は空のまま、実message認証helperは未構成のままである。設定値の確定や実OS操作の許可をこの配線で代用しない。
+
+## 追補: wireのliteral宛先と所有内側endpoint
+
+2026-10-31、親coordinatorが採用したsource候補として、内側SSHを製品所有endpointにする。設計とsourceの採用であり、実機操作・配布・公開・製品gate解除の承認ではない。
+
+wire名と物理接続を分ける。
+外側の`direct-tcpip`は従来どおり、literal `127.0.0.1`とuint32 `22`の完全一致、同じpolicy digestで判定する。
+承認済runtime（`runbackend.New`→`backend.NewOwned`）は、この一致をTCP接続へ変換しない。同じSessionが所有するmemory duplexの内側SSH endpointだけへ渡し、stock sshd、既存OpenSSH、`forward.DialFixed`へfallbackしない。
+literalとdigestの一致は、物理network endpointの存在・到達・遮断を証明しない。旧`backend.New`の固定TCP経路は評価・試験用として分離して残し、承認済runtimeからは呼ばない。
+
+内側SSHは外側と同じ`rescue-backend`子process内で動き、同じhost signer、lease Authority、LaunchID、raw鍵集合を使う。
+内側認証は、外側で署名検証した同一鍵だけを許す。集合内の別鍵、別username、失効・期限切れ後の認証は拒否する。新しいissuer、SeTcb、virtual service account、guestへのhost秘密鍵・token・制御pipeの受け渡しは追加しない。
+
+承認ごとに内側transport、session、shellを各1回だけ許す。fullで許すのは引数なしの`shell`だけで、PTYなしの行単位PowerShellとする。TUIと行編集は未完了である。
+`pty-req`、exec、subsystem、env、x11、agent、window-change、signal、逆転送、追加channelは拒否する。restrictedのhelper実体は未定義のため、内側sessionを開かない。
+fullでshellが未移転なら開始を拒否し、exec専用や固定TCPへ縮退しない。
+
+`backend.ShellStreams`はguest shellのstdio端3本とCloseだけを運ぶ。戻り値は認証・認可・所有の証明に使わない。stdinへ書ける相手は、同じSessionのAuthority、鍵集合、外側と同一の鍵だけで決まる。
+信頼の根拠は、保護bootstrapが発信元serviceを認証し、同じlaunchのgrantと同時に`ApprovedConfig.InnerShell`へ入れることにある（未実装）。Go型の検査は根拠にならない。
+process内では、同じobjectを別Sessionへ再移転しない。`AcceptedSource`と同時に単回で移転し、失敗時は両方ともcaller所有に残す。同一process内の任意コードはhost signerも扱えるため、この検査を偽装防止とは扱わない。
+
+失効、stop、shell終了では、同じowner経路がshell streamを期限付きでCloseする。error、panic、期限切れの場合は参照を保持し、失効させて再試行する。
+Closeのnilはstream端の閉鎖確認にとどまり、guest processやJobの終了を意味しない。guest process/Jobの回収は、監督serviceの既存の失効・回収経路が担う。
+duplexの切断は物理TCP遮断の証明ではなく、L-R07のNOT_METを変えない。
+
+未接続の依存先は次のとおりで、これらが揃うまで製品のfullは開始拒否となる。
+
+- guest stdioのserver端を子のHANDLE_LISTへ複製継承するservicehost側
+- 継承handleから`ShellStreams`を構成する`bootstrap.NativeReceiver`
+- 確認済みgrantから、子の起動とguestのresumeを順序付けるbridge
+- `exit 0`評価specとは別の固定shell spec
+- `cmd/rescue-backend`による未移転shellの回収
+
+memory/fake試験は、実guest shell、実Windows、実SSHの成功を示さない。
