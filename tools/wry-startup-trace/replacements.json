@@ -1,0 +1,67 @@
+[
+  {
+    "file": "src/lib.rs",
+    "old": "mod error;",
+    "new": "#[cfg(target_os = \"windows\")]\nmod startup_probe;\n#[cfg(target_os = \"windows\")]\nmod startup_pump;\nmod error;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };",
+    "new": "    let mut startup_scope = crate::startup_probe::BuildScope::new();\n    crate::startup_probe::record(crate::startup_probe::Stage::WebviewEnter);\n    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    let env = if let Some(env) = &pl_attrs.environment {\n      env.clone()",
+    "new": "    let env = if let Some(env) = &pl_attrs.environment {\n      crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentReused);\n      env.clone()"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "      CreateCoreWebView2EnvironmentWithOptions(",
+    "new": "      crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiStart);\n      CreateCoreWebView2EnvironmentWithOptions("
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "          move |error_code, environment| {",
+    "new": "          move |error_code, environment| {\n            crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentCallback);"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[inline]\n  fn create_controller(",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentApiReturn);\n    let result = crate::startup_pump::wait_with_pump(rx, crate::startup_probe::PumpScope::Environment)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::EnvironmentWaitReturn);\n    result\n  }\n\n  #[inline]\n  fn create_controller("
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "      move |error_code, controller| {",
+    "new": "      move |error_code, controller| {\n        crate::startup_probe::record(crate::startup_probe::Stage::ControllerCallback);"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "          env10.CreateCoreWebView2ControllerWithOptions(hwnd, &controller_opts, &handler)?;",
+    "new": "          crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiStart);\n          env10.CreateCoreWebView2ControllerWithOptions(hwnd, &controller_opts, &handler)?;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "        _ => env.CreateCoreWebView2Controller(hwnd, &handler)?,",
+    "new": "        _ => {\n          crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiStart);\n          env.CreateCoreWebView2Controller(hwnd, &handler)?;\n        }"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    webview2_com::wait_with_pump(rx)?\n  }\n\n  #[allow(clippy::too_many_arguments)]",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::ControllerApiReturn);\n    let result = crate::startup_pump::wait_with_pump(rx, crate::startup_probe::PumpScope::Controller)?;\n    crate::startup_probe::record(crate::startup_probe::Stage::ControllerWaitReturn);\n    result\n  }\n\n  #[allow(clippy::too_many_arguments)]"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    let webview = Self::init_webview(\n      parent,\n      hwnd,\n      id.clone(),\n      attributes,\n      &env,\n      &controller,\n      pl_attrs,\n      is_child,\n    )?;",
+    "new": "    crate::startup_probe::record(crate::startup_probe::Stage::InitEnter);\n    let webview_result = Self::init_webview(\n      parent,\n      hwnd,\n      id.clone(),\n      attributes,\n      &env,\n      &controller,\n      pl_attrs,\n      is_child,\n    );\n    crate::startup_probe::record(crate::startup_probe::Stage::InitReturn);\n    let webview = webview_result?;"
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "    Ok(w)\n  }\n\n  #[inline]\n  fn create_container_hwnd(",
+    "new": "    startup_scope.success();\n    Ok(w)\n  }\n\n  #[inline]\n  fn create_container_hwnd("
+  },
+  {
+    "file": "src/webview2/mod.rs",
+    "old": "  fn add_script_to_execute_on_document_created(webview: &ICoreWebView2, js: String) -> Result<()> {\n    let webview = webview.clone();\n    AddScriptToExecuteOnDocumentCreatedCompletedHandler::wait_for_async_operation(\n      Box::new(move |handler| unsafe {\n        let js = HSTRING::from(js);\n        webview\n          .AddScriptToExecuteOnDocumentCreated(&js, &handler)\n          .map_err(Into::into)\n      }),\n      Box::new(|e, _| e),\n    )\n    .map_err(Into::into)\n  }\n",
+    "new": "  fn add_script_to_execute_on_document_created(webview: &ICoreWebView2, js: String) -> Result<()> {\n    use crate::startup_probe::{begin_script, observe_script, PumpScope, ScriptSignal};\n    let ordinal = begin_script();\n    let webview = webview.clone();\n    // 固定macroのAPI closureを同じBox/FnOnce所有権で消費し、COM cloneをwait前にdropする。\n    let start: Box<dyn FnOnce(ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler) -> webview2_com::Result<()>> =\n      Box::new(move |handler| unsafe {\n        let js = HSTRING::from(js);\n        observe_script(ordinal, ScriptSignal::ApiStart);\n        webview.AddScriptToExecuteOnDocumentCreated(&js, &handler).map_err(Into::into)\n      });\n    let (tx, rx) = mpsc::channel();\n    let completed: Box<dyn FnOnce(windows::core::Result<()>, String) -> windows::core::Result<()>> = Box::new(|e, _| e);\n    // create/Invokeのonce-takeと引数変換は元macroを再利用。送信失敗のexpectも維持する。\n    let callback = AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(move |e, value| {\n      observe_script(ordinal, ScriptSignal::Callback(e.is_ok()));\n      let result = completed(e, value).map_err(webview2_com::Error::WindowsError);\n      tx.send(result).expect(\"send over mpsc channel\");\n      observe_script(ordinal, ScriptSignal::Sent);\n      Ok(())\n    }));\n    let api = start(callback);\n    observe_script(ordinal, ScriptSignal::ApiReturn);\n    let result: webview2_com::Result<()> = api.and_then(|_| {\n      crate::startup_pump::wait_with_pump(rx, PumpScope::Script(ordinal))?\n    });\n    observe_script(ordinal, ScriptSignal::Return(result.is_ok()));\n    result.map_err(Into::into)\n  }\n"
+  }
+]
