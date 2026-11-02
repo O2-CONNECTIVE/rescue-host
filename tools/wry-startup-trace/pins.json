@@ -1,0 +1,24 @@
+{
+  "variant": "wry-0.57.1-pump-2",
+  "upstreamSha256": "759c50ddad0ef9913bb5496cb9d509a50433a3b78cb0238d61105526589cf0e9",
+  "replacementsSha256": "7ce4c7751d2da22a45662add716b4525da1b7c51ec47a183e5fef548d103cfc4",
+  "codeSha256": "28fa84dec9d2953cee5559c5e6a79e0fbf1f84fcbea98cd135f4585b7ec52fb5",
+  "preimage": {
+    "src/lib.rs": "1563bfa16d1bcaa74e30e5f4688072442ec1d16355a040601a26547032855b51",
+    "src/webview2/mod.rs": "9ef674af12e52bc3519b0e300752c1042798b7f336e0e0dafca6a8944f348888",
+    "src/startup_probe.rs": null,
+    "src/startup_pump.rs": null
+  },
+  "postimage": {
+    "src/lib.rs": "fcccff72ed896f877e3867a0e6d7132ae63e4ac65a3b50a26adac64de04b8749",
+    "src/webview2/mod.rs": "fd9bb037459ca8693ed28257369671c3119602c3b40fd1d5b0fdcc5fe982faa8",
+    "src/startup_probe.rs": "28fa84dec9d2953cee5559c5e6a79e0fbf1f84fcbea98cd135f4585b7ec52fb5",
+    "src/startup_pump.rs": "6af5aa066e882a7ab931c23c14e6e490fdca91a82fdae278e68ebdd887acccef"
+  },
+  "lockBeforeSha256": "a7d19325d5c922243009f39f6a7f9da225abf8a497b280ff8bf49081f2597af6",
+  "lockAfterSha256": "bda3f9f460e4f38d8e56b6e4a7c74f8fbadc6e3d1860e2284745f1fad182967c",
+  "pumpUpstreamSha256": "3f89fca7a704cee10dcb3654c1dbb8941d1783132f1917358af75bec37a7d7e6",
+  "pumpFunctionSha256": "4d3cc45fbd1351d11b75950ddbfd8ea31d236209979e19dbbae3285aaa827010",
+  "pumpCodeSha256": "6af5aa066e882a7ab931c23c14e6e490fdca91a82fdae278e68ebdd887acccef",
+  "pumpLicenseSha256": "0dcf41516e608bbcb6cdc5229feb7b86fe4a643b85e7df251133c93408fdac73"
+}
