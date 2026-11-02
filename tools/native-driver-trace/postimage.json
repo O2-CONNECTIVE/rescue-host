@@ -1,6 +1,6 @@
 {
-  "src/diagnostic.rs": "495dc2a0a469a3a981d316571b91a6a1e775850058f7fee6c467a2929e2a6f54",
-  "src/diagnostic_tests.rs": "2807c3dfd7773ee1dbda590ca0c458c7d1e26f60af5f6f9d5fb2583415dbe86e",
+  "src/diagnostic.rs": "38a7369bb05e76d9ebe280f66347017f010dddeaf024ce6334cf1af60ff2632b",
+  "src/diagnostic_tests.rs": "3eb57d89ef75bee258ec1616d305c88389a32116d9476febe2cbfe19681b1be8",
   "src/main.rs": "52886855d6378cb4d7dcbffa035dd2228d51e4611c12c291e6157cd66ffaed07",
-  "src/server.rs": "41d6efd571709fe1789d0673fc0d10b3f064877ad8606904611ba0c3eac8850b"
+  "src/server.rs": "8e6c0f0d5d5b4c91042b57c902406ed9372a6f50488c7d3db906fc5e45f3a06f"
 }

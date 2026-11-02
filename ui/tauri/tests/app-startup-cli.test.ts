@@ -27,12 +27,13 @@ void test('CLIは一致buildを確認し、欠測traceを非0・秘密なしで�
     assert.equal(build.status, 0, build.stderr); assert.equal(report(build.stdout).code, 'APP_STARTUP_BUILD_VERIFIED');
     const missing = run([]);
     assert.equal(missing.status, 1); assert.deepEqual(report(missing.stdout).startup,
-      { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [] });
+      { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [],
+        windowEndUs: null, buildReturnUnobservedUs: null });
     assert.equal(missing.stderr, ''); assert.equal(missing.stdout.includes(directory), false);
     await writeFile(path.join(directory, 'app-startup-stages.json'), JSON.stringify({
-      schema: 1, variant: 'host-startup-stage-1', purpose: 'diagnostic-hints-only',
+      schema: 1, variant: 'host-startup-stage-2', purpose: 'diagnostic-hints-only',
       events: [{ seq: 1, stage: 'setup-enter', elapsedUs: 0 }],
-      attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0
+      attempted: 1, recorded: 1, dropped: 0, sealed: true, inFlight: 0, windowEndUs: 1000
     }));
     const collection = path.join(directory, 'collection.json');
     await writeFile(collection, JSON.stringify({ kind: 'windows-webview2-native-smoke', appStartupFileClosed: false }));
