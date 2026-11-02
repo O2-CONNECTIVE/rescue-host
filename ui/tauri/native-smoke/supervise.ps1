@@ -36,7 +36,7 @@ try {
     if (@($before | Where-Object ExecutablePath -eq $appPath).Count -ne 0) { throw 'NATIVE_PREEXISTING_APP_REJECTED' }
     if (@(Get-NetTCPConnection -State Listen -ErrorAction Stop | Where-Object LocalPort -in @(4444, 4445)).Count -ne 0) { throw 'NATIVE_PORT_ALREADY_IN_USE' }
     $stageProvenance = Get-Content "$ToolsDirectory/driver-provenance.json" -Raw | ConvertFrom-Json
-    if ($stageProvenance.variant -ne 'tauri-driver-2.1.0-stage-1' -or $stageProvenance.binarySha256 -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $tauriPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $stageProvenance.binarySha256) { throw 'NATIVE_DIAGNOSTIC_BINARY_DRIFT' }
+    if ($stageProvenance.variant -ne 'tauri-driver-2.1.0-stage-2' -or $stageProvenance.binarySha256 -cnotmatch '^[0-9a-f]{64}$' -or (Get-FileHash $tauriPath -Algorithm SHA256).Hash.ToLowerInvariant() -cne $stageProvenance.binarySha256) { throw 'NATIVE_DIAGNOSTIC_BINARY_DRIFT' }
     $env:RESCUE_DRIVER_TRACE = Join-Path $ToolsDirectory 'driver-stage.jsonl'
     $driverProcess = Start-Process $tauriPath -ArgumentList @('--port', '4444', '--native-port', '4445', '--native-driver', "`"$edgePath`"") -PassThru -RedirectStandardOutput "$ToolsDirectory/driver.stdout.log" -RedirectStandardError "$ToolsDirectory/driver.stderr.log"
     $until = [DateTime]::UtcNow.AddSeconds(15)
