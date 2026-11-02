@@ -35,9 +35,15 @@ marker前にappをkillすればworkerも終了し得るため、欠測をbuild�
 | setup-return | build成功後、setupが正常returnする直前 |
 | first-page-load-finished | main WebViewの最初のFinished callback。以降は記録しない |
 
-fieldはschema/variant/purpose、seq/stage/elapsedUs、attempted/recorded/dropped/sealed/inFlightだけです。
+現在のvariantはhost-startup-stage-2。fieldはschema/variant/purpose、seq/stage/elapsedUs、attempted/recorded/dropped/sealed/inFlightとwindowEndUsです。
 URL・title・path・PID・端末情報・payload・capability・原例外・秘密は記録しません。
 時刻は同じapp内のInstantからの経過で、driver/Nodeと絶対時刻差を取りません。
+windowEndUsは記録の無効化前に採取する同じapp時計の保守的cutoffで、無効化の厳密な瞬間やworkerの書込完了時刻ではありません。
+採取から無効化の間に後着eventが記録された場合は、終了時刻の整合検査で不完全とします。停止後の空白を観測区間へ加算しません。
+最後のeventより古い終了時刻や、欠測/型不正/旧版は不完全として拒否します。
+build開始後の戻りmarker未観測の窓だけ、buildReturnUnobservedUsに終了時刻との差を表示します。
+これはmarker未観測の区間で、CPU実行時間、OS呼出の実所要時間、Node要求15秒の配分を直接証明するものではありません。
+通常配布はfeature無効のままです。別試行の観測へ遡及適用しません。
 Finished callbackがbuild-returnより前に来る可能性を許容し、その順を偽の保証にしません。
 `sealed`は記録窓が閉じた意味で、setup/通信/プロセスの終了を意味しません。
 

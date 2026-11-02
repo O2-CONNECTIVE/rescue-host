@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 // 試験専用。request taskは固定ringへのtry_lockだけで記録し、I/Oしない。
+use hyper_util::client::legacy::connect::{CaptureConnection, capture_connection};
 use std::{
     fs::OpenOptions,
     io::Write,
     path::PathBuf,
     sync::{
-        atomic::{AtomicBool, AtomicU64, AtomicU8, AtomicUsize, Ordering::SeqCst},
         Arc, Mutex,
+        atomic::{AtomicBool, AtomicU8, AtomicU64, AtomicUsize, Ordering::SeqCst},
     },
     thread,
     time::{Duration, Instant},
@@ -55,6 +56,8 @@ enum Stage {
     Open,
     Received,
     Forward,
+    NativeAssigned,
+    NativeUnobserved,
     Headers,
     NativeError,
     Dropped,
@@ -66,6 +69,8 @@ impl Stage {
             Self::Open => "connection-open",
             Self::Received => "session-received",
             Self::Forward => "forward-start",
+            Self::NativeAssigned => "native-connection-assigned",
+            Self::NativeUnobserved => "native-connection-unobserved",
             Self::Headers => "native-headers",
             Self::NativeError => "native-error",
             Self::Dropped => "request-dropped",
@@ -164,12 +169,20 @@ impl Recorder {
             .unwrap_or_default();
         events.sort_by_key(|event| event.seq);
         let mut text = String::from(
-            "{\"type\":\"header\",\"schema\":1,\"variant\":\"tauri-driver-2.1.0-stage-1\"}\n",
+            "{\"type\":\"header\",\"schema\":1,\"variant\":\"tauri-driver-2.1.0-stage-2\"}\n",
         );
         let mut written = 0;
         for event in &events {
-            let line = format!("{{\"type\":\"event\",\"seq\":{},\"connection\":{},\"request\":{},\"stage\":\"{}\",\"state\":\"{}\",\"elapsedUs\":{},\"error\":\"{}\"}}\n",
-                event.seq, event.connection, event.request, event.stage.name(), state_name(event.state), event.elapsed, event.error.name());
+            let line = format!(
+                "{{\"type\":\"event\",\"seq\":{},\"connection\":{},\"request\":{},\"stage\":\"{}\",\"state\":\"{}\",\"elapsedUs\":{},\"error\":\"{}\"}}\n",
+                event.seq,
+                event.connection,
+                event.request,
+                event.stage.name(),
+                state_name(event.state),
+                event.elapsed,
+                event.error.name()
+            );
             if line.len() <= 256 && text.len() + line.len() <= 7680 {
                 text.push_str(&line);
                 written += 1;
@@ -234,6 +247,8 @@ impl Connection {
             connection: self.clone(),
             slot,
             terminal: false,
+            native_connection: None,
+            connection_observed: false,
         }
     }
     pub fn end(&self, kind: Kind) {
@@ -244,18 +259,48 @@ pub struct Request {
     connection: Connection,
     slot: u64,
     terminal: bool,
+    native_connection: Option<CaptureConnection>,
+    connection_observed: bool,
 }
 impl Request {
+    pub fn capture<B>(&mut self, request: &mut hyper::Request<B>) {
+        if self.connection.recorder.is_some() {
+            self.native_connection = Some(capture_connection(request));
+        }
+    }
+    fn observe_connection(&mut self) {
+        if self.connection.state.load(SeqCst) != 2 || self.connection_observed {
+            return;
+        }
+        // 終端時点のmetadata有無だけ。address/extra/Debug値は読まず保存しない。
+        // upstreamの同期borrowであり、接続確立の瞬間や物理送信完了ではない。
+        let assigned = self
+            .native_connection
+            .as_ref()
+            .is_some_and(|capture| capture.connection_metadata().is_some());
+        self.connection.emit(
+            self.slot,
+            if assigned {
+                Stage::NativeAssigned
+            } else {
+                Stage::NativeUnobserved
+            },
+            Kind::None,
+        );
+        self.connection_observed = true;
+    }
     pub fn forward(&mut self) {
         self.connection.state.store(2, SeqCst);
         self.connection.emit(self.slot, Stage::Forward, Kind::None);
     }
     pub fn headers(&mut self) {
+        self.observe_connection();
         self.terminal = true;
         self.connection.state.store(3, SeqCst);
         self.connection.emit(self.slot, Stage::Headers, Kind::None);
     }
     pub fn native_error(&mut self) {
+        self.observe_connection();
         self.terminal = true;
         self.connection.state.store(4, SeqCst);
         self.connection
@@ -265,6 +310,7 @@ impl Request {
 impl Drop for Request {
     fn drop(&mut self) {
         if !self.terminal {
+            self.observe_connection();
             self.connection.state.store(5, SeqCst);
             self.connection.emit(self.slot, Stage::Dropped, Kind::None);
         }
