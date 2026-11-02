@@ -5,9 +5,10 @@ function object(value: unknown): value is Record<string, unknown> { return !!val
 function exact(value: Record<string, unknown>, keys: string[]) { return Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key)); }
 function integer(value: unknown): value is number { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0; }
 export function classifyAppStartup(input: unknown) {
-  const incomplete = { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete', events: [] as Event[] };
-  if (!object(input) || !exact(input, ['schema', 'variant', 'purpose', 'events', 'attempted', 'recorded', 'dropped', 'sealed', 'inFlight']) ||
-    input.schema !== 1 || input.variant !== 'host-startup-stage-1' || input.purpose !== 'diagnostic-hints-only' ||
+  const incomplete = { schema: 1, purpose: 'diagnostic-hints-only', phase: 'diagnostic-incomplete',
+    events: [] as Event[], windowEndUs: null, buildReturnUnobservedUs: null };
+  if (!object(input) || !exact(input, ['schema', 'variant', 'purpose', 'events', 'attempted', 'recorded', 'dropped', 'sealed', 'inFlight', 'windowEndUs']) ||
+    input.schema !== 1 || input.variant !== 'host-startup-stage-2' || input.purpose !== 'diagnostic-hints-only' || !integer(input.windowEndUs) ||
     input.sealed !== true || input.inFlight !== 0 || input.dropped !== 0 || !Array.isArray(input.events) || input.events.length > 6 ||
     input.recorded !== input.events.length || input.attempted !== input.events.length) return incomplete;
   const events: Event[] = []; const seen = new Set<Stage>(); let elapsed = 0;
@@ -25,10 +26,15 @@ export function classifyAppStartup(input: unknown) {
       ((stage === 'webview-build-ok' || stage === 'first-page-load-finished') && seen.has('webview-build-error'))) return incomplete;
     events.push({ seq: events.length + 1, stage, elapsedUs: item.elapsedUs }); seen.add(stage); elapsed = item.elapsedUs;
   }
+  if (input.windowEndUs < elapsed) return incomplete;
   const phase = seen.has('first-page-load-finished') ? 'first-page-load-finished'
     : seen.has('webview-build-error') ? 'webview-build-error'
     : seen.has('webview-build-ok') ? 'webview-built-page-load-not-observed'
     : seen.has('webview-build-start') ? 'webview-build-not-observed'
     : seen.has('setup-enter') ? 'setup-entered-build-not-observed' : 'setup-not-observed';
-  return { schema: 1, purpose: 'diagnostic-hints-only', phase, events };
+  const buildStart = events.find(event => event.stage === 'webview-build-start');
+  const buildReturnUnobservedUs = phase === 'webview-build-not-observed' && buildStart
+    ? input.windowEndUs - buildStart.elapsedUs : null;
+  return { schema: 1, purpose: 'diagnostic-hints-only', phase, events,
+    windowEndUs: input.windowEndUs, buildReturnUnobservedUs };
 }
