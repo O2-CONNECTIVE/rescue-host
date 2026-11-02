@@ -20,8 +20,8 @@
 -    .request(forward_to_native_driver(new_req, args)?)
 -    .err_into()
 -    .await
-+  let forwarded = forward_to_native_driver(new_req, args)?;
-+  if let Some(trace) = trace.as_mut() { trace.forward(); }
++  let mut forwarded = forward_to_native_driver(new_req, args)?;
++  if let Some(trace) = trace.as_mut() { trace.capture(&mut forwarded); trace.forward(); }
 +  let response: Result<Response<Incoming>, Error> = client.request(forwarded).err_into().await;
 +  match response {
 +    Ok(response) => {
