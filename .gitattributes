@@ -7,6 +7,9 @@ ui/tauri/third-party/NOTICE.microsoft-webview2 -text
 ui/tauri/third-party/Microsoft.Web.WebView2.nuspec -text
 # 試験専用driver patch/sourceのpin済みbytesをcheckout時に変換しない。
 tools/native-driver-trace/* -text
+# 試験専用Wry patchと元lockの固定bytesも改行変換しない。
+tools/wry-startup-trace/* -text
+ui/tauri/src-tauri/Cargo.lock -text
 
 # 共通応答vectorの固定bytesをcheckout時にも保持する。
 backend/internal/servicecontrol/testdata/response-vectors.json -text
