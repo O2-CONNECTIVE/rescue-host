@@ -24,6 +24,9 @@ transport / policy 段階は43 package、cgo有効時 Linux341 / Darwin342 / Win
 正のpolicy入力試験はDarwin/cgoの自己所有fileだけをnative readerで読み、実鍵や運用設定・OS trustを使いません。
 詳しくは[境界と未実証](mac-resident-transport-policy.md)を参照してください。
 実行対象は公開`backend/`だけで、存在しない対象やテスト0件を成功にしません。
+native enrollment 選択では residentmac の共通 `enrollment.go` と、Darwin/cgo の `enrollment_darwin.go` または拒否側 `enrollment_other.go` を追加します。
+現 inventory は 45 package、cgo 有効時 Linux350 / Darwin353 / Windows381 production file、Darwin の cgo 無効時は351 fileです。
+不足・未知 file の拒否と package 集合は維持し、selector の合成 account 試験を実 policy・鍵・producer の検証に広げません。
 通常試験は`-cpu=1`、raceは`-cpu=2`で、試験内のGOMAXPROCS観測と照合します。
 race検出の有無と、指定した並列度の観測を区別します。
 Goのrace runtimeは終了直前に既定で1000ms待つため、CIでは`GORACE=atexit_sleep_ms=0`を明示します。
@@ -276,9 +279,9 @@ Agent-only encrypted channel inventory: `internal/agentchannel` contains channel
 
 ## Standby / owned pipe の source inventory
 
-現在は45 packageです。新しい residentmac は factory.go / standby.go / standby_types.go / wire.go、residentpipe は共通 codec.go / mapper.go / startup.go だけです。
-Darwin / cgo のときだけ owned_darwin.go / run_darwin.go を追加します。通常 CLI / command entrypoint は登録しません。
-cgo有効時は Linux348 / Darwin351 / Windows379 production file、Darwinでcgo無効なら349 fileです。他43 roleのfile集合は変えません。
+Standby / owned pipe の組成段階は45 packageで、residentmac は factory.go / standby.go / standby_types.go / wire.go、residentpipe は共通 codec.go / mapper.go / startup.go でした。
+Darwin / cgo のときだけ owned_darwin.go / run_darwin.go を追加しました。通常 CLI / command entrypoint は登録しません。
+この段階の cgo 有効時は Linux348 / Darwin351 / Windows379 production file、Darwin で cgo 無効なら349 fileでした。次の native enrollment 選択では residentmac に共通 / OS 別の2 fileを追加し、現在の350 / 353 / 381（Darwin cgo 無効351）へ進めます。他43 roleのfile集合は変えません。
 各新fileの欠落・未知launcher、package結果の欠落をhelperで拒否し、fixture / 実producer idle/startup / Rust integration / 評価TLSをproductionや標準試験へ混ぜません。
 source unit は自己所有pipe、専用の無害test child、checkout内の合成保護fileだけです。実producer / 実鍵 / 実policy / ON / 外部 / GUI / OS trustは使いません。
 strict vet / build と runtime unit、cross compile、実機の証拠を分けます。詳細は [source組成](mac-resident-producer-composition.md) を参照してください。
