@@ -8,7 +8,7 @@ Question: at a real matching session-create timeout's **terminal** snapshot, has
 
 - Ordinary debug/custom-protocol product: `93b099a2c4b0eb396033bc13e303312041ae8fb4`, tree `55c29583aa75bb79efe889efc01f0bd94acdceb5`.
 - Reviewed diagnostic source: `6a0f75a2f595a14853185d415a6c2d5f8fc7416b`, tree `f59d689a3bae5bfd1d1ee1c92c4a6e77cb90d38f`; source patch SHA256 `2f51ecb3772ea4615bb48d71dd961a7b2e2b25c5ca8bb040a1173e88ca26a4f0`.
-- Safe base for the import-closure repair observation: `diagnostic/pr231-connection-once-20261106` at `2aabff397747b3b58185a26c84a9b928f7e499c0`. Its prior PR232 observation stopped in Python preflight with zero native trials and remains immutable.
+- Safe base for the generated-output contract observation: `diagnostic/pr232-import-closure-once-20261106` at `51ba01638ebd378e9262871ab7c2a548661efd7a`. Its prior PR233 observation stopped after Cargo exit0 at identity validation, with zero native trials; the inner rejection site was not retained and remains unknown.
 - One opened event, exact diagnostic head branch, same repository, draft, base ref/SHA and attempt1. Checkout is pinned to that event's head SHA; final reviewed control SHA/tree are verified before the sole publication/opening. There is no dispatch, synchronize, push trigger, matrix or retry.
 - One standard public `windows-2022` runner, contents:read, no secrets/settings/credential/billing changes. Public standard compute is free; no artifact upload, cache save or new storage is requested.
 - Product build command at most once, native/supervisor invocation at most once. Native preflight failure means zero native. An interrupted invocation remains unknown; it is never retried.
@@ -23,7 +23,7 @@ Private setup overlay inserts the fixed real-handler fixture and exact candidate
 
 ## Preflight and evidence
 
-Before native: Python23 closed-schema/source/cap/negative tests, original Python10 and Node15 (explicit TAP, no skipped tests), original PowerShell ownership contract, all overlay PowerShell parsing, fixed diagnostic Python5, actual-handler/recorder Rust10. All run once in the job, with exact expected counts where applicable; partial status is checkpointed. Local Rust fixture tests calibrate forwarding, not Windows/EdgeDriver startup reproduction.
+Before native: Python23 closed-schema/source/cap/negative tests, generated-output/recording Python8, original Python10 and Node15 (explicit TAP, no skipped tests), original PowerShell ownership contract, all overlay PowerShell parsing, fixed diagnostic Python5, actual-handler/recorder Rust10. All run once in the job, with exact expected counts where applicable; partial status is checkpointed. Local Rust fixture tests calibrate forwarding, not Windows/EdgeDriver startup reproduction. The [four-file output contract](GENERATED_OUTPUT_CONTRACT.md) preserves immutable inputs and fail-closed lifecycle checks.
 
 Every custom process uses a private non-uploaded log. A bounded command ledger retains fixed labels, completion/timeout/uncertain states, nullable bounded exit code and output-contract result. Raw exceptions, paths, PIDs, commands, response bodies, metadata, logs and screenshots are not published. Only validated fixed-schema JSON goes to controlled log/job-summary records. Source/control/overlay, driver lock/patch/binary and app hashes, enabled scope, runtime versions, cache exact-hit/miss, original native observations, close and independent read-only cleanup audit are separate evidence. No EXE/archive is uploaded or encoded.
 
