@@ -258,6 +258,10 @@ def publish(root, temp, delivery=False):
         from wry_delivery_record import read_record as read_delivery
         add("delivery", lambda: read_delivery(temp / "tools/app-startup/wry-sdk-delivery.json",
                                              load(temp / "evidence/native-result.json")))
+    if delivery and os.environ.get("WRY_RECEIVER_ENABLED") == "1":
+        from wry_receiver_record import read_record as read_receiver
+        add("receiver", lambda: read_receiver(temp / "tools/app-startup/wry-receiver-polls.json",
+                                              load(temp / "evidence/native-result.json")))
     def driver():
         path = temp / "tools/driver-stage.jsonl"
         if path.is_symlink() or path.stat().st_size > 8192: raise ValueError()
@@ -326,6 +330,11 @@ def publish(root, temp, delivery=False):
         try: classified = complete(files["delivery"]["data"])
         except (ValueError, TypeError, KeyError): classified = False
         passed = passed and classified
+    if delivery and os.environ.get("WRY_RECEIVER_ENABLED") == "1":
+        from wry_receiver_record import complete as receiver_complete
+        try: receiver_classified = receiver_complete(files["receiver"]["data"])
+        except (ValueError, TypeError, KeyError): receiver_classified = False
+        passed = passed and receiver_classified
     body = {"schema": 1, "variant": "wry240-once-record-1", "purpose": "diagnostic-hints-only",
             "productReference": "4ba768e910af595f26176eb69aaf2e21d663b726", "files": files,
             "controlCommit": control, "sourceCommit": source, "sourceTree": tree, "sourceAndSpecimenStable": stable,
@@ -334,6 +343,8 @@ def publish(root, temp, delivery=False):
     if delivery:
         body.update(variant="wry240-sdk-delivery-record-1", enabledScope="wry-sdk-delivery-1",
                     deliveryClassificationComplete=classified)
+    if delivery and os.environ.get("WRY_RECEIVER_ENABLED") == "1":
+        body["receiverClassificationComplete"] = receiver_classified
     encoded = canonical(body)
     if len(encoded) > 32768: raise ValueError("RECORD_LIMIT")
     text = encoded.decode()
@@ -350,6 +361,8 @@ def main():
     try:
         delivery = os.environ.get("WRY_DELIVERY_ENABLED", "")
         if delivery not in ("", "1"): raise ValueError("DELIVERY_MODE_REJECTED")
+        receiver = os.environ.get("WRY_RECEIVER_ENABLED", "")
+        if receiver not in ("", "1") or (receiver == "1" and delivery != "1"): raise ValueError("RECEIVER_MODE_REJECTED")
         delivery = delivery == "1"
         parser = Parser(add_help=False)
         parser.add_argument("mode", choices=("step", "identity", "permissions", "publish"))
